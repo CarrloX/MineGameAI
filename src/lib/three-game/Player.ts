@@ -1,3 +1,4 @@
+
 import * as THREE from 'three';
 import type { Block } from './Block';
 import type { World } from './World';
@@ -56,7 +57,7 @@ export class Player {
 
     this.blockFaceHL = {
       mesh: new THREE.Mesh(
-        new THREE.PlaneBufferGeometry(1, 1),
+        new THREE.PlaneGeometry(1, 1), // Changed from PlaneBufferGeometry
         new THREE.MeshLambertMaterial({
           color: 0xffffff, // White highlight
           opacity: 0.5,

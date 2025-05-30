@@ -1,3 +1,4 @@
+
 import * as THREE from 'three';
 import type { TextureLoader } from 'three';
 import type { BlockDefinition } from './types';
@@ -11,7 +12,7 @@ export class Block {
 
   constructor(nameKey: string, blockDefinition: BlockDefinition, textureLoader: THREE.TextureLoader, multiTexture: boolean = false) {
     this.nameKey = nameKey;
-    const blockProtoGeo = new THREE.BoxBufferGeometry(1, 1, 1);
+    const blockProtoGeo = new THREE.BoxGeometry(1, 1, 1); // Changed from BoxBufferGeometry
     let blockMat: THREE.Material | THREE.Material[];
     const blockColor = 0xffffff;
 

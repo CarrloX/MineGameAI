@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useEffect, useRef, useCallback } from 'react';
@@ -63,7 +64,6 @@ const BlockifyGame: React.FC = () => {
       refs.camera.rotation.order = "YXZ";
       refs.camera.rotation.x = refs.player.pitch;
       refs.camera.rotation.y = refs.player.yaw;
-      // refs.camera.zoom = 0.5; // Zoom might not be desired for FPS style
       refs.camera.updateProjectionMatrix();
     }
     
@@ -82,7 +82,6 @@ const BlockifyGame: React.FC = () => {
     document.addEventListener('pointerlockchange', () => {
       refs.cursor.inWindow = document.pointerLockElement === canvasEl;
       if (!refs.cursor.inWindow) {
-          // Reset cursor position if lock is lost, to prevent large jumps
           if (refs.canvasRef) {
             refs.cursor.x = refs.canvasRef.clientWidth / 2;
             refs.cursor.y = refs.canvasRef.clientHeight / 2;
@@ -139,15 +138,12 @@ const BlockifyGame: React.FC = () => {
     const handleMouseMove = (e: MouseEvent) => refs.player?.lookAround(e);
     const handleMouseDown = (e: MouseEvent) => refs.player?.build(e);
 
-    // Touch events (simplified)
     const handleTouchStart = (e: TouchEvent) => {
       refs.cursor.holding = true;
       refs.cursor.holdTime = 0;
-      // Potentially use first touch for movement joystick if implemented
     };
     const handleTouchMove = (e: TouchEvent) => {
-      // refs.player?.lookAround(e.touches[0]); // Simplified, might need better handling
-      refs.cursor.holdTime = 0; // Reset hold time if moving finger
+      refs.cursor.holdTime = 0; 
     };
     const handleTouchEnd = (e: TouchEvent) => {
       if (refs.cursor.holdTime < refs.cursor.triggerHoldTime) {
@@ -166,7 +162,7 @@ const BlockifyGame: React.FC = () => {
     window.addEventListener("touchmove", handleTouchMove);
     window.addEventListener("touchend", handleTouchEnd);
 
-    renderScene(); // Start render loop
+    renderScene(); 
 
     return () => {
       if (refs.gameLoopId !== null) cancelAnimationFrame(refs.gameLoopId);
@@ -182,7 +178,6 @@ const BlockifyGame: React.FC = () => {
       document.removeEventListener('pointerlockchange', () => { /* remove matching listener */ });
 
 
-      // Dispose Three.js objects
       refs.renderer?.dispose();
       refs.scene?.traverse(object => {
         if (object instanceof THREE.Mesh) {
@@ -200,7 +195,18 @@ const BlockifyGame: React.FC = () => {
     };
   }, [initGame, adjustWindow, renderScene]);
 
-  return <div ref={mountRef} className="w-full h-screen overflow-hidden cursor-crosshair" />;
+  return (
+    <div ref={mountRef} className="relative w-full h-screen overflow-hidden cursor-crosshair">
+      {/* El lienzo de Three.js se adjuntará aquí por initGame */}
+      {/* Cruceta */}
+      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none w-5 h-5 z-10">
+        {/* Línea horizontal */}
+        <div className="w-full h-[2px] bg-foreground/75 absolute top-1/2 left-0 transform -translate-y-1/2 rounded-sm"></div>
+        {/* Línea vertical */}
+        <div className="w-[2px] h-full bg-foreground/75 absolute top-0 left-1/2 transform -translate-x-1/2 rounded-sm"></div>
+      </div>
+    </div>
+  );
 };
 
 export default BlockifyGame;

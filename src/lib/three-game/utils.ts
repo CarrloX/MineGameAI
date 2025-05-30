@@ -22,15 +22,15 @@ export const CURSOR_STATE: CursorState = {
 };
 
 // Minecraft-inspired block texture URLs
-const GRASS_TOP_URL = "https://placehold.co/64x64/228B22/FFFFFF.png"; // ForestGreen
-const DIRT_URL = "https://placehold.co/64x64/A0522D/FFFFFF.png";    // Sienna
-const STONE_URL = "https://placehold.co/64x64/808080/FFFFFF.png";   // Gray
-const SAND_URL = "https://placehold.co/64x64/F0E68C/000000.png";    // Khaki
-const WOOD_LOG_SIDE_URL = "https://placehold.co/64x64/8B4513/FFFFFF.png"; // SaddleBrown (Bark)
-const WOOD_LOG_END_URL = "https://placehold.co/64x64/DEB887/000000.png";  // BurlyWood (Log End)
-const REDSTONE_BLOCK_URL = "https://placehold.co/64x64/8B0000/FFFFFF.png"; // DarkRed
-const ORANGE_WOOL_URL = "https://placehold.co/64x64/FFA500/FFFFFF.png"; // Orange
-const COBBLESTONE_URL = "https://placehold.co/64x64/696969/FFFFFF.png"; // DimGray
+const GRASS_TOP_URL = "https://placehold.co/16x16/228B22/FFFFFF.png"; // ForestGreen
+const DIRT_URL = "https://placehold.co/16x16/A0522D/FFFFFF.png";    // Sienna
+const STONE_URL = "https://placehold.co/16x16/808080/FFFFFF.png";   // Gray
+const SAND_URL = "https://placehold.co/16x16/F0E68C/000000.png";    // Khaki
+const WOOD_LOG_SIDE_URL = "https://placehold.co/16x16/8B4513/FFFFFF.png"; // SaddleBrown (Bark)
+const WOOD_LOG_END_URL = "https://placehold.co/16x16/DEB887/000000.png";  // BurlyWood (Log End)
+const REDSTONE_BLOCK_URL = "https://placehold.co/16x16/8B0000/FFFFFF.png"; // DarkRed
+const ORANGE_WOOL_URL = "https://placehold.co/16x16/FFA500/FFFFFF.png"; // Orange
+const COBBLESTONE_URL = "https://placehold.co/16x16/696969/FFFFFF.png"; // DimGray
 
 
 export const TEXTURE_PATHS = {

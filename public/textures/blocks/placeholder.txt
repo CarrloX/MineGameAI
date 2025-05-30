@@ -1,0 +1,4 @@
+This directory is intended for game textures.
+The game currently uses placehold.co for textures.
+Example path structure: /textures/blocks/silicon_block.png
+See src/lib/three-game/utils.ts for texture paths used.

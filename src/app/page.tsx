@@ -1,3 +1,10 @@
+
+import BlockifyGame from "@/components/game/BlockifyGame";
+
 export default function Home() {
-  return <></>;
+  return (
+    <main className="font-mono">
+      <BlockifyGame />
+    </main>
+  );
 }

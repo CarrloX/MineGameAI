@@ -57,9 +57,9 @@ export class Player {
 
     this.blockFaceHL = {
       mesh: new THREE.Mesh(
-        new THREE.PlaneGeometry(1, 1), // Changed from PlaneBufferGeometry
+        new THREE.PlaneGeometry(1, 1), 
         new THREE.MeshLambertMaterial({
-          color: 0xffffff, // White highlight
+          color: 0xffffff, 
           opacity: 0.5,
           transparent: true,
         })
@@ -109,67 +109,57 @@ export class Player {
       const maxOpacity = 0.84;
       const opacityRange = maxOpacity - minOpacity;
       const ms = opacityRange * 1e3;
-      const opacityFromMin = (new Date().getTime() % ms) / ms; // Use getTime() for number
+      const opacityFromMin = (new Date().getTime() % ms) / ms; 
 
       this.blockFaceHL.mesh.material.opacity =
-        (opacityFromMin > opacityRange / 2 ? maxOpacity - opacityFromMin : opacityFromMin) + minOpacity; // Corrected logic
+        (opacityFromMin > opacityRange / 2 ? maxOpacity - opacityFromMin : opacityFromMin) + minOpacity; 
 
       const zFightFix = 1e-3;
 
-      // face directions: 0,1—right(px), 2,3—left(nx), 4,5—top(py), 6,7—bottom(ny), 8,9—front(pz), 10,11—back(nz)
-      // These indices are for non-indexed BufferGeometry.
-      // For BoxBufferGeometry, faces are ordered: px, nx, py, ny, pz, nz. Each face has 2 triangles.
-      // 0,1: +X (right)
-      // 2,3: -X (left)
-      // 4,5: +Y (top)
-      // 6,7: -Y (bottom)
-      // 8,9: +Z (front)
-      // 10,11: -Z (back)
-
-      const face = Math.floor(faceIndex / 2); // Each face has 2 triangles (faceIndex 0,1 is one face, 2,3 another, etc.)
+      const face = Math.floor(faceIndex / 2); 
       
       if (
-          (face === 0 && fbObjRot === 0) || // Right face, no rotation
-          (face === 1 && Math.abs(fbObjRot) === Math.PI) || // Left face, 180 deg rotation (becomes right)
-          (face === 4 && fbObjRot === Math.PI/2) || // Front face, 90 deg rot (becomes right)
-          (face === 5 && fbObjRot === -Math.PI/2) // Back face, -90 deg rot (becomes right)
+          (face === 0 && fbObjRot === 0) || 
+          (face === 1 && Math.abs(fbObjRot) === Math.PI) || 
+          (face === 4 && fbObjRot === Math.PI/2) || 
+          (face === 5 && fbObjRot === -Math.PI/2) 
       ) {
         this.blockFaceHL.mesh.position.x += 0.5 + zFightFix;
         this.blockFaceHL.mesh.rotation.y += Math.PI / 2;
         this.blockFaceHL.dir = "east";
       } else if (
-          (face === 0 && Math.abs(fbObjRot) === Math.PI) || // Right face, 180 deg rotation (becomes left)
-          (face === 1 && fbObjRot === 0) || // Left face, no rotation
-          (face === 4 && fbObjRot === -Math.PI/2) || // Front face, -90 deg rot (becomes left)
-          (face === 5 && fbObjRot === Math.PI/2) // Back face, 90 deg rot (becomes left)
+          (face === 0 && Math.abs(fbObjRot) === Math.PI) || 
+          (face === 1 && fbObjRot === 0) || 
+          (face === 4 && fbObjRot === -Math.PI/2) || 
+          (face === 5 && fbObjRot === Math.PI/2) 
       ) {
         this.blockFaceHL.mesh.position.x -= 0.5 + zFightFix;
         this.blockFaceHL.mesh.rotation.y -= Math.PI / 2;
         this.blockFaceHL.dir = "west";
-      } else if (face === 2) { // Top face
+      } else if (face === 2) { 
         this.blockFaceHL.mesh.position.y += 0.5 + zFightFix;
         this.blockFaceHL.mesh.rotation.x -= Math.PI / 2;
         this.blockFaceHL.dir = "above";
-      } else if (face === 3) { // Bottom face
+      } else if (face === 3) { 
         this.blockFaceHL.mesh.position.y -= 0.5 + zFightFix;
         this.blockFaceHL.mesh.rotation.x += Math.PI / 2;
         this.blockFaceHL.dir = "below";
       } else if (
-          (face === 0 && fbObjRot === -Math.PI/2) || // Right face, -90 deg rot (becomes south/front)
-          (face === 1 && fbObjRot === Math.PI/2) ||   // Left face, 90 deg rot (becomes south/front)
-          (face === 4 && fbObjRot === 0) ||           // Front face, no rotation
-          (face === 5 && Math.abs(fbObjRot) === Math.PI) // Back face, 180 deg rot (becomes south/front)
+          (face === 0 && fbObjRot === -Math.PI/2) || 
+          (face === 1 && fbObjRot === Math.PI/2) ||   
+          (face === 4 && fbObjRot === 0) ||           
+          (face === 5 && Math.abs(fbObjRot) === Math.PI) 
       ) {
         this.blockFaceHL.mesh.position.z += 0.5 + zFightFix;
         this.blockFaceHL.dir = "south";
       } else if (
-          (face === 0 && fbObjRot === Math.PI/2) ||   // Right face, 90 deg rot (becomes north/back)
-          (face === 1 && fbObjRot === -Math.PI/2) ||  // Left face, -90 deg rot (becomes north/back)
-          (face === 4 && Math.abs(fbObjRot) === Math.PI) ||// Front face, 180 deg rot (becomes north/back)
-          (face === 5 && fbObjRot === 0)            // Back face, no rotation
+          (face === 0 && fbObjRot === Math.PI/2) ||   
+          (face === 1 && fbObjRot === -Math.PI/2) ||  
+          (face === 4 && Math.abs(fbObjRot) === Math.PI) ||
+          (face === 5 && fbObjRot === 0)            
       ) {
         this.blockFaceHL.mesh.position.z -= 0.5 + zFightFix;
-        this.blockFaceHL.mesh.rotation.y = Math.PI; // Rotate 180 deg to face correctly
+        this.blockFaceHL.mesh.rotation.y = Math.PI; 
         this.blockFaceHL.dir = "north";
       }
 
@@ -196,12 +186,9 @@ export class Player {
       if (e instanceof MouseEvent) {
         cursor.x += e.movementX;
         cursor.y += e.movementY;
-      } else if (e) { // Touch event
+      } else if (e) { 
         // Simplified touch handling - assumes single touch and uses clientX/Y
         // A proper touch joystick or delta calculation from previous touch position would be better.
-        // For now, this example might not work well with touch for looking.
-        // cursor.x = e.clientX; 
-        // cursor.y = e.clientY;
       }
 
       this.pitch = -Math.atan((cursor.y - center.y) / center.y) * sensitivity;
@@ -216,14 +203,20 @@ export class Player {
     const { world, blocks, cursor, scene } = this.gameRefs;
     if (!world || !blocks || !cursor || !scene) return;
     
-    // Destroy block
-    if ((e && e.button === 2) || cursor.holdTime === cursor.triggerHoldTime) {
-      if (this.lookingAt != null && this.lookingAt.object.name !== this.blockFaceHL.mesh.name) { // Check not highlighting mesh
+    // Destroy block (Left click OR Short tap/hold that didn't reach triggerHoldTime)
+    if (
+      (e && e.button === 0) || // Left mouse click
+      (!e && cursor.holdTime > 0 && cursor.holdTime < cursor.triggerHoldTime) // Touch end, short tap
+    ) {
+      if (this.lookingAt != null && this.lookingAt.object.name !== this.blockFaceHL.mesh.name) {
         scene.remove(this.lookingAt.object);
-        // Potentially remove from a data structure tracking blocks if physics or saving is implemented
       }
-    // Place block
-    } else if ((e && e.button === 0) || (cursor.holdTime > 0 && cursor.holdTime < cursor.triggerHoldTime)) {
+    }
+    // Place block (Right click OR Long tap/hold that reached triggerHoldTime)
+    else if (
+      (e && e.button === 2) || // Right mouse click
+      (!e && cursor.holdTime === cursor.triggerHoldTime) // Touch hold detected in renderScene
+    ) {
       const at = this.lookingAt;
       if (at != null) {
         const pos = at.object.position;
@@ -248,11 +241,10 @@ export class Player {
         const pyr = Math.round(placeY);
         const pzr = Math.round(placeZ);
         
-        // Player collision check: slightly expanded to avoid placing inside player more reliably
         const playerCollides = 
-            (pxr === xr && pyr === yr && pzr === zr) || // Body
-            (pxr === xr && pyr === yr - 1 && pzr === zr) || // Feet
-            (pxr === xr && pyr === yr + 1 && pzr === zr); // Head (approx)
+            (pxr === xr && pyr === yr && pzr === zr) || 
+            (pxr === xr && pyr === yr - 1 && pzr === zr) || 
+            (pxr === xr && pyr === yr + 1 && pzr === zr); 
 
 
         if (!playerCollides &&
@@ -260,11 +252,7 @@ export class Player {
           (pyr >= 0 && pyr < world.skyHeight) &&
           (pzr >= -world.size / 2 && pzr < world.size / 2)) {
           
-          const layers = world.layers - 1;
-          const currentY = Math.floor(placeY);
-
-          // Use a default block or a selected block from inventory (not implemented)
-          const blockToPlace = blocks[0]; // Default to first block type (e.g., silicon)
+          const blockToPlace = blocks[0]; 
           world.addBlock(placeX, placeY, placeZ, blockToPlace, this.yaw);
         }
       }
@@ -298,7 +286,7 @@ export class Player {
   
   midairMoveStop(): void {
     if (!this.onGround && this.jumpVelocity > 0) {
-      this.velocity = -this.jumpVelocity; // This seems to intend to stop horizontal movement, but is applied to overall velocity
+      this.velocity = -this.jumpVelocity; 
     }
   }
 
@@ -306,8 +294,8 @@ export class Player {
     const { scene } = this.gameRefs;
     if (!scene) return false;
 
-    scene.remove(this.mesh); // Player model
-    scene.remove(this.blockFaceHL.mesh); // Highlight mesh
+    scene.remove(this.mesh); 
+    scene.remove(this.blockFaceHL.mesh); 
     this.dead = true;
     return this.dead;
   }
@@ -316,7 +304,6 @@ export class Player {
     const { world, scene, camera } = this.gameRefs;
     if (!world || !scene || !camera ) return;
 
-    // Moving
     const move = this.velocity < 0 ? 0 : this.velocity;
     const rate = 0.01;
 
@@ -335,7 +322,6 @@ export class Player {
       this.x -= move * Math.sin(this.yaw);
     }
 
-    // Accelerate movement
     if (this.xdir !== "" || this.zdir !== "") {
       this.velocity += rate;
       if (this.velocity > this.speed) this.velocity = this.speed;
@@ -344,32 +330,25 @@ export class Player {
       if (this.velocity < 0) this.velocity = 0;
     }
 
-    // Jumping, falling
     if (this.jumpVelocity === 0) {
-      if (this.jumping && this.onGround) { // Can only jump if on ground
+      if (this.jumping && this.onGround) { 
         this.jumpVelocity = this.jumpSpeed;
         this.onGround = false;
-      } else {
-        // this.onGround = true; // This is set by collision detection
       }
     }
     this.y += this.jumpVelocity;
     this.jumpVelocity -= world.gravity;
 
-    // Assume not on ground until a collision proves otherwise
     this.onGround = false;
 
-    // Touch blocks
     scene.children.forEach(child => {
       if (child instanceof THREE.Mesh && child.name !== this.mesh.name && child.name !== this.blockFaceHL.mesh.name) {
         const cpos = child.position;
         const xFromPlyr = Math.abs(cpos.x - this.x);
-        const yFromPlyrAbs = Math.abs((this.y + this.height/2) - (cpos.y + 0.5)); // Compare center Ys, blocks are 1 unit high
-        const yFromPlyr = (this.y) - (cpos.y); // Player bottom vs block top
+        const yFromPlyrAbs = Math.abs((this.y + this.height/2) - (cpos.y + 0.5)); 
+        const yFromPlyr = (this.y) - (cpos.y); 
         const zFromPlyr = Math.abs(cpos.z - this.z);
 
-        // Broad phase collision check (simplified)
-        // Check if player's bounding box (approx) overlaps with block's bounding box (1x1x1)
         if (xFromPlyr < (this.width/2 + 0.5) && 
             yFromPlyrAbs < (this.height/2 + 0.5) && 
             zFromPlyr < (this.depth/2 + 0.5)) {
@@ -380,7 +359,6 @@ export class Player {
     
     if (this.y < -world.voidHeight) this.die();
 
-    // Camera keep up
     camera.position.x = this.x;
     camera.position.y = this.y + (this.height - 0.5);
     camera.position.z = this.z;
@@ -389,11 +367,10 @@ export class Player {
   }
 
   private collideWithBlock(block: THREE.Mesh): void {
-    // AABB collision detection
     const pMinX = this.x - this.width / 2;
     const pMaxX = this.x + this.width / 2;
-    const pMinY = this.y; // Bottom of player
-    const pMaxY = this.y + this.height; // Top of player
+    const pMinY = this.y; 
+    const pMaxY = this.y + this.height; 
     const pMinZ = this.z - this.depth / 2;
     const pMaxZ = this.z + this.depth / 2;
 
@@ -404,45 +381,43 @@ export class Player {
     const bMinZ = block.position.z - 0.5;
     const bMaxZ = block.position.z + 0.5;
 
-    // Check for overlap
     if (pMaxX > bMinX && pMinX < bMaxX && pMaxY > bMinY && pMinY < bMaxY && pMaxZ > bMinZ && pMinZ < bMaxZ) {
-        // Collision detected, calculate penetration depths
-        const penX1 = bMaxX - pMinX; // Penetration from -X side of block
-        const penX2 = pMaxX - bMinX; // Penetration from +X side of block
-        const penY1 = bMaxY - pMinY; // Penetration from -Y side of block (player hits top of block)
-        const penY2 = pMaxY - bMinY; // Penetration from +Y side of block (player hits bottom of block)
-        const penZ1 = bMaxZ - pMinZ; // Penetration from -Z side of block
-        const penZ2 = pMaxZ - bMinZ; // Penetration from +Z side of block
+        const penX1 = bMaxX - pMinX; 
+        const penX2 = pMaxX - bMinX; 
+        const penY1 = bMaxY - pMinY; 
+        const penY2 = pMaxY - bMinY; 
+        const penZ1 = bMaxZ - pMinZ; 
+        const penZ2 = pMaxZ - bMinZ; 
 
         const penX = Math.min(penX1, penX2);
         const penY = Math.min(penY1, penY2);
         const penZ = Math.min(penZ1, penZ2);
         
-        // Resolve collision by pushing player out by the smallest penetration
-        if (penY < penX && penY < penZ) { // Vertical collision
-            if (penY1 < penY2) { // Player landed on top of block
+        if (penY < penX && penY < penZ) { 
+            if (penY1 < penY2) { 
                 this.y = bMaxY;
                 this.jumpVelocity = 0;
                 this.onGround = true;
-            } else { // Player hit bottom of block
+            } else { 
                 this.y = bMinY - this.height;
-                if(this.jumpVelocity > 0) this.jumpVelocity = 0; // Stop upward movement
+                if(this.jumpVelocity > 0) this.jumpVelocity = 0; 
             }
-        } else if (penX < penY && penX < penZ) { // Horizontal X collision
-            if (penX1 < penX2) { // Player hit -X side of block
+        } else if (penX < penY && penX < penZ) { 
+            if (penX1 < penX2) { 
                 this.x = bMaxX + this.width / 2;
-            } else { // Player hit +X side of block
+            } else { 
                 this.x = bMinX - this.width / 2;
             }
-            this.velocity = 0; // Stop horizontal movement in this direction
-        } else { // Horizontal Z collision
-            if (penZ1 < penZ2) { // Player hit -Z side of block
+            this.velocity = 0; 
+        } else { 
+            if (penZ1 < penZ2) { 
                 this.z = bMaxZ + this.depth / 2;
-            } else { // Player hit +Z side of block
+            } else { 
                 this.z = bMinZ - this.depth / 2;
             }
-            this.velocity = 0; // Stop horizontal movement in this direction
+            this.velocity = 0; 
         }
     }
   }
 }
+

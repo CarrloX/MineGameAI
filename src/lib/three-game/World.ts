@@ -1,3 +1,4 @@
+
 import * as THREE from 'three';
 import type { Block } from './Block';
 import { randomInt } from './utils';
@@ -17,12 +18,12 @@ export class World {
   constructor(gameRefs: GameRefs) {
     this.gameRefs = gameRefs;
     this.size = 12;
-    this.layers = 2;
+    this.layers = 2; // Ground layer + 1 underground layer
     this.skyHeight = 64;
     this.voidHeight = 64;
-    this.skyColor = 0xf1f1f1; // Light gray, matching original
+    this.skyColor = 0xf1f1f1; // Light gray
     this.lightColor = 0xffffff;
-    this.gravity = 0.008;
+    this.gravity = 0.004; // Adjusted gravity for a longer jump feel
     
     const scene = this.gameRefs.scene!;
 
@@ -64,17 +65,25 @@ export class World {
 
   private generate(): void {
     const blocks = this.gameRefs.blocks!;
+    if (!blocks || blocks.length === 0) {
+        console.error("No blocks defined for world generation.");
+        return;
+    }
     const sizeStart = !(this.size % 2) ? -this.size / 2 : Math.round(-this.size / 2);
     const sizeHalf = this.size / 2;
 
     for (let z = sizeStart; z < sizeHalf; ++z) {
       for (let y = 0; y < this.layers; ++y) {
         for (let x = sizeStart; x < sizeHalf; ++x) {
-          if (y === this.layers - 1) { // Ground level
-            this.addBlock(x, y, z, blocks[0]);
-          } else { // Underground
-            const randBlockID = randomInt(1, blocks.length - 1);
-            this.addBlock(x, y, z, blocks[randBlockID]);
+          if (y === this.layers - 1) { // Ground level (top layer)
+            // Use grass block if available, otherwise default to blocks[0]
+            const grassBlock = blocks.find(b => b.mesh.name.includes('Grass_Block')) || blocks[0];
+            this.addBlock(x, y, z, grassBlock);
+          } else { // Underground layers
+            // Exclude grass from underground if possible, or use a sensible default
+            const undergroundBlocks = blocks.filter(b => !b.mesh.name.includes('Grass_Block'));
+            const blockToUse = undergroundBlocks.length > 0 ? undergroundBlocks[randomInt(0, undergroundBlocks.length - 1)] : blocks[randomInt(0, blocks.length - 1)];
+            this.addBlock(x, y, z, blockToUse);
           }
         }
       }

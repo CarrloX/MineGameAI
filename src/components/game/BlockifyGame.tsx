@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import * as THREE from 'three';
 import { World } from '@/lib/three-game/World';
 import { Block } from '@/lib/three-game/Block';
@@ -26,6 +26,10 @@ const BlockifyGame: React.FC = () => {
     canvasRef: null,
   });
 
+  const [fps, setFps] = useState(0);
+  const lastFrameTimeRef = useRef(performance.now());
+  const frameCountRef = useRef(0);
+
   const initGame = useCallback(() => {
     const refs = gameRefs.current;
     if (!mountRef.current) return;
@@ -34,7 +38,7 @@ const BlockifyGame: React.FC = () => {
     // Setup
     refs.scene = new THREE.Scene();
     refs.camera = new THREE.PerspectiveCamera(45, refs.canvasRef.clientWidth / refs.canvasRef.clientHeight, 0.1, 2e4);
-    refs.renderer = new THREE.WebGLRenderer({ antialias: true }); // Added antialias
+    refs.renderer = new THREE.WebGLRenderer({ antialias: true });
 
     refs.renderer.setPixelRatio(window.devicePixelRatio);
     refs.renderer.setSize(refs.canvasRef.clientWidth, refs.canvasRef.clientHeight);
@@ -45,18 +49,18 @@ const BlockifyGame: React.FC = () => {
     // Blocks
     const blockData = getBlockDefinitions();
     refs.blocks = [
-      new Block("siliconBlock", blockData.siliconBlock, refs.textureLoader, false),
-      new Block("blueberryIMac", blockData.blueberryIMac, refs.textureLoader, true),
-      new Block("bondiIMac", blockData.bondiIMac, refs.textureLoader, true),
-      new Block("grapeIMac", blockData.grapeIMac, refs.textureLoader, true),
-      new Block("limeIMac", blockData.limeIMac, refs.textureLoader, true),
-      new Block("macintosh128k", blockData.macintosh128k, refs.textureLoader, true),
-      new Block("strawberryIMac", blockData.strawberryIMac, refs.textureLoader, true),
-      new Block("tangerineIMac", blockData.tangerineIMac, refs.textureLoader, true),
+      new Block("grassBlock", blockData.grassBlock, refs.textureLoader, true),
+      new Block("dirtBlock", blockData.dirtBlock, refs.textureLoader, false),
+      new Block("stoneBlock", blockData.stoneBlock, refs.textureLoader, false),
+      new Block("sandBlock", blockData.sandBlock, refs.textureLoader, false),
+      new Block("woodLogBlock", blockData.woodLogBlock, refs.textureLoader, true),
+      new Block("redstoneBlock", blockData.redstoneBlock, refs.textureLoader, false),
+      new Block("orangeWoolBlock", blockData.orangeWoolBlock, refs.textureLoader, false),
+      new Block("cobblestoneBlock", blockData.cobblestoneBlock, refs.textureLoader, false),
     ];
     
     refs.world = new World(refs);
-    refs.player = new Player("Player", refs, 0, refs.world.layers, 0);
+    refs.player = new Player("Player", refs, 0, refs.world.layers, 0); // Spawn player at world height
 
     // Camera
     if (refs.camera && refs.player) {
@@ -108,10 +112,20 @@ const BlockifyGame: React.FC = () => {
       return;
     }
 
+    // FPS Calculation
+    const now = performance.now();
+    frameCountRef.current++;
+    if (now >= lastFrameTimeRef.current + 1000) {
+      setFps(frameCountRef.current);
+      frameCountRef.current = 0;
+      lastFrameTimeRef.current = now;
+    }
+
     refs.player.updatePosition();
     refs.player.highlightBlock();
 
     if (refs.player.dead) {
+      // Respawn player at a safe height, e.g., world.layers
       refs.player = new Player(refs.player['name'], refs, 0, refs.world.layers, 0, true);
     }
 
@@ -175,7 +189,18 @@ const BlockifyGame: React.FC = () => {
       window.removeEventListener("touchstart", handleTouchStart);
       window.removeEventListener("touchmove", handleTouchMove);
       window.removeEventListener("touchend", handleTouchEnd);
-      document.removeEventListener('pointerlockchange', () => { /* remove matching listener */ });
+      // Explicitly remove pointerlockchange listener attached to document
+      const canvasEl = refs.renderer?.domElement;
+      const pointerLockListener = () => {
+        refs.cursor.inWindow = document.pointerLockElement === canvasEl;
+         if (!refs.cursor.inWindow) {
+            if (refs.canvasRef) {
+              refs.cursor.x = refs.canvasRef.clientWidth / 2;
+              refs.cursor.y = refs.canvasRef.clientHeight / 2;
+            }
+        }
+      };
+      document.removeEventListener('pointerlockchange', pointerLockListener, false);
 
 
       refs.renderer?.dispose();
@@ -190,7 +215,10 @@ const BlockifyGame: React.FC = () => {
         }
       });
       if (mountRef.current && refs.renderer) {
-        mountRef.current.removeChild(refs.renderer.domElement);
+        // Check if renderer.domElement is a child before removing
+        if (mountRef.current.contains(refs.renderer.domElement)) {
+            mountRef.current.removeChild(refs.renderer.domElement);
+        }
       }
     };
   }, [initGame, adjustWindow, renderScene]);
@@ -198,12 +226,18 @@ const BlockifyGame: React.FC = () => {
   return (
     <div ref={mountRef} className="relative w-full h-screen overflow-hidden cursor-crosshair">
       {/* El lienzo de Three.js se adjuntará aquí por initGame */}
+      
       {/* Cruceta */}
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none w-5 h-5 z-10">
         {/* Línea horizontal */}
         <div className="w-full h-[2px] bg-foreground/75 absolute top-1/2 left-0 transform -translate-y-1/2 rounded-sm"></div>
         {/* Línea vertical */}
         <div className="w-[2px] h-full bg-foreground/75 absolute top-0 left-1/2 transform -translate-x-1/2 rounded-sm"></div>
+      </div>
+
+      {/* Indicador de FPS */}
+      <div className="absolute top-2 right-2 text-foreground bg-background/50 p-1 rounded-md text-sm pointer-events-none z-10">
+        FPS: {fps}
       </div>
     </div>
   );

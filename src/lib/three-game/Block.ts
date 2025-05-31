@@ -24,7 +24,7 @@ export class Block {
       for (const path of blockDefinition) {
         const texture = textureLoader.load(path);
         texture.magFilter = THREE.NearestFilter;
-        texture.minFilter = THREE.NearestMipMapNearestFilter;
+        texture.minFilter = THREE.NearestMipmapNearestFilter;
         const sprite = new THREE.MeshLambertMaterial({
           color: blockColor,
           map: texture,
@@ -38,7 +38,7 @@ export class Block {
     } else if (!this.multiTexture && typeof blockDefinition === 'object' && 'side' in blockDefinition) {
       const texture = textureLoader.load(blockDefinition.side);
       texture.magFilter = THREE.NearestFilter;
-      texture.minFilter = THREE.NearestMipMapNearestFilter;
+      texture.minFilter = THREE.NearestMipmapNearestFilter;
       const sprite = new THREE.MeshLambertMaterial({
         color: blockColor,
         map: texture,

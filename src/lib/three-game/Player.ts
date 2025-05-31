@@ -96,9 +96,8 @@ export class Player {
 
     const chunkMeshesToTest: THREE.Object3D[] = [];
     world.activeChunks.forEach(chunk => {
-        if (chunk.chunkRoot.visible) {
-            chunkMeshesToTest.push(...chunk.chunkRoot.children);
-        }
+        // Interact with all active chunk meshes, not just camera-visible ones
+        chunkMeshesToTest.push(...chunk.chunkRoot.children);
     });
 
     const intersects = raycaster.intersectObjects(chunkMeshesToTest, false);
@@ -106,19 +105,22 @@ export class Player {
     const firstValidIntersect = intersects.find(
       intersect => intersect.object instanceof THREE.Mesh &&
                    intersect.object.name.startsWith("MergedChunkMesh_") &&
-                   intersect.distance > 0.1 &&
+                   intersect.distance > 0.1 && // Avoid intersecting with self/very close objects
                    intersect.distance < this.attackRange &&
-                   intersect.face
+                   intersect.face // Ensure there's a face to get a normal from
     );
 
     if (firstValidIntersect && firstValidIntersect.face) {
       const intersection = firstValidIntersect;
       const hitObject = intersection.object as THREE.Mesh;
 
-      const hitPointWorld = intersection.point.clone();
-      const hitNormalLocal = intersection.face.normal.clone();
+      const hitPointWorld = intersection.point.clone(); // Point of intersection in world space
+      const hitNormalLocal = intersection.face.normal.clone(); // Normal in object's local space
+      
+      // Transform normal from local to world space
       const hitNormalWorld = hitNormalLocal.clone().transformDirection(hitObject.matrixWorld).normalize();
 
+      // Calculate block coordinates based on hit point and world normal
       const calculatedBlockWorldCoords = new THREE.Vector3(
         Math.floor(hitPointWorld.x - hitNormalWorld.x * 0.49),
         Math.floor(hitPointWorld.y - hitNormalWorld.y * 0.49),
@@ -151,8 +153,9 @@ export class Player {
         this.lookingAt.blockWorldCoords.y + 0.5,
         this.lookingAt.blockWorldCoords.z + 0.5
       );
-      this.blockFaceHL.mesh.rotation.set(0,0,0);
+      this.blockFaceHL.mesh.rotation.set(0,0,0); // Ensure no rotation applied to highlight
 
+      // Update debug direction based on world normal
       const currentHitNormalWorld = this.lookingAt.worldFaceNormal;
       if (Math.abs(currentHitNormalWorld.x) > 0.5) this.blockFaceHL.dir = currentHitNormalWorld.x > 0 ? 'East (+X)' : 'West (-X)';
       else if (Math.abs(currentHitNormalWorld.y) > 0.5) this.blockFaceHL.dir = currentHitNormalWorld.y > 0 ? 'Top (+Y)' : 'Bottom (-Y)';
@@ -160,12 +163,12 @@ export class Player {
       else this.blockFaceHL.dir = 'Unknown Face';
 
     } else {
-      if (this.lookingAt !== null) {
+      if (this.lookingAt !== null) { // Only clear if it was previously set
         if (scene.getObjectByName(this.blockFaceHL.mesh.name)) {
           scene.remove(this.blockFaceHL.mesh);
         }
         this.lookingAt = null;
-        this.blockFaceHL.dir = "";
+        this.blockFaceHL.dir = ""; // Clear direction
       }
     }
   }
@@ -180,12 +183,15 @@ export class Player {
         this.yaw -= e.movementX * sensitivity;
         this.pitch -= e.movementY * sensitivity;
       }
-      const maxPitch = Math.PI / 2 - 0.01;
+      // Clamp pitch
+      const maxPitch = Math.PI / 2 - 0.01; // Prevents camera flipping
       this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
+      // Normalize yaw (0 to 2PI)
       this.yaw = ((this.yaw % (2 * Math.PI)) + (2 * Math.PI)) % (2 * Math.PI);
       camera.rotation.x = this.pitch;
       camera.rotation.y = this.yaw;
     } else {
+        // Ensure camera rotation is set even if not actively looking around (e.g. after respawn)
         camera.rotation.x = this.pitch;
         camera.rotation.y = this.yaw;
     }
@@ -212,15 +218,17 @@ export class Player {
       const playerHeadY = Math.floor(this.y + this.height - 0.1);
       const playerFeetY = Math.floor(this.y + 0.1);
 
+      // Prevent placing block inside self
       if ( (Math.floor(placeX) === Math.floor(this.x) && Math.floor(placeZ) === Math.floor(this.z)) &&
            (Math.floor(placeY) === playerFeetY || Math.floor(placeY) === playerHeadY) ) {
         return;
       }
 
       if (placeY >= 0 && placeY < world.layers) {
-        const blockToPlace = blockPrototypesArray[0];
+        const blockToPlace = blockPrototypesArray[0]; // Default to first block in proto array (usually grass)
         if (blockToPlace) {
           const blockMeshName = blockToPlace.mesh.name;
+          // Extract block name key, e.g., "grassBlock" from "Block_grassBlock"
           const blockNameKey = blockMeshName.startsWith('Block_') ? blockMeshName.substring(6) : 'unknownBlock';
 
           if(blockNameKey && blockNameKey !== 'air' && blockNameKey !== 'unknownBlock') {
@@ -245,26 +253,23 @@ export class Player {
       case controlConfig.respawn: this.die(); break;
       case controlConfig.jump:
         const now = performance.now();
-        if (now - this.lastSpacePressTime < this.flyToggleDelay) {
-          this.flying = !this.flying;
-          this.isFlyingAscending = false;
-          this.isFlyingDescending = false;
-          this.jumping = false;
-          if (this.flying) {
-            this.jumpVelocity = 0;
-            this.onGround = false;
-          } else {
-             // When disabling flight, ensure boosting is also off
-            this.isBoosting = false;
-          }
-          this.lastSpacePressTime = 0; // Consume the double tap
-        } else {
-          if (this.flying) {
+        if (this.flying) { // If already flying, space is for ascending
             this.isFlyingAscending = true;
-          } else {
-            this.jumping = true;
-          }
-          this.lastSpacePressTime = now;
+            // Reset lastSpacePressTime if flying to prevent accidental flight toggle on next press
+            this.lastSpacePressTime = 0;
+        } else { // Not flying, check for double tap or single jump
+            if (now - this.lastSpacePressTime < this.flyToggleDelay) {
+                this.flying = true;
+                this.isFlyingAscending = false;
+                this.isFlyingDescending = false;
+                this.jumping = false;
+                this.jumpVelocity = 0;
+                this.onGround = false;
+                this.lastSpacePressTime = 0; // Consume the double tap
+            } else {
+                this.jumping = true; // Regular jump
+                this.lastSpacePressTime = now;
+            }
         }
         break;
       case controlConfig.flyDown:
@@ -296,7 +301,7 @@ export class Player {
       case controlConfig.flyDown:
         this.isFlyingDescending = false;
         break;
-      // No change needed for controlConfig.boost on keyUp as it's a toggle now
+      // No change for controlConfig.boost on keyUp as it's a toggle now
     }
   }
 
@@ -308,15 +313,30 @@ export class Player {
     const { world, camera } = this.gameRefs;
     if (!world || !camera) return;
 
+    // --- Vertical Movement Calculation ---
+    let dY = 0;
     if (this.flying) {
-      this.jumpVelocity = 0;
-      this.onGround = false;
+      this.jumpVelocity = 0; // Crucial: No gravity/jump physics when flying
+      this.onGround = false;   // Crucial: Not on ground when flying
+      if (this.isFlyingAscending) dY += this.flySpeed;
+      if (this.isFlyingDescending) dY -= this.flySpeed;
+    } else {
+      // Standard jump/gravity physics
+      if (this.jumping && this.onGround) {
+        this.jumpVelocity = this.jumpSpeed;
+        this.onGround = false;
+      }
+      this.jumpVelocity -= world.gravity;
+      if (this.jumpVelocity < -this.jumpSpeed * 2.5) { // Terminal velocity cap
+          this.jumpVelocity = -this.jumpSpeed * 2.5;
+      }
+      dY += this.jumpVelocity;
     }
+    let nextPlayerY = this.y + dY;
 
-    // Horizontal movement
+    // --- Horizontal Movement Calculation ---
     let moveX = 0;
     let moveZ = 0;
-
     if (this.xdir === "left") {
       moveX -= Math.cos(this.yaw);
       moveZ += Math.sin(this.yaw);
@@ -347,43 +367,28 @@ export class Player {
         nextPlayerZ += normalizedMoveZ * currentSpeed;
     }
 
-    // Vertical movement
-    let dY = 0;
-    if (this.flying) {
-      this.jumpVelocity = 0; // Ensure no residual jump velocity
-      this.onGround = false;   // Ensure not considered on ground
-      if (this.isFlyingAscending) {
-        dY += this.flySpeed;
-      }
-      if (this.isFlyingDescending) {
-        dY -= this.flySpeed;
-      }
-    } else {
-      if (this.jumping && this.onGround) {
-        this.jumpVelocity = this.jumpSpeed;
-        this.onGround = false;
-      }
-      this.jumpVelocity -= world.gravity;
-      if (this.jumpVelocity < -this.jumpSpeed * 2.5) {
-          this.jumpVelocity = -this.jumpSpeed * 2.5;
-      }
-      dY += this.jumpVelocity;
-    }
-    let nextPlayerY = this.y + dY;
 
-    // Collision detection and response
+    // --- Collision Detection and Response ---
     let correctedX = nextPlayerX;
     let correctedY = nextPlayerY;
     let correctedZ = nextPlayerZ;
-
     let landedOnGroundThisFrame = false;
 
-    const checkRadius = 1;
-    const startBlockY = Math.max(0, Math.floor(correctedY) - checkRadius);
-    const endBlockY = Math.min(world.layers, Math.floor(correctedY + this.height) + checkRadius + 1);
+    // Define player's proposed bounding box for this frame
+    const pMinProposedGlobalY = nextPlayerY;
+    const pMaxProposedGlobalY = nextPlayerY + this.height;
+    const pMinProposedGlobalX = nextPlayerX - this.width / 2;
+    const pMaxProposedGlobalX = nextPlayerX + this.width / 2;
+    const pMinProposedGlobalZ = nextPlayerZ - this.depth / 2;
+    const pMaxProposedGlobalZ = nextPlayerZ + this.depth / 2;
 
-    for (let checkWorldX = Math.floor(correctedX - this.width/2) - checkRadius; checkWorldX <= Math.floor(correctedX + this.width/2) + checkRadius; checkWorldX++) {
-        for (let checkWorldZ = Math.floor(correctedZ - this.depth/2) - checkRadius; checkWorldZ <= Math.floor(correctedZ + this.depth/2) + checkRadius; checkWorldZ++) {
+    // Iterate over nearby blocks for collision
+    const checkRadius = 1; // Check blocks in a 3x3xHeight area around player
+    const startBlockY = Math.max(0, Math.floor(pMinProposedGlobalY) - checkRadius);
+    const endBlockY = Math.min(world.layers, Math.ceil(pMaxProposedGlobalY) + checkRadius);
+
+    for (let checkWorldX = Math.floor(pMinProposedGlobalX) - checkRadius; checkWorldX <= Math.ceil(pMaxProposedGlobalX) + checkRadius; checkWorldX++) {
+        for (let checkWorldZ = Math.floor(pMinProposedGlobalZ) - checkRadius; checkWorldZ <= Math.ceil(pMaxProposedGlobalZ) + checkRadius; checkWorldZ++) {
             for (let checkWorldY = startBlockY; checkWorldY < endBlockY; checkWorldY++) {
                 const blockType = world.getBlock(checkWorldX, checkWorldY, checkWorldZ);
                 if (blockType && blockType !== 'air') {
@@ -394,52 +399,55 @@ export class Player {
                     const bMinZ = checkWorldZ;
                     const bMaxZ = checkWorldZ + 1;
 
-                    // Use the already corrected positions from previous collision checks in this frame
-                    let pMinProposedX = correctedX - this.width / 2;
-                    let pMaxProposedX = correctedX + this.width / 2;
-                    let pMinProposedY = correctedY;
-                    let pMaxProposedY = correctedY + this.height;
-                    let pMinProposedZ = correctedZ - this.depth / 2;
-                    let pMaxProposedZ = correctedZ + this.depth / 2;
+                    // Use the already corrected positions from previous checks in this frame
+                    let pMinX = correctedX - this.width / 2;
+                    let pMaxX = correctedX + this.width / 2;
+                    let pMinY = correctedY;
+                    let pMaxY = correctedY + this.height;
+                    let pMinZ = correctedZ - this.depth / 2;
+                    let pMaxZ = correctedZ + this.depth / 2;
 
-                    if (pMaxProposedX > bMinX && pMinProposedX < bMaxX &&
-                        pMaxProposedY > bMinY && pMinProposedY < bMaxY &&
-                        pMaxProposedZ > bMinZ && pMinProposedZ < bMaxZ) {
+                    // Check for overlap
+                    if (pMaxX > bMinX && pMinX < bMaxX &&
+                        pMaxY > bMinY && pMinY < bMaxY &&
+                        pMaxZ > bMinZ && pMinZ < bMaxZ) {
 
-                        const overlapX = Math.min(pMaxProposedX - bMinX, bMaxX - pMinProposedX);
-                        const overlapY = Math.min(pMaxProposedY - bMinY, bMaxY - pMinProposedY);
-                        const overlapZ = Math.min(pMaxProposedZ - bMinZ, bMaxZ - pMinProposedZ);
+                        // Calculate overlap on each axis
+                        const overlapX = Math.min(pMaxX - bMinX, bMaxX - pMinX);
+                        const overlapY = Math.min(pMaxY - bMinY, bMaxY - pMinY);
+                        const overlapZ = Math.min(pMaxZ - bMinZ, bMaxZ - pMinZ);
 
-                        if (overlapY <= overlapX && overlapY <= overlapZ) {
+                        // Resolve collision on the axis with the smallest overlap
+                        if (overlapY <= overlapX && overlapY <= overlapZ) { // Vertical collision
                             if (this.flying) {
-                                if (dY > 0 && pMinProposedY < bMaxY ) { // Moving up into block
-                                    correctedY = bMinY - this.height;
-                                } else if (dY < 0 && pMaxProposedY > bMinY) { // Moving down into block
-                                    correctedY = bMaxY;
-                                } else if (dY === 0 && (pMinProposedY < bMaxY && pMaxProposedY > bMinY) ) { // Intersecting while static
-                                     correctedY = bMaxY; // Push up if stuck
+                                if (dY > 0 && pMinY < bMaxY) { // Flying up into block
+                                    correctedY = bMinY - this.height - 0.001; // Push down
+                                } else if (dY < 0 && pMaxY > bMinY) { // Flying down into block
+                                    correctedY = bMaxY + 0.001; // Push up
+                                } else if (dY === 0 && pMinY < bMaxY && pMaxY > bMinY) { // Intersecting while static/horizontal fly
+                                    correctedY = (this.y > bMinY) ? (bMaxY + 0.001) : (bMinY - this.height - 0.001); // Push out
                                 }
-                                // jumpVelocity is already 0 if flying
+                                // jumpVelocity is already 0 if flying, onGround is false
                             } else { // Not flying
-                                if (dY <= 0 && pMinProposedY < bMaxY && this.y >= bMaxY - 0.01 ) { // Landing or on ground
+                                if (dY <= 0 && pMinY < bMaxY && this.y >= bMaxY - 0.01) { // Landing or on ground
                                     correctedY = bMaxY;
                                     this.jumpVelocity = 0;
                                     landedOnGroundThisFrame = true;
-                                } else if (dY > 0 && pMaxProposedY > bMinY && this.y + this.height <= bMinY + 0.01) { // Hitting ceiling
+                                } else if (dY > 0 && pMaxY > bMinY && this.y + this.height <= bMinY + 0.01) { // Hitting ceiling
                                     correctedY = bMinY - this.height;
                                     this.jumpVelocity = -0.001; // Stop upward momentum
                                 }
                             }
-                        } else if (overlapX < overlapY && overlapX < overlapZ) {
-                            if ((pMaxProposedX - bMinX) < (bMaxX - pMinProposedX)) {
+                        } else if (overlapX < overlapY && overlapX < overlapZ) { // Horizontal X collision
+                            if ((pMaxX - bMinX) < (bMaxX - pMinX)) { // Collided with left side of block
                                 correctedX = bMinX - this.width / 2 - 0.001;
-                            } else {
+                            } else { // Collided with right side of block
                                 correctedX = bMaxX + this.width / 2 + 0.001;
                             }
-                        } else {
-                             if ((pMaxProposedZ - bMinZ) < (bMaxZ - pMinProposedZ)) {
+                        } else { // Horizontal Z collision
+                             if ((pMaxZ - bMinZ) < (bMaxZ - pMinZ)) { // Collided with front side of block
                                 correctedZ = bMinZ - this.depth / 2 - 0.001;
-                            } else {
+                            } else { // Collided with back side of block
                                 correctedZ = bMaxZ + this.depth / 2 + 0.001;
                             }
                         }
@@ -449,42 +457,35 @@ export class Player {
         }
     }
 
-    // Apply world boundary checks AFTER block collisions
+    // --- Apply World Boundaries and Final State ---
     if (this.flying) {
-        this.jumpVelocity = 0; // Re-assert no jump velocity if flying
-        this.onGround = false; // Re-assert not on ground if flying
-        if (correctedY < 0) { // Flying down and hitting y=0
-            correctedY = 0;
-        }
-        if (correctedY + this.height > world.layers) { // Flying up and hitting world ceiling
-            correctedY = world.layers - this.height;
-        }
+        // Re-assert flying state absolutes after collision resolution
+        this.jumpVelocity = 0;
+        this.onGround = false;
+        if (correctedY < 0) correctedY = 0;
+        if (correctedY + this.height > world.layers) correctedY = world.layers - this.height;
     } else {
         // Normal physics for non-flying state
-        if (correctedY < 0) {
+        if (correctedY < 0) { // Fell through world floor
             correctedY = 0;
             landedOnGroundThisFrame = true;
             this.jumpVelocity = 0;
         }
-         if (correctedY + this.height > world.layers) {
+        if (correctedY + this.height > world.layers) { // Hit world ceiling
             correctedY = world.layers - this.height;
-            if (this.jumpVelocity > 0) this.jumpVelocity = -0.001; // Hit ceiling
+            if (this.jumpVelocity > 0) this.jumpVelocity = -0.001; // Stop upward momentum
         }
+        this.onGround = landedOnGroundThisFrame;
     }
+
 
     this.x = correctedX;
     this.y = correctedY;
     this.z = correctedZ;
 
-    if (!this.flying) {
-        this.onGround = landedOnGroundThisFrame;
-    } else {
-        this.onGround = false;
-    }
-
-    if (this.y < -world.voidHeight) this.die();
+    if (this.y < -world.voidHeight && !this.dead) this.die(); // Check for void death
 
     this.mesh.position.set(this.x, this.y, this.z);
-    camera.position.set(this.x, this.y + this.height * 0.9, this.z);
+    camera.position.set(this.x, this.y + this.height * 0.9, this.z); // Camera slightly below top of head
   }
 }

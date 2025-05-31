@@ -26,7 +26,7 @@ export class Player {
   public jumping: boolean;
   public onGround: boolean;
   public dead: boolean;
-  public blockFaceHL: { mesh: THREE.Mesh; dir: string }; 
+  public blockFaceHL: { mesh: THREE.LineSegments; dir: string };
   public mesh: THREE.Object3D;
   private name: string;
   private gameRefs: GameRefs;
@@ -55,20 +55,16 @@ export class Player {
     this.onGround = false;
     this.dead = false;
 
+    const highlightBoxGeo = new THREE.BoxGeometry(1.002, 1.002, 1.002); // Slightly larger to avoid z-fighting
+    const highlightEdgesGeo = new THREE.EdgesGeometry(highlightBoxGeo);
+    const highlightMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 }); // Black outline
+    
     this.blockFaceHL = {
-      mesh: new THREE.Mesh(
-        new THREE.PlaneGeometry(1.01, 1.01), 
-        new THREE.MeshLambertMaterial({
-          color: 0xffffff, 
-          opacity: 0.3,
-          transparent: true,
-          side: THREE.DoubleSide, 
-        })
-      ),
-      dir: "",
+      mesh: new THREE.LineSegments(highlightEdgesGeo, highlightMaterial),
+      dir: "", // This 'dir' might be less relevant for a full cube outline
     };
-    this.blockFaceHL.mesh.name = "Block_Face_Highlight_Mesh"; 
-    this.blockFaceHL.mesh.renderOrder = 1; 
+    this.blockFaceHL.mesh.name = "Block_Wireframe_Highlight_Mesh";
+    this.blockFaceHL.mesh.renderOrder = 1; // Ensure it renders on top
 
     this.mesh = new THREE.Object3D(); 
     this.mesh.name = name; 
@@ -113,12 +109,14 @@ export class Player {
       const hitNormalLocal = intersection.face.normal.clone();
       const hitNormalWorld = hitNormalLocal.clone().transformDirection(hitObject.matrixWorld).normalize();
 
+      // Calculate the world coordinates of the block being looked at (for destruction)
       const calculatedBlockWorldCoords = new THREE.Vector3(
         Math.floor(hitPointWorld.x - hitNormalWorld.x * 0.49),
         Math.floor(hitPointWorld.y - hitNormalWorld.y * 0.49),
         Math.floor(hitPointWorld.z - hitNormalWorld.z * 0.49)
       );
       
+      // Calculate the world coordinates for placing a new block (adjacent to the hit face)
       const calculatedPlaceBlockWorldCoords = new THREE.Vector3(
         Math.floor(hitPointWorld.x + hitNormalWorld.x * 0.49),
         Math.floor(hitPointWorld.y + hitNormalWorld.y * 0.49),
@@ -140,53 +138,20 @@ export class Player {
         scene.add(this.blockFaceHL.mesh);
       }
       
-      const targetBlockX = this.lookingAt.blockWorldCoords.x;
-      const targetBlockY = this.lookingAt.blockWorldCoords.y;
-      const targetBlockZ = this.lookingAt.blockWorldCoords.z;
-      const currentHitNormalWorld = this.lookingAt.worldFaceNormal; 
-      const epsilon = 0.015; 
+      // Position the wireframe highlight at the center of the targeted block cell
+      this.blockFaceHL.mesh.position.set(
+        this.lookingAt.blockWorldCoords.x + 0.5,
+        this.lookingAt.blockWorldCoords.y + 0.5,
+        this.lookingAt.blockWorldCoords.z + 0.5
+      );
+      this.blockFaceHL.mesh.rotation.set(0,0,0); // No rotation needed for a full cube outline
+      
+      // Determine face direction for debug info or other logic (optional, as visual is now a cube)
+      if (Math.abs(hitNormalWorld.x) > 0.5) this.blockFaceHL.dir = hitNormalWorld.x > 0 ? "East (+X)" : "West (-X)";
+      else if (Math.abs(hitNormalWorld.y) > 0.5) this.blockFaceHL.dir = hitNormalWorld.y > 0 ? "Top (+Y)" : "Bottom (-Y)";
+      else if (Math.abs(hitNormalWorld.z) > 0.5) this.blockFaceHL.dir = hitNormalWorld.z > 0 ? "South (+Z)" : "North (-Z)";
+      else this.blockFaceHL.dir = "Unknown";
 
-      this.blockFaceHL.mesh.position.set(targetBlockX + 0.5, targetBlockY + 0.5, targetBlockZ + 0.5);
-      this.blockFaceHL.mesh.rotation.set(0, 0, 0);
-      this.blockFaceHL.dir = ""; 
-
-      if (Math.abs(currentHitNormalWorld.x) > 0.5) { 
-        this.blockFaceHL.mesh.rotation.y = Math.PI / 2;
-        if (currentHitNormalWorld.x > 0) { 
-            this.blockFaceHL.mesh.position.x = targetBlockX + 1 + epsilon;
-            this.blockFaceHL.dir = "east"; 
-        } else { 
-            this.blockFaceHL.mesh.position.x = targetBlockX - epsilon;
-            this.blockFaceHL.mesh.rotation.y = -Math.PI / 2; 
-            this.blockFaceHL.dir = "west";
-        }
-      } else if (Math.abs(currentHitNormalWorld.y) > 0.5) { 
-        if (currentHitNormalWorld.y > 0) { 
-            this.blockFaceHL.mesh.position.y = targetBlockY + 1 + epsilon;
-            this.blockFaceHL.mesh.rotation.x = -Math.PI / 2;
-            this.blockFaceHL.dir = "above";
-        } else { 
-            this.blockFaceHL.mesh.position.y = targetBlockY - epsilon;
-            this.blockFaceHL.mesh.rotation.x = Math.PI / 2;
-            this.blockFaceHL.dir = "below";
-        }
-      } else if (Math.abs(currentHitNormalWorld.z) > 0.5) { 
-        if (currentHitNormalWorld.z > 0) { 
-            this.blockFaceHL.mesh.position.z = targetBlockZ + 1 + epsilon;
-            this.blockFaceHL.mesh.rotation.y = 0; 
-            this.blockFaceHL.dir = "south";
-        } else { 
-            this.blockFaceHL.mesh.position.z = targetBlockZ - epsilon;
-            this.blockFaceHL.mesh.rotation.y = Math.PI; 
-            this.blockFaceHL.dir = "north";
-        }
-      }
-      const minOpacity = 0.16;
-      const maxOpacity = 0.5; 
-      const opacityRange = maxOpacity - minOpacity;
-      const blinkSpeedMs = 700; 
-      const timeFactor = (Date.now() % blinkSpeedMs) / blinkSpeedMs; 
-      (this.blockFaceHL.mesh.material as THREE.MeshLambertMaterial).opacity = minOpacity + Math.abs(Math.sin(timeFactor * Math.PI)) * opacityRange;
 
     } else {
       if (this.lookingAt !== null) {
@@ -233,11 +198,13 @@ export class Player {
           return;
       }
       
-      if (scene.getObjectByName(this.blockFaceHL.mesh.name)) {
-         scene.remove(this.blockFaceHL.mesh);
-      }
-      this.lookingAt = null; 
-      this.blockFaceHL.dir = "";
+      // No need to explicitly remove the highlight mesh here, 
+      // highlightBlock will handle its visibility/removal in the next frame
+      // if (scene.getObjectByName(this.blockFaceHL.mesh.name)) {
+      //    scene.remove(this.blockFaceHL.mesh);
+      // }
+      // this.lookingAt = null; 
+      // this.blockFaceHL.dir = "";
     } else { 
       const { x: placeX, y: placeY, z: placeZ } = this.lookingAt.placeBlockWorldCoords;
        if (!Number.isFinite(placeX) || !Number.isFinite(placeY) || !Number.isFinite(placeZ)) {
@@ -250,6 +217,7 @@ export class Player {
 
       if ( (Math.floor(placeX) === Math.floor(this.x) && Math.floor(placeZ) === Math.floor(this.z)) &&
            (Math.floor(placeY) === playerFeetY || Math.floor(placeY) === playerHeadY) ) {
+        // Prevent placing blocks inside the player
         return; 
       }
 

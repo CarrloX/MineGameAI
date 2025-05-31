@@ -158,15 +158,24 @@ const BlockifyGame: React.FC = () => {
     const playerChunkStr = `Chunk: CX:${playerChunkX}, CZ:${playerChunkZ}`;
     
     let rayTargetStr = 'Ray: None';
+    let highlightFaceDir = 'Inactive';
     if (player.lookingAt) {
-      const { object, distance, blockWorldCoords } = player.lookingAt;
+      const { object, distance, blockWorldCoords, worldFaceNormal } = player.lookingAt;
       const objName = object.name.length > 20 ? object.name.substring(0, 20) + "..." : object.name;
       rayTargetStr = `Ray: ${objName} D:${distance.toFixed(1)} B:[${blockWorldCoords.x.toFixed(0)},${blockWorldCoords.y.toFixed(0)},${blockWorldCoords.z.toFixed(0)}]`;
-      setCrosshairBgColor('rgba(255, 255, 255, 0.75)'); // Light crosshair when looking at a block
+      setCrosshairBgColor('rgba(255, 255, 255, 0.75)'); 
+
+      if (worldFaceNormal) {
+        const normal = worldFaceNormal;
+        if (Math.abs(normal.x) > 0.5) highlightFaceDir = normal.x > 0 ? 'East (+X)' : 'West (-X)';
+        else if (Math.abs(normal.y) > 0.5) highlightFaceDir = normal.y > 0 ? 'Top (+Y)' : 'Bottom (-Y)';
+        else if (Math.abs(normal.z) > 0.5) highlightFaceDir = normal.z > 0 ? 'South (+Z)' : 'North (-Z)';
+        else highlightFaceDir = 'Unknown Face';
+      }
     } else {
-      setCrosshairBgColor('rgba(0, 0, 0, 0.75)'); // Dark crosshair when looking at the sky
+      setCrosshairBgColor('rgba(0, 0, 0, 0.75)'); 
     }
-    const highlightStr = `HL: ${refs.player.blockFaceHL.dir || 'Inactive'}`;
+    const highlightStr = `HL: ${highlightFaceDir}`;
     
     let visibleChunksCount = 0;
     refs.world.activeChunks.forEach(chunk => { 

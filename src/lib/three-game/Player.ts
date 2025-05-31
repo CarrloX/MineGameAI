@@ -39,13 +39,13 @@ export class Player {
     this.y = y; // This is the Y of the player's feet
     this.z = z;
     this.height = 1.7;
-    this.width = 0.6; // Increased width for better collision feel
-    this.depth = 0.6; // Increased depth
+    this.width = 0.6; 
+    this.depth = 0.6; 
     this.pitch = 0;
     this.yaw = 0;
-    this.speed = 0.07; // Base movement speed magnitude
+    this.speed = 0.07; 
     this.velocity = 0;
-    this.jumpSpeed = 0.11; // Initial upward velocity on jump
+    this.jumpSpeed = 0.11; 
     this.jumpVelocity = 0;
     this.xdir = "";
     this.zdir = "";
@@ -57,29 +57,28 @@ export class Player {
 
     this.blockFaceHL = {
       mesh: new THREE.Mesh(
-        new THREE.PlaneGeometry(1.01, 1.01), // Slightly larger to avoid z-fighting
+        new THREE.PlaneGeometry(1.01, 1.01), 
         new THREE.MeshLambertMaterial({
           color: 0xffffff, 
           opacity: 0.3,
           transparent: true,
-          side: THREE.DoubleSide, // Render both sides in case of rotation issues
+          side: THREE.DoubleSide, 
         })
       ),
       dir: "",
     };
-    this.blockFaceHL.mesh.name = "Block_Face_Highlight_Mesh"; // More specific name
-    this.blockFaceHL.mesh.renderOrder = 1; // Try to render on top
+    this.blockFaceHL.mesh.name = "Block_Face_Highlight_Mesh"; 
+    this.blockFaceHL.mesh.renderOrder = 1; 
 
-    this.mesh = new THREE.Object3D(); // Player's root object in the scene
-    this.mesh.name = name; // e.g., "Player"
+    this.mesh = new THREE.Object3D(); 
+    this.mesh.name = name; 
     this.mesh.position.set(this.x, this.y, this.z);
-    // this.gameRefs.scene!.add(this.mesh); // Player object is conceptual, camera moves with player.x,y,z
-
+    
     if (preserveCam && this.gameRefs.camera) {
         this.pitch = this.gameRefs.camera.rotation.x;
         this.yaw = this.gameRefs.camera.rotation.y;
     } else {
-        this.lookAround(); // Initialize camera orientation
+        this.lookAround(); 
     }
   }
 
@@ -87,21 +86,20 @@ export class Player {
     const { raycaster, camera, scene } = this.gameRefs;
     if (!raycaster || !camera || !scene) return;
 
-    raycaster.setFromCamera({ x: 0, y: 0 }, camera); // Ray from center of screen
-    // Consider only chunkRoot children for block intersection
+    raycaster.setFromCamera({ x: 0, y: 0 }, camera); 
     const chunkMeshes: THREE.Object3D[] = [];
     scene.children.forEach(child => {
-        if (child.name.startsWith("Chunk_")) { // Assumes chunks are named "Chunk_X_Z"
+        if (child.name.startsWith("Chunk_")) { 
             chunkMeshes.push(...child.children);
         }
     });
 
-    const intersects = raycaster.intersectObjects(chunkMeshes, false); // Non-recursive, only check direct children (faces)
+    const intersects = raycaster.intersectObjects(chunkMeshes, false); 
     
     const firstBlockFace = intersects.find(
       intersect => intersect.object instanceof THREE.Mesh &&
-                   intersect.object.name.startsWith("BlockFace_") && // Ensure it's one of our block faces
-                   intersect.distance > 0.1 && // Avoid intersecting self/too_close
+                   intersect.object.name.startsWith("BlockFace_") && 
+                   intersect.distance > 0.1 && 
                    intersect.distance < this.attackRange
     );
 
@@ -114,60 +112,58 @@ export class Player {
       this.lookingAt = firstBlockFace;
 
       const faceMesh = firstBlockFace.object as THREE.Mesh;
-      
-      // Extract world coordinates from face name e.g., "BlockFace_Top_X_Y_Z"
       const nameParts = faceMesh.name.split('_');
       const blockWorldX = parseInt(nameParts[3], 10);
       const blockWorldY = parseInt(nameParts[4], 10);
       const blockWorldZ = parseInt(nameParts[5], 10);
       const faceType = nameParts[2]; // Top, Bottom, Front, Back, Right, Left
 
-      // Position highlight mesh on the center of the 1x1x1 block cell
-      this.blockFaceHL.mesh.position.set(blockWorldX + 0.5, blockWorldY + 0.5, blockWorldZ + 0.5);
-      this.blockFaceHL.mesh.rotation.set(0,0,0); // Reset rotation before applying new one
-
-      const offset = 0.501; // Slightly offset to avoid z-fighting with the actual block face
+      // Corrected Visual Highlight Positioning
+      // The highlight plane is 1x1. Its center needs to be ON the face of the block.
+      // A block at (blockWorldX, blockWorldY, blockWorldZ) spans from X to X+1, Y to Y+1, Z to Z+1.
+      const epsilon = 0.015; // Slightly increased offset for visual clarity
+      this.blockFaceHL.mesh.position.set(blockWorldX + 0.5, blockWorldY + 0.5, blockWorldZ + 0.5); // Start at cell center
+      this.blockFaceHL.mesh.rotation.set(0,0,0); // Reset rotation
 
       switch(faceType) {
-        case "Top": // Positive Y
-            this.blockFaceHL.mesh.position.y = blockWorldY + offset;
+        case "Top": // Positive Y face is at Y = blockWorldY + 1
+            this.blockFaceHL.mesh.position.y = (blockWorldY + 1) + epsilon;
             this.blockFaceHL.mesh.rotation.x = -Math.PI / 2;
-            this.blockFaceHL.dir = "above";
+            this.blockFaceHL.dir = "above"; // Place new block ON TOP of current block
             break;
-        case "Bottom": // Negative Y
-            this.blockFaceHL.mesh.position.y = blockWorldY + 1 - offset; // blockWorldY is bottom of block cell
+        case "Bottom": // Negative Y face is at Y = blockWorldY
+            this.blockFaceHL.mesh.position.y = blockWorldY - epsilon;
             this.blockFaceHL.mesh.rotation.x = Math.PI / 2;
-            this.blockFaceHL.dir = "below";
+            this.blockFaceHL.dir = "below"; // Place new block BENEATH current block
             break;
-        case "Front": // Positive Z
-            this.blockFaceHL.mesh.position.z = blockWorldZ + offset;
-            this.blockFaceHL.dir = "south"; // Assuming +Z is South
+        case "Front": // Positive Z face is at Z = blockWorldZ + 1 (Chunk.ts places front face mesh at z + 0.5 + 0.5 relative to chunk origin)
+            this.blockFaceHL.mesh.position.z = (blockWorldZ + 1) + epsilon;
+            this.blockFaceHL.mesh.rotation.y = 0; // Default PlaneGeometry faces +Z if not rotated
+            this.blockFaceHL.dir = "south"; // Place new block IN FRONT OF (South, +Z) current block
             break;
-        case "Back": // Negative Z
-            this.blockFaceHL.mesh.position.z = blockWorldZ + 1 - offset;
+        case "Back": // Negative Z face is at Z = blockWorldZ
+            this.blockFaceHL.mesh.position.z = blockWorldZ - epsilon;
             this.blockFaceHL.mesh.rotation.y = Math.PI;
-            this.blockFaceHL.dir = "north"; // Assuming -Z is North
+            this.blockFaceHL.dir = "north"; // Place new block BEHIND (North, -Z) current block
             break;
-        case "Right": // Positive X
-            this.blockFaceHL.mesh.position.x = blockWorldX + offset;
+        case "Right": // Positive X face is at X = blockWorldX + 1
+            this.blockFaceHL.mesh.position.x = (blockWorldX + 1) + epsilon;
             this.blockFaceHL.mesh.rotation.y = Math.PI / 2;
-            this.blockFaceHL.dir = "east"; // Assuming +X is East
+            this.blockFaceHL.dir = "east";  // Place new block to the RIGHT (East, +X) current block
             break;
-        case "Left": // Negative X
-            this.blockFaceHL.mesh.position.x = blockWorldX + 1 - offset;
+        case "Left": // Negative X face is at X = blockWorldX
+            this.blockFaceHL.mesh.position.x = blockWorldX - epsilon;
             this.blockFaceHL.mesh.rotation.y = -Math.PI / 2;
-            this.blockFaceHL.dir = "west"; // Assuming -X is West
+            this.blockFaceHL.dir = "west";  // Place new block to the LEFT (West, -X) current block
             break;
       }
       
-      // Opacity blink effect
       const minOpacity = 0.16;
-      const maxOpacity = 0.5; // Reduced max opacity
+      const maxOpacity = 0.5; 
       const opacityRange = maxOpacity - minOpacity;
-      const blinkSpeedMs = 700; // Slower blink
-      const timeFactor = (Date.now() % blinkSpeedMs) / blinkSpeedMs; // Normalized time (0 to 1)
+      const blinkSpeedMs = 700; 
+      const timeFactor = (Date.now() % blinkSpeedMs) / blinkSpeedMs; 
       (this.blockFaceHL.mesh.material as THREE.MeshLambertMaterial).opacity = minOpacity + Math.abs(Math.sin(timeFactor * Math.PI)) * opacityRange;
-
 
     } else if (this.lookingAt !== null) {
       if (scene.getObjectByName(this.blockFaceHL.mesh.name)) {
@@ -183,32 +179,30 @@ export class Player {
     if (!cursor || !camera || !this.gameRefs.canvasRef) return;
 
     if (cursor.inWindow) {
-      const sensitivity = 0.002; // Adjusted sensitivity
+      const sensitivity = 0.002; 
 
       if (e instanceof MouseEvent) {
         this.yaw -= e.movementX * sensitivity;
         this.pitch -= e.movementY * sensitivity;
       } else if (e) { 
-        // Simplified touch: use if you implement touch-based look controls
+        
       }
       
-      const maxPitch = Math.PI / 2 - 0.01; // Prevent gimbal lock
+      const maxPitch = Math.PI / 2 - 0.01; 
       this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
-      
-      // Normalize yaw to be between 0 and 2*PI
       this.yaw = ((this.yaw % (2 * Math.PI)) + (2 * Math.PI)) % (2 * Math.PI);
 
       camera.rotation.x = this.pitch;
       camera.rotation.y = this.yaw;
-    } else { // Not in pointer lock, update cursor based on stored yaw/pitch
+    } else { 
         camera.rotation.x = this.pitch;
         camera.rotation.y = this.yaw;
     }
   }
 
-  interactWithBlock(destroy: boolean): void { // true for destroy, false for place
-    const { world, blocks: blockPrototypes, scene } = this.gameRefs;
-    if (!world || !blockPrototypes || !scene || !this.lookingAt) return;
+  interactWithBlock(destroy: boolean): void { 
+    const { world, blocks: blockPrototypesArray, scene } = this.gameRefs;
+    if (!world || !blockPrototypesArray || !scene || !this.lookingAt) return;
 
     const faceMesh = this.lookingAt.object as THREE.Mesh;
     const nameParts = faceMesh.name.split('_');
@@ -218,13 +212,11 @@ export class Player {
 
     if (destroy) {
       world.setBlock(blockWorldX, blockWorldY, blockWorldZ, 'air');
-      // Force remove the highlight if we just destroyed the block it was on
       if (scene.getObjectByName(this.blockFaceHL.mesh.name)) {
         scene.remove(this.blockFaceHL.mesh);
       }
       this.lookingAt = null; 
-    } else { // Place block
-      // Determine placement coordinates based on the face normal (approximated by this.blockFaceHL.dir)
+    } else { 
       let placeX = blockWorldX;
       let placeY = blockWorldY;
       let placeZ = blockWorldZ;
@@ -236,23 +228,21 @@ export class Player {
         case "below": placeY--; break;
         case "south": placeZ++; break;
         case "north": placeZ--; break;
-        default: return; // Should not happen if highlight is working
+        default: return; 
       }
       
-      // Player collision check before placing
-      const playerHeadY = Math.floor(this.y + this.height - 0.1); // slightly below top of head
-      const playerFeetY = Math.floor(this.y + 0.1); // slightly above feet
+      const playerHeadY = Math.floor(this.y + this.height - 0.1); 
+      const playerFeetY = Math.floor(this.y + 0.1); 
 
       if ( (Math.floor(placeX) === Math.floor(this.x) && Math.floor(placeZ) === Math.floor(this.z)) &&
            (Math.floor(placeY) === playerFeetY || Math.floor(placeY) === playerHeadY) ) {
-        // console.log("Cannot place block inside player.");
-        return; // Player is in the way
+        return; 
       }
 
-      if (placeY >= 0 && placeY < world.layers) { // Ensure within chunk vertical bounds
-        const blockToPlace = blockPrototypes[0]; // Default to first block (e.g. grass)
+      if (placeY >= 0 && placeY < world.layers) { 
+        const blockToPlace = blockPrototypesArray[0]; 
         if (blockToPlace) {
-          const blockNameKey = blockToPlace.mesh.name.replace('Block_', '');
+          const blockNameKey = (blockToPlace.mesh.name as string).replace('Block_', '');
           world.setBlock(placeX, placeY, placeZ, blockNameKey);
         }
       }
@@ -263,13 +253,13 @@ export class Player {
     const { controlConfig } = this.gameRefs;
     if (!controlConfig) return;
 
-    switch (e.code) { // Using e.code for layout independence
+    switch (e.code) { 
       case controlConfig.left: this.xdir = "left"; break;
       case controlConfig.right: this.xdir = "right"; break;
       case controlConfig.forwards: this.zdir = "forwards"; break;
       case controlConfig.backwards: this.zdir = "backwards"; break;
       case controlConfig.jump: this.jumping = true; break;
-      case controlConfig.respawn: this.die(); break; // die() now sets this.dead = true
+      case controlConfig.respawn: this.die(); break; 
     }
   }
 
@@ -287,16 +277,13 @@ export class Player {
   }
   
   die(): void {
-    // console.log("Player died.");
     this.dead = true;
-    // Respawn logic is handled in BlockifyGame's renderScene
   }
 
   updatePosition(): void {
     const { world, camera } = this.gameRefs;
     if (!world || !camera) return;
 
-    // --- Horizontal Movement ---
     let moveX = 0;
     let moveZ = 0;
 
@@ -315,7 +302,6 @@ export class Player {
       moveX -= Math.sin(this.yaw);
     }
     
-    // Normalize diagonal movement and apply speed
     const moveMagnitude = Math.sqrt(moveX * moveX + moveZ * moveZ);
     if (moveMagnitude > 0) {
         const normalizedMoveX = moveX / moveMagnitude;
@@ -324,38 +310,32 @@ export class Player {
         this.z += normalizedMoveZ * this.speed;
     }
 
-
-    // --- Vertical Movement (Jumping/Gravity) ---
     if (this.jumping && this.onGround) { 
       this.jumpVelocity = this.jumpSpeed;
       this.onGround = false;
     }
     
     this.y += this.jumpVelocity;
-    this.jumpVelocity -= world.gravity; // Apply gravity
-    if (this.jumpVelocity < -this.jumpSpeed * 1.5) { // Terminal velocity-ish
+    this.jumpVelocity -= world.gravity; 
+    if (this.jumpVelocity < -this.jumpSpeed * 1.5) { 
         this.jumpVelocity = -this.jumpSpeed * 1.5;
     }
 
-
-    // --- Collision Detection & Resolution ---
-    this.onGround = false; // Assume not on ground until collision proves otherwise
+    this.onGround = false; 
 
     const playerMinX = this.x - this.width / 2;
     const playerMaxX = this.x + this.width / 2;
-    const playerMinY = this.y; // Feet
-    const playerMaxY = this.y + this.height; // Head
+    const playerMinY = this.y; 
+    const playerMaxY = this.y + this.height; 
     const playerMinZ = this.z - this.depth / 2;
     const playerMaxZ = this.z + this.depth / 2;
 
-    // Iterate over nearby blocks for collision
-    // Check a 3x(world.layers)x3 grid of block cells around the player
-    const checkRadius = 1; // Check 1 block around player's integer coords
+    const checkRadius = 1; 
     for (let dx = -checkRadius; dx <= checkRadius; dx++) {
         for (let dz = -checkRadius; dz <= checkRadius; dz++) {
-            for (let dy = 0; dy < world.layers ; dy++) { // Check all layers in this column
+            for (let dy = 0; dy < world.layers ; dy++) { 
                 const blockWorldX = Math.floor(this.x) + dx;
-                const blockWorldY = dy; // worldY of the block cell
+                const blockWorldY = dy; 
                 const blockWorldZ = Math.floor(this.z) + dz;
 
                 const blockType = world.getBlock(blockWorldX, blockWorldY, blockWorldZ);
@@ -367,42 +347,35 @@ export class Player {
                     const blockMinZ = blockWorldZ;
                     const blockMaxZ = blockWorldZ + 1;
 
-                    // Check for AABB collision
                     if (playerMaxX > blockMinX && playerMinX < blockMaxX &&
                         playerMaxY > blockMinY && playerMinY < blockMaxY &&
                         playerMaxZ > blockMinZ && playerMinZ < blockMaxZ) {
                         
-                        // Collision occurred, resolve it
                         const overlapX = Math.min(playerMaxX - blockMinX, blockMaxX - playerMinX);
                         const overlapY = Math.min(playerMaxY - blockMinY, blockMaxY - playerMinY);
                         const overlapZ = Math.min(playerMaxZ - blockMinZ, blockMaxZ - playerMinZ);
 
                         if (overlapY < overlapX && overlapY < overlapZ) {
-                            // Vertical collision
-                            if (this.jumpVelocity <= 0 && playerMinY < blockMaxY && playerMaxY > blockMaxY) { // Landing on top
+                            if (this.jumpVelocity <= 0 && playerMinY < blockMaxY && playerMaxY > blockMaxY) { 
                                 this.y = blockMaxY;
                                 this.jumpVelocity = 0;
                                 this.onGround = true;
-                            } else if (this.jumpVelocity > 0 && playerMaxY > blockMinY && playerMinY < blockMinY) { // Hitting head from below
+                            } else if (this.jumpVelocity > 0 && playerMaxY > blockMinY && playerMinY < blockMinY) { 
                                 this.y = blockMinY - this.height;
-                                this.jumpVelocity = -0.01; // Lose some upward momentum
+                                this.jumpVelocity = -0.01; 
                             }
                         } else if (overlapX < overlapY && overlapX < overlapZ) {
-                            // Horizontal X collision
-                            if (playerMaxX > blockMinX && this.x < blockMinX) { // Colliding with left side of block
+                            if (playerMaxX > blockMinX && this.x < blockMinX + this.width / 2) { 
                                 this.x = blockMinX - this.width / 2;
-                            } else if (playerMinX < blockMaxX && this.x > blockMaxX) { // Colliding with right side of block
+                            } else if (playerMinX < blockMaxX && this.x > blockMaxX - this.width / 2) { 
                                 this.x = blockMaxX + this.width / 2;
                             }
-                            // this.velocity = 0; // Stop horizontal movement component if needed
                         } else {
-                            // Horizontal Z collision
-                            if (playerMaxZ > blockMinZ && this.z < blockMinZ) { // Colliding with back side of block
+                            if (playerMaxZ > blockMinZ && this.z < blockMinZ + this.depth / 2) { 
                                 this.z = blockMinZ - this.depth / 2;
-                            } else if (playerMinZ < blockMaxZ && this.z > blockMaxZ) { // Colliding with front side of block
+                            } else if (playerMinZ < blockMaxZ && this.z > blockMaxZ - this.depth / 2) { 
                                 this.z = blockMaxZ + this.depth / 2;
                             }
-                            // this.velocity = 0;
                         }
                     }
                 }
@@ -410,12 +383,8 @@ export class Player {
         }
     }
     
-    // --- Fall into void ---
     if (this.y < -world.voidHeight) this.die();
 
-    // --- Update Camera ---
-    // Player's Y is feet, camera is at eye level
-    camera.position.set(this.x, this.y + this.height * 0.9, this.z); // Eye level slightly below top of head
-    // Camera rotation (pitch/yaw) is handled by lookAround()
+    camera.position.set(this.x, this.y + this.height * 0.9, this.z); 
   }
 }

@@ -11,7 +11,8 @@ export interface ControlConfig {
   right: string;
   jump: string;
   respawn: string;
-  flyDown: string; // Added for descending while flying
+  flyDown: string;
+  boost: string; // Added for boosting/sprinting
 }
 
 export interface CursorState {

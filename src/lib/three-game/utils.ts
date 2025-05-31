@@ -12,7 +12,8 @@ export const CONTROL_CONFIG: ControlConfig = {
   right: "KeyD",
   jump: "Space",
   respawn: "KeyR",
-  flyDown: "ShiftLeft", // Added for descending while flying
+  flyDown: "ShiftLeft",
+  boost: "ControlLeft", // Added for boosting/sprinting
 };
 
 export const CURSOR_STATE: CursorState = {

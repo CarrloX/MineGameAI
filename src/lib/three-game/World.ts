@@ -86,7 +86,7 @@ export class World {
     if (!blockData) {
       const tempChunk = new Chunk(this, chunkX, chunkZ, this.blockPrototypes);
       blockData = tempChunk.blocks;
-      this.chunkDataStore.set(key, blockData);
+      this.chunkDataStore.set(key, blockData); // Store newly generated data
     }
 
     const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
@@ -94,10 +94,11 @@ export class World {
 
     for (let y = this.layers - 1; y >= 0; y--) {
       if (blockData && blockData[localX] && blockData[localX][y] && blockData[localX][y][localZ] !== 'air') {
-        return y + 1.7;
+        return y + 1; // Player's feet should be 1 unit above the topmost solid block
       }
     }
-    return Math.floor(this.layers / 3) + 1 + 1.7;
+    // Fallback if no solid ground is found (e.g. spawned over void, though terrain gen should prevent this)
+    return Math.floor(this.layers / 3) + 1; 
   }
 
 
@@ -131,7 +132,7 @@ export class World {
  public updateChunkVisibility(camera: THREE.PerspectiveCamera): void {
     if (!camera) return;
 
-    camera.updateMatrixWorld();
+    camera.updateMatrixWorld(true); // Ensure matrix is up-to-date
     this.projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
 
@@ -163,14 +164,9 @@ export class World {
         const pitch = camera.rotation.x; 
         const lookingDownFactor = Math.max(0, Math.sin(pitch)); 
         
-        // Start with a base threshold, e.g., -0.4 (chunk is somewhat behind)
-        // Make it more lenient (closer to 0 or positive) as player looks down
-        // If looking straight down (factor=1), threshold becomes -0.4 + 0.3 = -0.1
-        // If looking horizontal (factor=0), threshold remains -0.4
         let dynamicDotThreshold = -0.4 + (lookingDownFactor * 0.3); 
-        dynamicDotThreshold = Math.min(-0.1, dynamicDotThreshold); // Cap to ensure it's not too permissive.
+        dynamicDotThreshold = Math.min(-0.1, dynamicDotThreshold);
 
-        // Increase distance threshold to make culling less aggressive for closer chunks
         const dynamicDistanceThreshold = CHUNK_SIZE * 2.0; 
 
         if (dotProduct < dynamicDotThreshold && distanceToChunk > dynamicDistanceThreshold) { 
@@ -199,7 +195,7 @@ export class World {
   private unloadChunkByKey(key: string): void {
     const chunk = this.activeChunks.get(key);
     if (chunk) {
-      this.chunkDataStore.set(key, chunk.blocks);
+      this.chunkDataStore.set(key, chunk.blocks); // Save current state before unloading
 
       this.gameRefs.scene!.remove(chunk.chunkRoot);
       chunk.dispose();
@@ -248,23 +244,21 @@ export class World {
     let chunk = this.activeChunks.get(key);
 
     if (!chunk) {
-      const existingBlockData = this.chunkDataStore.get(key);
-      let newBlockData: string[][][];
-      if (existingBlockData) {
-          newBlockData = existingBlockData; 
-      } else {
+      // If chunk is not active, modify its data in chunkDataStore directly
+      let blockData = this.chunkDataStore.get(key);
+      if (!blockData) { // If chunk data doesn't exist at all, create it (e.g. from template)
           const tempChunkGen = new Chunk(this, chunkX, chunkZ, this.blockPrototypes);
-          newBlockData = tempChunkGen.blocks;
+          blockData = tempChunkGen.blocks;
       }
-
       const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-      if (newBlockData[localX] && newBlockData[localX][localY] && newBlockData[localX][localY][localZ] !== blockType) {
-          newBlockData[localX][localY][localZ] = blockType;
-          this.chunkDataStore.set(key, newBlockData); 
+      if (blockData[localX] && blockData[localX][localY] && blockData[localX][localY][localZ] !== blockType) {
+          blockData[localX][localY][localZ] = blockType;
+          this.chunkDataStore.set(key, blockData); 
           
-          this.queueChunkRemesh(chunkX, chunkZ); 
-          
+          // If this chunk ever becomes active, it will need remeshing
+          // For now, we don't add to remeshQueue as it's not active.
+          // However, its neighbors might be active and need remeshing.
           if (localX === 0) this.queueChunkRemesh(chunkX - 1, chunkZ);
           if (localX === CHUNK_SIZE - 1) this.queueChunkRemesh(chunkX + 1, chunkZ);
           if (localZ === 0) this.queueChunkRemesh(chunkX, chunkZ - 1);
@@ -274,12 +268,12 @@ export class World {
     }
 
 
+    // If chunk is active, use its setBlock method
     if (chunk) {
       const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-      chunk.setBlock(localX, localY, localZ, blockType); 
-      
-      this.remeshQueue.add(key);
+      chunk.setBlock(localX, localY, localZ, blockType); // This will mark for remesh & notify world
+      // this.remeshQueue.add(key); // Chunk.setBlock already queues itself via world.queueChunkRemesh
     } else {
       console.warn(`Attempted to set block in non-existent active chunk: ${worldX},${worldY},${worldZ}`);
     }
@@ -319,5 +313,4 @@ export class World {
     return this.remeshQueue.size;
   }
 }
-
     

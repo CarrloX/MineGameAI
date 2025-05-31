@@ -29,10 +29,10 @@ export class World {
   constructor(gameRefs: GameRefs) {
     this.gameRefs = gameRefs;
     this.size = 128;
-    this.layers = 128; // Aumentado de 64 a 128
-    this.skyHeight = this.layers * 2; // Ajustado a 256
+    this.layers = 128; 
+    this.skyHeight = this.layers * 2; 
     this.voidHeight = 64;
-    this.skyColor = 0xf1f1f1;
+    this.skyColor = 0xf1f1f1; 
     this.lightColor = 0xffffff;
     this.gravity = 0.004;
     this.activeChunks = new Map();
@@ -128,7 +128,7 @@ export class World {
     chunksToUnloadKeys.forEach(key => this.unloadChunkByKey(key));
   }
 
-  public updateChunkVisibility(camera: THREE.PerspectiveCamera): void {
+ public updateChunkVisibility(camera: THREE.PerspectiveCamera): void {
     if (!camera) return;
 
     camera.updateMatrixWorld();
@@ -142,25 +142,38 @@ export class World {
         if (!chunk.chunkRoot) return;
 
         const chunkCenterX = chunk.worldX * CHUNK_SIZE + CHUNK_SIZE / 2;
-        const chunkCenterY = chunk.worldY + this.layers / 2;
+        const chunkCenterY = chunk.worldY + this.layers / 2; 
         const chunkCenterZ = chunk.worldZ * CHUNK_SIZE + CHUNK_SIZE / 2;
 
         const chunkCenterVec = new THREE.Vector3(chunkCenterX, chunkCenterY, chunkCenterZ);
-        const chunkSizeVec = new THREE.Vector3(CHUNK_SIZE, this.layers, CHUNK_SIZE);
+        const chunkSizeVec = new THREE.Vector3(CHUNK_SIZE, this.layers, CHUNK_SIZE); 
         const chunkBox = new THREE.Box3().setFromCenterAndSize(chunkCenterVec, chunkSizeVec);
 
         if (!this.frustum.intersectsBox(chunkBox)) {
             chunk.chunkRoot.visible = false;
             return;
         }
-
+        
         const vectorToChunk = new THREE.Vector3().subVectors(chunkCenterVec, camera.position);
         const distanceToChunk = vectorToChunk.length();
-        vectorToChunk.normalize();
+        vectorToChunk.normalize(); 
 
         const dotProduct = playerDirection.dot(vectorToChunk);
+        
+        const pitch = camera.rotation.x; 
+        const lookingDownFactor = Math.max(0, Math.sin(pitch)); 
+        
+        // Start with a base threshold, e.g., -0.4 (chunk is somewhat behind)
+        // Make it more lenient (closer to 0 or positive) as player looks down
+        // If looking straight down (factor=1), threshold becomes -0.4 + 0.3 = -0.1
+        // If looking horizontal (factor=0), threshold remains -0.4
+        let dynamicDotThreshold = -0.4 + (lookingDownFactor * 0.3); 
+        dynamicDotThreshold = Math.min(-0.1, dynamicDotThreshold); // Cap to ensure it's not too permissive.
 
-        if (dotProduct < -0.3 && distanceToChunk > CHUNK_SIZE * 1.5) {
+        // Increase distance threshold to make culling less aggressive for closer chunks
+        const dynamicDistanceThreshold = CHUNK_SIZE * 2.0; 
+
+        if (dotProduct < dynamicDotThreshold && distanceToChunk > dynamicDistanceThreshold) { 
             chunk.chunkRoot.visible = false;
         } else {
             chunk.chunkRoot.visible = true;
@@ -199,7 +212,7 @@ export class World {
     const chunkZ = Math.floor(worldZ / CHUNK_SIZE);
     const localY = worldY;
 
-    if (localY < 0 || localY >= this.layers) return 'air'; // Out of Y bounds
+    if (localY < 0 || localY >= this.layers) return 'air'; 
 
     const key = `${chunkX},${chunkZ}`;
     const chunk = this.activeChunks.get(key);
@@ -235,23 +248,23 @@ export class World {
     let chunk = this.activeChunks.get(key);
 
     if (!chunk) {
-      console.warn(`Setting block in non-active chunk: ${key}. Loading it temporarily.`);
       const existingBlockData = this.chunkDataStore.get(key);
       let newBlockData: string[][][];
       if (existingBlockData) {
-          newBlockData = existingBlockData.map(arrY => arrY.map(arrZ => [...arrZ])); // Deep copy
+          newBlockData = existingBlockData; 
       } else {
           const tempChunkGen = new Chunk(this, chunkX, chunkZ, this.blockPrototypes);
-          newBlockData = tempChunkGen.blocks.map(arrY => arrY.map(arrZ => [...arrZ]));
+          newBlockData = tempChunkGen.blocks;
       }
 
       const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       if (newBlockData[localX] && newBlockData[localX][localY] && newBlockData[localX][localY][localZ] !== blockType) {
           newBlockData[localX][localY][localZ] = blockType;
-          this.chunkDataStore.set(key, newBlockData);
-          this.queueChunkRemesh(chunkX, chunkZ);
-
+          this.chunkDataStore.set(key, newBlockData); 
+          
+          this.queueChunkRemesh(chunkX, chunkZ); 
+          
           if (localX === 0) this.queueChunkRemesh(chunkX - 1, chunkZ);
           if (localX === CHUNK_SIZE - 1) this.queueChunkRemesh(chunkX + 1, chunkZ);
           if (localZ === 0) this.queueChunkRemesh(chunkX, chunkZ - 1);
@@ -264,14 +277,9 @@ export class World {
     if (chunk) {
       const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-      chunk.setBlock(localX, localY, localZ, blockType);
+      chunk.setBlock(localX, localY, localZ, blockType); 
+      
       this.remeshQueue.add(key);
-
-      if (localX === 0) this.queueChunkRemesh(chunkX - 1, chunkZ);
-      if (localX === CHUNK_SIZE - 1) this.queueChunkRemesh(chunkX + 1, chunkZ);
-      if (localZ === 0) this.queueChunkRemesh(chunkX, chunkZ - 1);
-      if (localZ === CHUNK_SIZE - 1) this.queueChunkRemesh(chunkX, chunkZ + 1);
-
     } else {
       console.warn(`Attempted to set block in non-existent active chunk: ${worldX},${worldY},${worldZ}`);
     }
@@ -284,9 +292,9 @@ export class World {
 
   public queueChunkRemesh(chunkX: number, chunkZ: number): void {
     const key = `${chunkX},${chunkZ}`;
-    if (this.activeChunks.has(key) || this.chunkDataStore.has(key)) {
+    if (this.activeChunks.has(key)) { 
       const chunk = this.activeChunks.get(key);
-      if(chunk) chunk.needsMeshUpdate = true;
+      if(chunk) chunk.needsMeshUpdate = true; 
       this.remeshQueue.add(key);
     }
   }
@@ -300,7 +308,7 @@ export class World {
 
       const chunk = this.activeChunks.get(key);
       if (chunk && chunk.needsMeshUpdate) {
-        chunk.buildMesh();
+        chunk.buildMesh(); 
       }
       this.remeshQueue.delete(key);
       processedCount++;
@@ -311,3 +319,5 @@ export class World {
     return this.remeshQueue.size;
   }
 }
+
+    

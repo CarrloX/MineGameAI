@@ -60,7 +60,7 @@ export class Player {
     this.attackRange = 5;
     this.lookingAt = null;
     this.jumping = false;
-    this.onGround = false; // Initial state
+    this.onGround = false; 
     this.dead = false;
 
     const highlightBoxGeo = new THREE.BoxGeometry(1.002, 1.002, 1.002);
@@ -128,7 +128,7 @@ export class Player {
         Math.floor(hitPointWorld.y + hitNormalWorld.y * 0.49),
         Math.floor(hitPointWorld.z + hitNormalWorld.z * 0.49)
       );
-
+      
       this.lookingAt = {
         object: hitObject,
         point: intersection.point,
@@ -243,24 +243,29 @@ export class Player {
       case controlConfig.respawn: this.die(); break;
       case controlConfig.jump: 
         const now = performance.now();
-        if (now - this.lastSpacePressTime < this.flyToggleDelay) {
+        if (this.flying && (now - this.lastSpacePressTime > this.flyToggleDelay)) {
+            // If flying and it's not a double tap, ascend
+            this.isFlyingAscending = true;
+            this.lastSpacePressTime = now; // Update time for next potential double tap check
+        } else if (now - this.lastSpacePressTime < this.flyToggleDelay) { 
+          // Double tap: toggle flying
           this.flying = !this.flying;
+          this.isFlyingAscending = false; // Reset ascent/descent states
+          this.isFlyingDescending = false;
+          this.lastSpacePressTime = 0; // Consume the double tap
           if (this.flying) { 
             this.jumpVelocity = 0;
             this.onGround = false;
             this.jumping = false;
-          } else { 
-            this.isFlyingAscending = false;
-            this.isFlyingDescending = false;
           }
-          this.lastSpacePressTime = 0; 
-        } else {
-          if (this.flying) {
-            this.isFlyingAscending = true;
-          } else {
-            this.jumping = true; 
+        } else { 
+          // Single tap (or first tap of a potential double tap)
+          if (!this.flying) {
+            this.jumping = true; // Normal jump if not flying
           }
-          this.lastSpacePressTime = now; 
+          // If flying, this first tap is for ascent, handled by the first 'if' in subsequent calls.
+          // Or if it becomes a double tap, it's handled by the second 'if'.
+          this.lastSpacePressTime = now;
         }
         break;
       case controlConfig.flyDown: 
@@ -316,10 +321,10 @@ export class Player {
       moveZ -= Math.cos(this.yaw);
       moveX -= Math.sin(this.yaw);
     }
-
-    const moveMagnitude = Math.sqrt(moveX * moveX + moveZ * moveZ);
+    
     let nextPlayerX = this.x;
     let nextPlayerZ = this.z;
+    const moveMagnitude = Math.sqrt(moveX * moveX + moveZ * moveZ);
     if (moveMagnitude > 0) {
         const normalizedMoveX = moveX / moveMagnitude;
         const normalizedMoveZ = moveZ / moveMagnitude;
@@ -349,17 +354,9 @@ export class Player {
       }
       dY += this.jumpVelocity;
     }
-    
     let nextPlayerY = this.y + dY;
 
     // Collision detection and response
-    const pMinProposedX = nextPlayerX - this.width / 2;
-    const pMaxProposedX = nextPlayerX + this.width / 2;
-    const pMinProposedY = nextPlayerY;
-    const pMaxProposedY = nextPlayerY + this.height;
-    const pMinProposedZ = nextPlayerZ - this.depth / 2;
-    const pMaxProposedZ = nextPlayerZ + this.depth / 2;
-
     let correctedX = nextPlayerX;
     let correctedY = nextPlayerY;
     let correctedZ = nextPlayerZ;
@@ -367,11 +364,12 @@ export class Player {
     let landedOnGroundThisFrame = false;
 
     const checkRadius = 1; 
-    const startBlockY = Math.max(0, Math.floor(pMinProposedY) - checkRadius);
-    const endBlockY = Math.min(world.layers, Math.floor(pMaxProposedY) + checkRadius +1);
+    // Use correctedY for initial Y bounds of check loop, as it's the proposed position
+    const startBlockY = Math.max(0, Math.floor(correctedY) - checkRadius);
+    const endBlockY = Math.min(world.layers, Math.floor(correctedY + this.height) + checkRadius + 1);
 
-    for (let checkWorldX = Math.floor(pMinProposedX) - checkRadius; checkWorldX <= Math.floor(pMaxProposedX) + checkRadius; checkWorldX++) {
-        for (let checkWorldZ = Math.floor(pMinProposedZ) - checkRadius; checkWorldZ <= Math.floor(pMaxProposedZ) + checkRadius; checkWorldZ++) {
+    for (let checkWorldX = Math.floor(correctedX - this.width/2) - checkRadius; checkWorldX <= Math.floor(correctedX + this.width/2) + checkRadius; checkWorldX++) {
+        for (let checkWorldZ = Math.floor(correctedZ - this.depth/2) - checkRadius; checkWorldZ <= Math.floor(correctedZ + this.depth/2) + checkRadius; checkWorldZ++) {
             for (let checkWorldY = startBlockY; checkWorldY < endBlockY; checkWorldY++) {
                 const blockType = world.getBlock(checkWorldX, checkWorldY, checkWorldZ);
                 if (blockType && blockType !== 'air') { 
@@ -382,6 +380,14 @@ export class Player {
                     const bMinZ = checkWorldZ;
                     const bMaxZ = checkWorldZ + 1;
 
+                    // Player's proposed bounding box based on *current* corrected values
+                    let pMinProposedX = correctedX - this.width / 2;
+                    let pMaxProposedX = correctedX + this.width / 2;
+                    let pMinProposedY = correctedY; // Use current correctedY for this collision check
+                    let pMaxProposedY = correctedY + this.height;
+                    let pMinProposedZ = correctedZ - this.depth / 2;
+                    let pMaxProposedZ = correctedZ + this.depth / 2;
+                    
                     if (pMaxProposedX > bMinX && pMinProposedX < bMaxX &&
                         pMaxProposedY > bMinY && pMinProposedY < bMaxY &&
                         pMaxProposedZ > bMinZ && pMinProposedZ < bMaxZ) {
@@ -390,37 +396,38 @@ export class Player {
                         const overlapY = Math.min(pMaxProposedY - bMinY, bMaxY - pMinProposedY);
                         const overlapZ = Math.min(pMaxProposedZ - bMinZ, bMaxZ - pMinProposedZ);
 
-                        if (overlapY <= overlapX && overlapY <= overlapZ) { // Vertical collision
+                        if (overlapY <= overlapX && overlapY <= overlapZ) { // Vertical collision is smallest overlap
                             if (this.flying) {
-                                if (dY > 0 && pMinProposedY < bMinY) { // Moving up, head hit ceiling (block's bottom)
+                                if (dY > 0 && pMinProposedY < bMaxY ) { 
                                     correctedY = bMinY - this.height;
-                                } else if (dY < 0 && pMaxProposedY > bMaxY) { // Moving down, feet hit floor (block's top)
+                                } else if (dY < 0 && pMaxProposedY > bMinY) { 
                                     correctedY = bMaxY;
-                                } else if (pMinProposedY < bMaxY) { // Stationary or parallel move, but overlapping vertically (feet inside block)
-                                     correctedY = bMaxY; // Push out to be on top.
+                                } else if (dY === 0 && (pMinProposedY < bMaxY && pMaxProposedY > bMinY) ) { 
+                                     correctedY = bMaxY; 
                                 }
-                                this.jumpVelocity = 0; 
+                                this.jumpVelocity = 0;
                             } else { // Not flying
-                                if (dY <= 0 && pMinProposedY < bMaxY) { // Moving down or stationary, feet hit floor
+                                // Check if player was above or at the block's top surface before this frame's Y movement
+                                if (dY <= 0 && pMinProposedY < bMaxY && this.y >= bMaxY - 0.01) { 
                                     correctedY = bMaxY;
                                     this.jumpVelocity = 0;
                                     landedOnGroundThisFrame = true;
-                                } else if (dY > 0 && pMaxProposedY > bMinY) { // Moving up, head hit ceiling
+                                } else if (dY > 0 && pMaxProposedY > bMinY && this.y + this.height <= bMinY + 0.01) { 
                                     correctedY = bMinY - this.height;
                                     this.jumpVelocity = -0.001; 
                                 }
                             }
-                        } else if (overlapX <= overlapY && overlapX <= overlapZ) { // Horizontal X collision
+                        } else if (overlapX < overlapY && overlapX < overlapZ) { // Horizontal X collision (and strictly smaller than Y and Z)
                             if ((pMaxProposedX - bMinX) < (bMaxX - pMinProposedX)) { 
-                                correctedX = bMinX - this.width / 2;
+                                correctedX = bMinX - this.width / 2 - 0.001; 
                             } else { 
-                                correctedX = bMaxX + this.width / 2;
+                                correctedX = bMaxX + this.width / 2 + 0.001; 
                             }
                         } else { // Horizontal Z collision
                              if ((pMaxProposedZ - bMinZ) < (bMaxZ - pMinProposedZ)) { 
-                                correctedZ = bMinZ - this.depth / 2;
+                                correctedZ = bMinZ - this.depth / 2 - 0.001; 
                             } else { 
-                                correctedZ = bMaxZ + this.depth / 2;
+                                correctedZ = bMaxZ + this.depth / 2 + 0.001; 
                             }
                         }
                     }
@@ -445,3 +452,5 @@ export class Player {
     camera.position.set(this.x, this.y + this.height * 0.9, this.z); 
   }
 }
+
+    

@@ -89,7 +89,7 @@ export class Player {
     raycaster.setFromCamera({ x: 0, y: 0 }, camera);
     
     const chunkMeshesToTest: THREE.Object3D[] = [];
-    world.chunks.forEach(chunk => {
+    world.activeChunks.forEach(chunk => {
         if (chunk.chunkRoot.visible) { 
             chunkMeshesToTest.push(...chunk.chunkRoot.children);
         }
@@ -109,7 +109,7 @@ export class Player {
       const intersection = firstValidIntersect;
       const hitObject = intersection.object as THREE.Mesh;
       
-      const hitPointWorld = intersection.point.clone(); // Already in world coordinates
+      const hitPointWorld = intersection.point.clone();
       const hitNormalLocal = intersection.face.normal.clone();
       const hitNormalWorld = hitNormalLocal.clone().transformDirection(hitObject.matrixWorld).normalize();
 
@@ -127,7 +127,7 @@ export class Player {
       
       this.lookingAt = {
         object: hitObject,
-        point: intersection.point, // Keep original intersection point if needed locally
+        point: intersection.point, 
         worldPoint: hitPointWorld,
         face: intersection.face,
         blockWorldCoords: calculatedBlockWorldCoords,

@@ -26,7 +26,7 @@ export class Player {
   public jumping: boolean;
   public onGround: boolean;
   public dead: boolean;
-  public blockFaceHL: { mesh: THREE.Mesh; dir: string }; // dir is somewhat deprecated by placeBlockWorldCoords
+  public blockFaceHL: { mesh: THREE.Mesh; dir: string }; 
   public mesh: THREE.Object3D;
   private name: string;
   private gameRefs: GameRefs;
@@ -108,33 +108,26 @@ export class Player {
     if (firstValidIntersect && firstValidIntersect.face) {
       const intersection = firstValidIntersect;
       const hitObject = intersection.object as THREE.Mesh;
-      const hitPointLocal = intersection.point; 
+      
+      const hitPointWorld = intersection.point.clone(); // Already in world coordinates
       const hitNormalLocal = intersection.face.normal.clone();
-
-      const hitPointWorld = hitPointLocal.clone().applyMatrix4(hitObject.matrixWorld);
       const hitNormalWorld = hitNormalLocal.clone().transformDirection(hitObject.matrixWorld).normalize();
 
-      // Coordenadas del bloque que se está mirando (para destruir)
-      // Moverse una pequeña fracción hacia adentro desde la superficie golpeada.
-      const pointInsideBlock = hitPointWorld.clone().addScaledVector(hitNormalWorld, -0.01);
       const calculatedBlockWorldCoords = new THREE.Vector3(
-        Math.floor(pointInsideBlock.x),
-        Math.floor(pointInsideBlock.y),
-        Math.floor(pointInsideBlock.z)
+        Math.floor(hitPointWorld.x - hitNormalWorld.x * 0.49),
+        Math.floor(hitPointWorld.y - hitNormalWorld.y * 0.49),
+        Math.floor(hitPointWorld.z - hitNormalWorld.z * 0.49)
       );
       
-      // Coordenadas para colocar un nuevo bloque (adyacente a la cara golpeada)
-      // Moverse una pequeña fracción hacia afuera desde la superficie golpeada.
-      const pointForPlacing = hitPointWorld.clone().addScaledVector(hitNormalWorld, 0.01);
       const calculatedPlaceBlockWorldCoords = new THREE.Vector3(
-        Math.floor(pointForPlacing.x),
-        Math.floor(pointForPlacing.y),
-        Math.floor(pointForPlacing.z)
+        Math.floor(hitPointWorld.x + hitNormalWorld.x * 0.49),
+        Math.floor(hitPointWorld.y + hitNormalWorld.y * 0.49),
+        Math.floor(hitPointWorld.z + hitNormalWorld.z * 0.49)
       );
-
+      
       this.lookingAt = {
         object: hitObject,
-        point: hitPointLocal,
+        point: intersection.point, // Keep original intersection point if needed locally
         worldPoint: hitPointWorld,
         face: intersection.face,
         blockWorldCoords: calculatedBlockWorldCoords,
@@ -150,30 +143,24 @@ export class Player {
       const targetBlockX = this.lookingAt.blockWorldCoords.x;
       const targetBlockY = this.lookingAt.blockWorldCoords.y;
       const targetBlockZ = this.lookingAt.blockWorldCoords.z;
-      // Usar la normal almacenada en this.lookingAt para consistencia
       const currentHitNormalWorld = this.lookingAt.worldFaceNormal; 
-      const epsilon = 0.015; // Offset visual para el resaltado
+      const epsilon = 0.015; 
 
-      // Resetear posición y rotación del resaltador
       this.blockFaceHL.mesh.position.set(targetBlockX + 0.5, targetBlockY + 0.5, targetBlockZ + 0.5);
       this.blockFaceHL.mesh.rotation.set(0, 0, 0);
-      this.blockFaceHL.dir = ""; // Reset dir, aunque placeBlockWorldCoords es la fuente de verdad
+      this.blockFaceHL.dir = ""; 
 
-      if (Math.abs(currentHitNormalWorld.x) > 0.5) { // Hit X face
+      if (Math.abs(currentHitNormalWorld.x) > 0.5) { 
         this.blockFaceHL.mesh.rotation.y = Math.PI / 2;
         if (currentHitNormalWorld.x > 0) { 
             this.blockFaceHL.mesh.position.x = targetBlockX + 1 + epsilon;
             this.blockFaceHL.dir = "east"; 
         } else { 
             this.blockFaceHL.mesh.position.x = targetBlockX - epsilon;
-            // No es -Math.PI / 2 para la cara izquierda si el plano está definido mirando hacia +Z localmente
-            // Si el plano tiene su "frente" en su +Z local, -Math.PI/2 es correcto.
-            // Si su "frente" está en su -Z local (común para exportaciones), Math.PI/2 y luego un flip es necesario, o +Math.PI/2.
-            // Dado que PlaneGeometry por defecto mira a +Z, -Math.PI/2 es para la cara izquierda (-X del mundo)
             this.blockFaceHL.mesh.rotation.y = -Math.PI / 2; 
             this.blockFaceHL.dir = "west";
         }
-      } else if (Math.abs(currentHitNormalWorld.y) > 0.5) { // Hit Y face
+      } else if (Math.abs(currentHitNormalWorld.y) > 0.5) { 
         if (currentHitNormalWorld.y > 0) { 
             this.blockFaceHL.mesh.position.y = targetBlockY + 1 + epsilon;
             this.blockFaceHL.mesh.rotation.x = -Math.PI / 2;
@@ -183,14 +170,14 @@ export class Player {
             this.blockFaceHL.mesh.rotation.x = Math.PI / 2;
             this.blockFaceHL.dir = "below";
         }
-      } else if (Math.abs(currentHitNormalWorld.z) > 0.5) { // Hit Z face
+      } else if (Math.abs(currentHitNormalWorld.z) > 0.5) { 
         if (currentHitNormalWorld.z > 0) { 
             this.blockFaceHL.mesh.position.z = targetBlockZ + 1 + epsilon;
-            this.blockFaceHL.mesh.rotation.y = 0; // El plano ya mira en Z
+            this.blockFaceHL.mesh.rotation.y = 0; 
             this.blockFaceHL.dir = "south";
         } else { 
             this.blockFaceHL.mesh.position.z = targetBlockZ - epsilon;
-            this.blockFaceHL.mesh.rotation.y = Math.PI; // Girar 180 grados
+            this.blockFaceHL.mesh.rotation.y = Math.PI; 
             this.blockFaceHL.dir = "north";
         }
       }
@@ -238,7 +225,6 @@ export class Player {
     if (!world || !blockPrototypesArray || !scene || !this.lookingAt) return;
 
     if (destroy) {
-      // Usar las coordenadas del bloque directamente de this.lookingAt
       const { x, y, z } = this.lookingAt.blockWorldCoords;
       if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
           world.setBlock(x, y, z, 'air');
@@ -253,7 +239,6 @@ export class Player {
       this.lookingAt = null; 
       this.blockFaceHL.dir = "";
     } else { 
-      // Usar las coordenadas de colocación directamente de this.lookingAt
       const { x: placeX, y: placeY, z: placeZ } = this.lookingAt.placeBlockWorldCoords;
        if (!Number.isFinite(placeX) || !Number.isFinite(placeY) || !Number.isFinite(placeZ)) {
           console.warn("Invalid block coordinates for placement:", this.lookingAt.placeBlockWorldCoords);
@@ -269,13 +254,12 @@ export class Player {
       }
 
       if (placeY >= 0 && placeY < world.layers) { 
-        // Siempre coloca el primer bloque de la lista por ahora (ej: grassBlock)
         const blockToPlace = blockPrototypesArray[0]; 
         if (blockToPlace) {
           const blockMeshName = blockToPlace.mesh.name; 
-          const blockNameKey = blockMeshName.startsWith('Block_') ? blockMeshName.substring(6) : 'unknown';
+          const blockNameKey = blockMeshName.startsWith('Block_') ? blockMeshName.substring(6) : 'unknownBlock';
           
-          if(blockNameKey && blockNameKey !== 'air' && blockNameKey !== 'unknown') {
+          if(blockNameKey && blockNameKey !== 'air' && blockNameKey !== 'unknownBlock') {
             world.setBlock(placeX, placeY, placeZ, blockNameKey);
           } else {
             console.warn("Attempted to place an invalid block type:", blockNameKey);
@@ -397,25 +381,25 @@ export class Player {
                         const minOverlapZ = Math.min(overlapZFront, overlapZBack);
                         
                         if (minOverlapY < minOverlapX && minOverlapY < minOverlapZ) {
-                            if (overlapYBottom < overlapYTop) { // Colisión con el suelo (pies del jugador)
-                                if (this.jumpVelocity <= 0) { // Solo si está cayendo o en reposo
+                            if (overlapYBottom < overlapYTop) { 
+                                if (this.jumpVelocity <= 0) { 
                                     this.y = blockMaxY;
                                     this.jumpVelocity = 0;
                                     this.onGround = true;
                                 }
-                            } else { // Colisión con el techo (cabeza del jugador)
-                                if (this.jumpVelocity > 0) { // Solo si está saltando hacia arriba
+                            } else { 
+                                if (this.jumpVelocity > 0) { 
                                     this.y = blockMinY - this.height;
-                                    this.jumpVelocity = -0.001; // Pequeño rebote o detener ascenso
+                                    this.jumpVelocity = -0.001; 
                                 }
                             }
-                        } else if (minOverlapX < minOverlapY && minOverlapX < minOverlapZ) { // Colisión lateral X
+                        } else if (minOverlapX < minOverlapY && minOverlapX < minOverlapZ) { 
                             if (overlapXRight < overlapXLeft) {
                                 this.x = blockMinX - this.width / 2;
                             } else {
                                 this.x = blockMaxX + this.width / 2;
                             }
-                        } else { // Colisión lateral Z
+                        } else { 
                             if (overlapZFront < overlapZBack) {
                                 this.z = blockMinZ - this.depth / 2;
                             } else {
@@ -429,7 +413,7 @@ export class Player {
     }
     
     if (this.y < -world.voidHeight) this.die();
-    this.mesh.position.set(this.x, this.y, this.z); // Actualizar la posición del Object3D del jugador
+    this.mesh.position.set(this.x, this.y, this.z); 
     camera.position.set(this.x, this.y + this.height * 0.9, this.z); 
   }
 }

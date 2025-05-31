@@ -247,12 +247,11 @@ export class Player {
           // Double tap detected
           this.flying = !this.flying;
           if (this.flying) {
-            this.jumpVelocity = 0; // Stop falling/jumping
-            this.onGround = false;   // Assume not on ground when starting to fly
-            this.jumping = false;    // Cancel any pending jump from the first tap
-            this.isFlyingAscending = false; // Don't ascend immediately on toggle
+            this.jumpVelocity = 0;
+            this.onGround = false;
+            this.jumping = false;
+            this.isFlyingAscending = false;
           } else {
-            // Stopped flying
             this.isFlyingAscending = false;
             this.isFlyingDescending = false;
           }
@@ -261,7 +260,7 @@ export class Player {
           if (this.flying) {
             this.isFlyingAscending = true;
           } else {
-            this.jumping = true; // Normal jump
+            this.jumping = true;
           }
         }
         this.lastSpacePressTime = now;
@@ -284,11 +283,11 @@ export class Player {
       case controlConfig.forwards: if(this.zdir === "forwards") this.zdir = ""; break;
       case controlConfig.backwards: if(this.zdir === "backwards") this.zdir = ""; break;
       case controlConfig.jump: // Space bar
-        this.jumping = false; // Always stop normal jump intention
-        this.isFlyingAscending = false; // Always stop flying ascent
+        this.jumping = false;
+        this.isFlyingAscending = false;
         break;
       case controlConfig.flyDown:
-        this.isFlyingDescending = false; // Always stop flying descent
+        this.isFlyingDescending = false;
         break;
     }
   }
@@ -328,7 +327,7 @@ export class Player {
     }
 
     if (this.flying) {
-      this.jumpVelocity = 0; // No gravity or jump arc while flying
+      this.jumpVelocity = 0;
       if (this.isFlyingAscending) {
         this.y += this.flySpeed;
       }
@@ -336,7 +335,6 @@ export class Player {
         this.y -= this.flySpeed;
       }
     } else {
-      // Not flying: Apply gravity and normal jump
       if (this.jumping && this.onGround) {
         this.jumpVelocity = this.jumpSpeed;
         this.onGround = false;
@@ -349,7 +347,12 @@ export class Player {
       }
     }
 
-    this.onGround = false;
+    // Reset onGround before collision checks, unless flying and not descending.
+    // This specific handling for flying helps maintain levitation.
+    if (!this.flying || (this.flying && this.isFlyingDescending)) {
+        this.onGround = false;
+    }
+
 
     const playerMinX = this.x - this.width / 2;
     const playerMaxX = this.x + this.width / 2;
@@ -389,35 +392,28 @@ export class Player {
                         const minOverlapZ = Math.min(overlapZFront, overlapZBack);
 
                         if (minOverlapY < minOverlapX && minOverlapY < minOverlapZ) {
-                            if (overlapYBottom < overlapYTop) {
-                                // Collision with ground
-                                if (this.flying && !this.isFlyingDescending) { // If flying and not trying to go down, stop at surface
-                                    this.y = blockMaxY;
-                                    this.jumpVelocity = 0; // Stop any residual velocity
-                                    this.onGround = true;
-                                } else if (!this.flying && this.jumpVelocity <= 0) { // If falling or walking
-                                    this.y = blockMaxY;
-                                    this.jumpVelocity = 0;
-                                    this.onGround = true;
-                                } else if (this.flying && this.isFlyingDescending) {
-                                    // Allow passing through if flying down, but stop if not moving fast enough
-                                     if (Math.abs(this.flySpeed) < 0.01 && this.jumpVelocity <=0) { // Prevent getting stuck
+                            if (overlapYBottom < overlapYTop) { // Collision with ground
+                                if (this.flying) {
+                                    if (!this.isFlyingDescending) { // If flying and not trying to go down
+                                        this.y = blockMaxY;
+                                        this.jumpVelocity = 0;
+                                        // Do NOT set this.onGround = true if flying, to allow levitation
+                                    }
+                                    // If isFlyingDescending, allow to pass through (no specific action needed here for it)
+                                } else { // Not flying
+                                    if (this.jumpVelocity <= 0) {
                                         this.y = blockMaxY;
                                         this.jumpVelocity = 0;
                                         this.onGround = true;
-                                     }
+                                    }
                                 }
-
-                            } else {
-                                // Collision with ceiling
-                                if (this.flying && !this.isFlyingAscending) { // If flying and not trying to go up, stop at surface
+                            } else { // Collision with ceiling
+                                if (this.flying && !this.isFlyingAscending) {
                                     this.y = blockMinY - this.height;
                                     this.jumpVelocity = 0;
-                                } else if (!this.flying && this.jumpVelocity > 0) { // If jumping into ceiling
+                                } else if (!this.flying && this.jumpVelocity > 0) {
                                     this.y = blockMinY - this.height;
                                     this.jumpVelocity = -0.001;
-                                } else if (this.flying && this.isFlyingAscending) {
-                                     // Allow passing through if flying up
                                 }
                             }
                         } else if (minOverlapX < minOverlapY && minOverlapX < minOverlapZ) {

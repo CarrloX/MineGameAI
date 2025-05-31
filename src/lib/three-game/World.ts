@@ -6,21 +6,21 @@ import { CHUNK_SIZE } from './utils';
 import type { GameRefs } from './types';
 
 export class World {
-  public size: number; 
-  public layers: number; 
+  public size: number;
+  public layers: number;
   public skyHeight: number;
   public voidHeight: number;
   public skyColor: number;
   public lightColor: number;
   public gravity: number;
   public lighting: { ambient: THREE.AmbientLight; directional: THREE.DirectionalLight };
-  
+
   private gameRefs: GameRefs;
-  public activeChunks: Map<string, Chunk>; 
-  private chunkDataStore: Map<string, string[][][]>; 
+  public activeChunks: Map<string, Chunk>;
+  private chunkDataStore: Map<string, string[][][]>;
   private blockPrototypes: Map<string, Block>;
-  private renderDistanceInChunks: number = 4; 
-  private remeshQueue: Set<string>; 
+  private renderDistanceInChunks: number = 4;
+  private remeshQueue: Set<string>;
 
   private frustum = new THREE.Frustum();
   private projScreenMatrix = new THREE.Matrix4();
@@ -28,11 +28,11 @@ export class World {
 
   constructor(gameRefs: GameRefs) {
     this.gameRefs = gameRefs;
-    this.size = 128; 
-    this.layers = 64; // Increased world height
-    this.skyHeight = this.layers * 2; // Adjusted sky height
-    this.voidHeight = 64; 
-    this.skyColor = 0xf1f1f1; 
+    this.size = 128;
+    this.layers = 128; // Aumentado de 64 a 128
+    this.skyHeight = this.layers * 2; // Ajustado a 256
+    this.voidHeight = 64;
+    this.skyColor = 0xf1f1f1;
     this.lightColor = 0xffffff;
     this.gravity = 0.004;
     this.activeChunks = new Map();
@@ -43,7 +43,7 @@ export class World {
       const blockNameKey = block.mesh.name.startsWith('Block_') ? block.mesh.name.substring(6) : block.mesh.name;
       this.blockPrototypes.set(blockNameKey, block);
     });
-    
+
     const scene = this.gameRefs.scene!;
 
     this.lighting = {
@@ -53,29 +53,29 @@ export class World {
 
     this.lighting.ambient.name = "Ambient Light";
     scene.add(this.lighting.ambient);
-    
-    const shadowCameraCoverage = CHUNK_SIZE * (this.renderDistanceInChunks + 3); 
+
+    const shadowCameraCoverage = CHUNK_SIZE * (this.renderDistanceInChunks + 3);
     this.lighting.directional.name = "Directional Light";
-    this.lighting.directional.position.set(shadowCameraCoverage / 2, this.skyHeight, shadowCameraCoverage / 2); 
+    this.lighting.directional.position.set(shadowCameraCoverage / 2, this.skyHeight, shadowCameraCoverage / 2);
     this.lighting.directional.castShadow = true;
     this.lighting.directional.shadow.camera = new THREE.OrthographicCamera(
       -shadowCameraCoverage, shadowCameraCoverage, shadowCameraCoverage, -shadowCameraCoverage, 0.5, this.skyHeight * 2
     );
-    this.lighting.directional.shadow.mapSize = new THREE.Vector2(2048, 2048); 
+    this.lighting.directional.shadow.mapSize = new THREE.Vector2(2048, 2048);
     scene.add(this.lighting.directional);
-    
+
     this.generateInitialChunks();
   }
 
   private generateInitialChunks(): void {
-    const initialLoadRadius = 1; 
+    const initialLoadRadius = 1;
     for (let dChunkX = -initialLoadRadius; dChunkX <= initialLoadRadius; dChunkX++) {
       for (let dChunkZ = -initialLoadRadius; dChunkZ <= initialLoadRadius; dChunkZ++) {
         this.loadChunk(dChunkX, dChunkZ);
       }
     }
   }
-  
+
   public getSpawnHeight(worldX: number, worldZ: number): number {
     const chunkX = Math.floor(worldX / CHUNK_SIZE);
     const chunkZ = Math.floor(worldZ / CHUNK_SIZE);
@@ -84,20 +84,20 @@ export class World {
     let blockData: string[][][] | undefined = this.chunkDataStore.get(key);
 
     if (!blockData) {
-      const tempChunk = new Chunk(this, chunkX, chunkZ, this.blockPrototypes); 
+      const tempChunk = new Chunk(this, chunkX, chunkZ, this.blockPrototypes);
       blockData = tempChunk.blocks;
-      this.chunkDataStore.set(key, blockData); 
+      this.chunkDataStore.set(key, blockData);
     }
-    
+
     const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
 
     for (let y = this.layers - 1; y >= 0; y--) {
       if (blockData && blockData[localX] && blockData[localX][y] && blockData[localX][y][localZ] !== 'air') {
-        return y + 1.7; // Spawn relative to the top of the highest block
+        return y + 1.7;
       }
     }
-    return Math.floor(this.layers / 3) + 1 + 1.7; // Fallback if no solid ground found (e.g., all air chunk)
+    return Math.floor(this.layers / 3) + 1 + 1.7;
   }
 
 
@@ -110,8 +110,8 @@ export class World {
         const chunkX = playerChunkX + dChunkX;
         const chunkZ = playerChunkZ + dChunkZ;
         const key = `${chunkX},${chunkZ}`;
-        if (!this.activeChunks.has(key)) { 
-            this.loadChunk(chunkX, chunkZ); 
+        if (!this.activeChunks.has(key)) {
+            this.loadChunk(chunkX, chunkZ);
         }
       }
     }
@@ -131,7 +131,7 @@ export class World {
   public updateChunkVisibility(camera: THREE.PerspectiveCamera): void {
     if (!camera) return;
 
-    camera.updateMatrixWorld(); 
+    camera.updateMatrixWorld();
     this.projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
 
@@ -144,9 +144,9 @@ export class World {
         const chunkCenterX = chunk.worldX * CHUNK_SIZE + CHUNK_SIZE / 2;
         const chunkCenterY = chunk.worldY + this.layers / 2;
         const chunkCenterZ = chunk.worldZ * CHUNK_SIZE + CHUNK_SIZE / 2;
-        
+
         const chunkCenterVec = new THREE.Vector3(chunkCenterX, chunkCenterY, chunkCenterZ);
-        const chunkSizeVec = new THREE.Vector3(CHUNK_SIZE, this.layers, CHUNK_SIZE); 
+        const chunkSizeVec = new THREE.Vector3(CHUNK_SIZE, this.layers, CHUNK_SIZE);
         const chunkBox = new THREE.Box3().setFromCenterAndSize(chunkCenterVec, chunkSizeVec);
 
         if (!this.frustum.intersectsBox(chunkBox)) {
@@ -155,12 +155,12 @@ export class World {
         }
 
         const vectorToChunk = new THREE.Vector3().subVectors(chunkCenterVec, camera.position);
-        const distanceToChunk = vectorToChunk.length(); 
-        vectorToChunk.normalize(); 
+        const distanceToChunk = vectorToChunk.length();
+        vectorToChunk.normalize();
 
         const dotProduct = playerDirection.dot(vectorToChunk);
-        
-        if (dotProduct < -0.3 && distanceToChunk > CHUNK_SIZE * 1.5) { 
+
+        if (dotProduct < -0.3 && distanceToChunk > CHUNK_SIZE * 1.5) {
             chunk.chunkRoot.visible = false;
         } else {
             chunk.chunkRoot.visible = true;
@@ -170,26 +170,26 @@ export class World {
 
   private loadChunk(chunkX: number, chunkZ: number): void {
     const key = `${chunkX},${chunkZ}`;
-    
+
     const existingBlockData = this.chunkDataStore.get(key);
     const newChunk = new Chunk(this, chunkX, chunkZ, this.blockPrototypes, existingBlockData);
-    
+
     if (!existingBlockData) {
       this.chunkDataStore.set(key, newChunk.blocks);
     }
 
     this.activeChunks.set(key, newChunk);
     this.gameRefs.scene!.add(newChunk.chunkRoot);
-    this.remeshQueue.add(key); 
+    this.remeshQueue.add(key);
   }
-  
+
   private unloadChunkByKey(key: string): void {
     const chunk = this.activeChunks.get(key);
     if (chunk) {
-      this.chunkDataStore.set(key, chunk.blocks); 
-      
+      this.chunkDataStore.set(key, chunk.blocks);
+
       this.gameRefs.scene!.remove(chunk.chunkRoot);
-      chunk.dispose(); 
+      chunk.dispose();
       this.activeChunks.delete(key);
     }
   }
@@ -197,12 +197,12 @@ export class World {
   public getBlock(worldX: number, worldY: number, worldZ: number): string | null {
     const chunkX = Math.floor(worldX / CHUNK_SIZE);
     const chunkZ = Math.floor(worldZ / CHUNK_SIZE);
-    const localY = worldY; 
+    const localY = worldY;
 
     if (localY < 0 || localY >= this.layers) return 'air'; // Out of Y bounds
 
     const key = `${chunkX},${chunkZ}`;
-    const chunk = this.activeChunks.get(key); 
+    const chunk = this.activeChunks.get(key);
 
     if (chunk) {
       const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
@@ -218,7 +218,7 @@ export class World {
         }
       }
     }
-    return 'air'; 
+    return 'air';
   }
 
   public setBlock(worldX: number, worldY: number, worldZ: number, blockType: string): void {
@@ -241,32 +241,30 @@ export class World {
       if (existingBlockData) {
           newBlockData = existingBlockData.map(arrY => arrY.map(arrZ => [...arrZ])); // Deep copy
       } else {
-          // Need to create a temporary chunk structure to generate its data if it doesn't exist
           const tempChunkGen = new Chunk(this, chunkX, chunkZ, this.blockPrototypes);
           newBlockData = tempChunkGen.blocks.map(arrY => arrY.map(arrZ => [...arrZ]));
       }
-      
+
       const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       if (newBlockData[localX] && newBlockData[localX][localY] && newBlockData[localX][localY][localZ] !== blockType) {
           newBlockData[localX][localY][localZ] = blockType;
-          this.chunkDataStore.set(key, newBlockData); 
-          this.queueChunkRemesh(chunkX, chunkZ); 
-          
-          // Queue neighbors if on edge
+          this.chunkDataStore.set(key, newBlockData);
+          this.queueChunkRemesh(chunkX, chunkZ);
+
           if (localX === 0) this.queueChunkRemesh(chunkX - 1, chunkZ);
           if (localX === CHUNK_SIZE - 1) this.queueChunkRemesh(chunkX + 1, chunkZ);
           if (localZ === 0) this.queueChunkRemesh(chunkX, chunkZ - 1);
           if (localZ === CHUNK_SIZE - 1) this.queueChunkRemesh(chunkX, chunkZ + 1);
       }
-      return; 
+      return;
     }
 
 
     if (chunk) {
       const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-      chunk.setBlock(localX, localY, localZ, blockType); 
+      chunk.setBlock(localX, localY, localZ, blockType);
       this.remeshQueue.add(key);
 
       if (localX === 0) this.queueChunkRemesh(chunkX - 1, chunkZ);
@@ -283,10 +281,10 @@ export class World {
     const key = `${chunkX},${chunkZ}`;
     this.chunkDataStore.set(key, updatedBlockData);
   }
-  
+
   public queueChunkRemesh(chunkX: number, chunkZ: number): void {
     const key = `${chunkX},${chunkZ}`;
-    if (this.activeChunks.has(key) || this.chunkDataStore.has(key)) { 
+    if (this.activeChunks.has(key) || this.chunkDataStore.has(key)) {
       const chunk = this.activeChunks.get(key);
       if(chunk) chunk.needsMeshUpdate = true;
       this.remeshQueue.add(key);
@@ -295,22 +293,21 @@ export class World {
 
   public processRemeshQueue(maxPerFrame: number = 1): void {
     let processedCount = 0;
-    const queueArray = Array.from(this.remeshQueue); 
-    
+    const queueArray = Array.from(this.remeshQueue);
+
     for (const key of queueArray) {
       if (processedCount >= maxPerFrame) break;
-      
-      const chunk = this.activeChunks.get(key); 
-      if (chunk && chunk.needsMeshUpdate) { 
+
+      const chunk = this.activeChunks.get(key);
+      if (chunk && chunk.needsMeshUpdate) {
         chunk.buildMesh();
       }
-      this.remeshQueue.delete(key); 
+      this.remeshQueue.delete(key);
       processedCount++;
     }
   }
-  
+
   public getRemeshQueueSize(): number {
     return this.remeshQueue.size;
   }
 }
-

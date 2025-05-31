@@ -27,7 +27,7 @@ export class Chunk {
 
     if (initialBlockData) {
       this.blocks = initialBlockData;
-      this.needsMeshUpdate = true; // Assume it needs remeshing if loaded from data
+      this.needsMeshUpdate = true; 
     } else {
       this.blocks = [];
       for (let x = 0; x < CHUNK_SIZE; x++) {
@@ -39,7 +39,7 @@ export class Chunk {
           }
         }
       }
-      this.generateTerrainData(); // This will set needsMeshUpdate to true
+      this.generateTerrainData(); 
     }
   }
 
@@ -63,9 +63,7 @@ export class Chunk {
       this.blocks[localX][localY][localZ] = blockType;
       this.needsMeshUpdate = true;
 
-      // Notify world so it can update its central store if needed, and queue neighbor remeshes
       this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
-
 
       if (localX === 0) this.world.queueChunkRemesh(this.worldX - 1, this.worldZ);
       if (localX === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX + 1, this.worldZ);
@@ -78,29 +76,63 @@ export class Chunk {
     const grassBlockName = 'grassBlock';
     const dirtBlockName = 'dirtBlock';
     const stoneBlockName = 'stoneBlock';
+    const sandBlockName = 'sandBlock';
 
-    const baseHeight = Math.floor(this.world.layers / 3) + 1;
-    const amplitude = 2;
-    const frequency = 0.15;
+    const baseHeight = Math.floor(this.world.layers / 2.5); 
+
+    // Parámetros de ruido
+    const mainFreq = 0.05;
+    const mainAmp = 15;
+
+    const detailFreq = 0.15;
+    const detailAmp = 5;
+
+    const roughnessFreq = 0.3;
+    const roughnessAmp = 1.5;
+
+    const basinFreq = 0.04; 
+    const basinAmp = 20;    
+    const basinThreshold = 0.3; // Un valor más bajo significa cuencas más frecuentes/grandes
+                              
+    const waterLevel = baseHeight - 5; // Nivel de agua hipotético
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const absoluteWorldX = this.worldX * CHUNK_SIZE + x;
         const absoluteWorldZ = this.worldZ * CHUNK_SIZE + z;
 
-        let surfaceY = baseHeight + Math.floor(
-          amplitude * (Math.sin(absoluteWorldX * frequency) + Math.cos(absoluteWorldZ * frequency * 0.8))
-        );
-        surfaceY = Math.max(1, Math.min(this.world.layers - 1, surfaceY)); // Ensure at least 1 block of depth
+        let height = baseHeight;
+        height += mainAmp * (Math.sin(absoluteWorldX * mainFreq) * Math.cos(absoluteWorldZ * mainFreq * 0.8));
+        height += detailAmp * Math.cos(absoluteWorldX * detailFreq + absoluteWorldZ * detailFreq * 1.2);
+        height += roughnessAmp * (Math.sin(absoluteWorldX * roughnessFreq * 1.1 - absoluteWorldZ * roughnessFreq * 0.9));
+
+        const basinNoiseVal = (Math.sin(absoluteWorldX * basinFreq + 0.3) + Math.cos(absoluteWorldZ * basinFreq - 0.2)) / 2;
+        const normalizedBasinVal = (Math.pow(Math.abs(basinNoiseVal), 2)); 
+
+        if (normalizedBasinVal < basinThreshold) { 
+          const depressionStrength = (basinThreshold - normalizedBasinVal) / basinThreshold;
+          height -= depressionStrength * basinAmp;
+        }
+
+        let surfaceY = Math.floor(height);
+        surfaceY = Math.max(1, Math.min(this.world.layers - 2, surfaceY)); 
 
         for (let y = 0; y < this.world.layers; y++) {
-          if (y < surfaceY - 2) { // Deeper blocks are stone
+          if (y < surfaceY - 3) { 
             this.blocks[x][y][z] = stoneBlockName;
-          } else if (y < surfaceY) { // Blocks just below surface are dirt
-            this.blocks[x][y][z] = dirtBlockName;
-          } else if (y === surfaceY) { // Surface block is grass
-            this.blocks[x][y][z] = grassBlockName;
-          } else { // Above surface is air
+          } else if (y < surfaceY) { 
+            if (surfaceY < waterLevel && y >= surfaceY - 1 ) { 
+                 this.blocks[x][y][z] = sandBlockName;
+            } else {
+                 this.blocks[x][y][z] = dirtBlockName;
+            }
+          } else if (y === surfaceY) { 
+            if (surfaceY < waterLevel - 1) { 
+                this.blocks[x][y][z] = sandBlockName;
+            } else {
+                this.blocks[x][y][z] = grassBlockName;
+            }
+          } else { 
             this.blocks[x][y][z] = 'air';
           }
         }
@@ -160,44 +192,38 @@ export class Chunk {
             faceGeometry.rotateZ(faceRotation[2]);
             faceGeometry.translate(x + 0.5 + faceTranslation[0] - 0.5, y + 0.5 + faceTranslation[1] -0.5, z + 0.5 + faceTranslation[2] -0.5);
             
-            const materialKey = material.uuid; // Use material UUID as key
+            const materialKey = material.uuid; 
             if (!geometriesByMaterial.has(materialKey)) {
               geometriesByMaterial.set(materialKey, { material: material, geometries: [] });
             }
             geometriesByMaterial.get(materialKey)!.geometries.push(faceGeometry);
           };
           
-          // Right face (+X)
           if (!isNeighborSolid(neighbors.right)) {
             const materialIndex = blockProto.multiTexture ? 0 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, Math.PI / 2, 0], [1, 0.5, 0.5]);
           }
-          // Left face (-X)
           if (!isNeighborSolid(neighbors.left)) {
             const materialIndex = blockProto.multiTexture ? 1 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, -Math.PI / 2, 0], [0, 0.5, 0.5]);
           }
-          // Top face (+Y)
           if (!isNeighborSolid(neighbors.top)) {
             const materialIndex = blockProto.multiTexture ? 2 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [-Math.PI / 2, 0, 0], [0.5, 1, 0.5]);
           }
-          // Bottom face (-Y)
           if (!isNeighborSolid(neighbors.bottom)) {
             const materialIndex = blockProto.multiTexture ? 3 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [Math.PI / 2, 0, 0], [0.5, 0, 0.5]);
           }
-          // Front face (+Z)
           if (!isNeighborSolid(neighbors.front)) {
             const materialIndex = blockProto.multiTexture ? 4 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, 0, 0], [0.5, 0.5, 1]);
           }
-          // Back face (-Z)
           if (!isNeighborSolid(neighbors.back)) {
             const materialIndex = blockProto.multiTexture ? 5 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;

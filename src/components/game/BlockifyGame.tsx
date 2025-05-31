@@ -61,20 +61,19 @@ const BlockifyGame: React.FC = () => {
     const blockData = getBlockDefinitions();
     refs.blocks = [ 
       new Block("grassBlock", blockData.grassBlock, refs.textureLoader, true),
-      new Block("dirtBlock", {side: blockData.dirtBlock.side}, refs.textureLoader, false),
-      new Block("stoneBlock", {side: blockData.stoneBlock.side}, refs.textureLoader, false),
-      new Block("sandBlock", {side: blockData.sandBlock.side}, refs.textureLoader, false),
+      new Block("dirtBlock", {side: blockData.dirtBlock }, refs.textureLoader, false),
+      new Block("stoneBlock", {side: blockData.stoneBlock }, refs.textureLoader, false),
+      new Block("sandBlock", {side: blockData.sandBlock }, refs.textureLoader, false),
       new Block("woodLogBlock", blockData.woodLogBlock, refs.textureLoader, true),
-      new Block("redstoneBlock", {side: blockData.redstoneBlock.side}, refs.textureLoader, false),
-      new Block("orangeWoolBlock", {side: blockData.orangeWoolBlock.side}, refs.textureLoader, false),
-      new Block("cobblestoneBlock", {side: blockData.cobblestoneBlock.side}, refs.textureLoader, false),
+      new Block("redstoneBlock", {side: blockData.redstoneBlock }, refs.textureLoader, false),
+      new Block("orangeWoolBlock", {side: blockData.orangeWoolBlock }, refs.textureLoader, false),
+      new Block("cobblestoneBlock", {side: blockData.cobblestoneBlock }, refs.textureLoader, false),
     ];
     
     refs.world = new World(refs);
     refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
     refs.canvasRef.appendChild(refs.renderer.domElement);
 
-    // Initial chunk loading and processing
     refs.world.updateChunks(new THREE.Vector3(0,0,0)); 
     while(refs.world.getRemeshQueueSize() > 0) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize()); 
@@ -128,10 +127,10 @@ const BlockifyGame: React.FC = () => {
 
     const now = performance.now();
     frameCountRef.current++;
-
     let newFpsValue: number | undefined = undefined;
+
     if (now >= lastFrameTimeRef.current + 1000) {
-      newFpsValue = frameCountRef.current; // Frames counted in the last ~1 second interval
+      newFpsValue = frameCountRef.current;
       frameCountRef.current = 0;
       lastFrameTimeRef.current = now;
     }
@@ -139,10 +138,12 @@ const BlockifyGame: React.FC = () => {
     refs.player.updatePosition();
     refs.player.highlightBlock();
     refs.world.updateChunks(refs.player.mesh.position);
+    if (refs.camera) { 
+        refs.world.updateChunkVisibility(refs.camera);
+    }
     refs.world.processRemeshQueue(1); 
 
-    // Prepare all debug strings using current refs
-    const player = refs.player; // Player ref is guaranteed non-null here
+    const player = refs.player;
     const playerPosStr = `Player: X:${player.x.toFixed(2)}, Y:${player.y.toFixed(2)}, Z:${player.z.toFixed(2)}`;
     const playerChunkX = Math.floor(player.x / CHUNK_SIZE);
     const playerChunkZ = Math.floor(player.z / CHUNK_SIZE);
@@ -151,7 +152,7 @@ const BlockifyGame: React.FC = () => {
     if (player.lookingAt) {
       rayTargetStr = `Ray: ${player.lookingAt.object.name} (Dist: ${player.lookingAt.distance.toFixed(2)})`;
     }
-    const highlightStr = `HL: ${player.blockFaceHL.mesh.parent ? `${player.blockFaceHL.mesh.name.split('_').slice(0,3).join('_')} (${player.blockFaceHL.dir})` : 'Inactive'}`;
+    const highlightStr = `HL: ${refs.scene.getObjectByName(player.blockFaceHL.mesh.name) ? `${player.blockFaceHL.mesh.name.split('_').slice(0,3).join('_')} (${player.blockFaceHL.dir})` : 'Inactive'}`;
     
     setDebugInfo(prev => ({
       fps: newFpsValue !== undefined ? newFpsValue : prev.fps,
@@ -176,13 +177,13 @@ const BlockifyGame: React.FC = () => {
     if (refs.cursor.holding) {
       refs.cursor.holdTime++;
       if (refs.cursor.holdTime === refs.cursor.triggerHoldTime) {
-        refs.player.interactWithBlock(false); // false for place (right-click action)
+        refs.player.interactWithBlock(false); 
       }
     }
     
     refs.renderer.render(refs.scene, refs.camera);
     refs.gameLoopId = requestAnimationFrame(renderScene);
-  }, []); // Empty dependency array means this callback is created once.
+  }, []); 
 
 
   useEffect(() => {
@@ -195,8 +196,8 @@ const BlockifyGame: React.FC = () => {
     const handleKeyUp = (e: KeyboardEvent) => refs.player?.handleKeyUp(e);
     const handleMouseMove = (e: MouseEvent) => refs.player?.lookAround(e);
     const handleMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) refs.player?.interactWithBlock(true); // Left click: destroy
-      if (e.button === 2) refs.player?.interactWithBlock(false); // Right click: place
+      if (e.button === 0) refs.player?.interactWithBlock(true); 
+      if (e.button === 2) refs.player?.interactWithBlock(false); 
     };
 
     const handleTouchStart = (e: TouchEvent) => {
@@ -204,16 +205,12 @@ const BlockifyGame: React.FC = () => {
       refs.cursor.holdTime = 0;
     };
     const handleTouchMove = (e: TouchEvent) => {
-      // Could add touch-based look around logic here if desired
-      // For now, just reset holdTime if finger moves significantly to avoid accidental placement
       refs.cursor.holdTime = 0; 
     };
     const handleTouchEnd = (e: TouchEvent) => {
       if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) { 
-        // Short tap: destroy
         refs.player?.interactWithBlock(true); 
       }
-      // Long tap (holdTime >= triggerHoldTime) is handled by renderScene for placement
       refs.cursor.holding = false;
     };
 
@@ -295,5 +292,3 @@ const BlockifyGame: React.FC = () => {
 };
 
 export default BlockifyGame;
-
-    

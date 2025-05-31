@@ -27,7 +27,7 @@ export class Chunk {
 
     if (initialBlockData) {
       this.blocks = initialBlockData;
-      this.needsMeshUpdate = true; 
+      this.needsMeshUpdate = true;
     } else {
       this.blocks = [];
       for (let x = 0; x < CHUNK_SIZE; x++) {
@@ -39,7 +39,7 @@ export class Chunk {
           }
         }
       }
-      this.generateTerrainData(); 
+      this.generateTerrainData();
     }
   }
 
@@ -78,61 +78,106 @@ export class Chunk {
     const stoneBlockName = 'stoneBlock';
     const sandBlockName = 'sandBlock';
 
-    const baseHeight = Math.floor(this.world.layers / 2.5); 
+    const baseHeight = Math.floor(this.world.layers / 2.5);
+    const waterLevel = baseHeight - 5;
 
-    // Parámetros de ruido
-    const mainFreq = 0.05;
-    const mainAmp = 15;
+    // Parameters for Mountainous/Lake Biome
+    const mountainMainFreq = 0.05;
+    const mountainMainAmp = 15;
+    const mountainDetailFreq = 0.15;
+    const mountainDetailAmp = 5;
+    const mountainRoughnessFreq = 0.3;
+    const mountainRoughnessAmp = 1.5;
+    const mountainBasinFreq = 0.04;
+    const mountainBasinAmp = 20;
+    const mountainBasinThreshold = 0.3;
 
-    const detailFreq = 0.15;
-    const detailAmp = 5;
+    // Parameters for Plains Biome
+    const plainsMainFreq = 0.04; // Slightly different frequency for variation
+    const plainsMainAmp = 4;     // Flatter
+    const plainsDetailFreq = 0.1;
+    const plainsDetailAmp = 1.5;
+    const plainsRoughnessFreq = 0.25;
+    const plainsRoughnessAmp = 0.4;
+    const plainsBasinFreq = 0.05; // Can be same or make less frequent
+    const plainsBasinAmp = 3;      // Very shallow depressions, or 0 for no basins
+    const plainsBasinThreshold = 0.65; // Makes basins rarer/shallower in plains
 
-    const roughnessFreq = 0.3;
-    const roughnessAmp = 1.5;
-
-    const basinFreq = 0.04; 
-    const basinAmp = 20;    
-    const basinThreshold = 0.3; // Un valor más bajo significa cuencas más frecuentes/grandes
-                              
-    const waterLevel = baseHeight - 5; // Nivel de agua hipotético
+    const biomeScale = 0.015; // Controls the size of biomes
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const absoluteWorldX = this.worldX * CHUNK_SIZE + x;
         const absoluteWorldZ = this.worldZ * CHUNK_SIZE + z;
 
+        // Biome determination
+        const biomeNoiseVal = (Math.sin(absoluteWorldX * biomeScale) * Math.cos(absoluteWorldZ * biomeScale * 0.77) +
+                               Math.cos(absoluteWorldX * biomeScale * 1.23) * Math.sin(absoluteWorldZ * biomeScale * 0.89)) / 2; // Range ~-1 to 1
+
+        let currentMainFreq, currentMainAmp, currentDetailFreq, currentDetailAmp,
+            currentRoughnessFreq, currentRoughnessAmp, currentBasinFreq,
+            currentBasinAmp, currentBasinThreshold;
+
+        if (biomeNoiseVal > 0.05) { // Mountainous/Lake Biome (Threshold can be tuned)
+            currentMainFreq = mountainMainFreq;
+            currentMainAmp = mountainMainAmp;
+            currentDetailFreq = mountainDetailFreq;
+            currentDetailAmp = mountainDetailAmp;
+            currentRoughnessFreq = mountainRoughnessFreq;
+            currentRoughnessAmp = mountainRoughnessAmp;
+            currentBasinFreq = mountainBasinFreq;
+            currentBasinAmp = mountainBasinAmp;
+            currentBasinThreshold = mountainBasinThreshold;
+        } else { // Plains Biome
+            currentMainFreq = plainsMainFreq;
+            currentMainAmp = plainsMainAmp;
+            currentDetailFreq = plainsDetailFreq;
+            currentDetailAmp = plainsDetailAmp;
+            currentRoughnessFreq = plainsRoughnessFreq;
+            currentRoughnessAmp = plainsRoughnessAmp;
+            currentBasinFreq = plainsBasinFreq;
+            currentBasinAmp = plainsBasinAmp;
+            currentBasinThreshold = plainsBasinThreshold;
+        }
+
         let height = baseHeight;
-        height += mainAmp * (Math.sin(absoluteWorldX * mainFreq) * Math.cos(absoluteWorldZ * mainFreq * 0.8));
-        height += detailAmp * Math.cos(absoluteWorldX * detailFreq + absoluteWorldZ * detailFreq * 1.2);
-        height += roughnessAmp * (Math.sin(absoluteWorldX * roughnessFreq * 1.1 - absoluteWorldZ * roughnessFreq * 0.9));
+        // Apply main terrain shape
+        height += currentMainAmp * (Math.sin(absoluteWorldX * currentMainFreq) * Math.cos(absoluteWorldZ * currentMainFreq * 0.8));
+        // Apply detail
+        height += currentDetailAmp * Math.cos(absoluteWorldX * currentDetailFreq + absoluteWorldZ * currentDetailFreq * 1.2);
+        // Apply roughness
+        height += currentRoughnessAmp * (Math.sin(absoluteWorldX * currentRoughnessFreq * 1.1 - absoluteWorldZ * currentRoughnessFreq * 0.9));
 
-        const basinNoiseVal = (Math.sin(absoluteWorldX * basinFreq + 0.3) + Math.cos(absoluteWorldZ * basinFreq - 0.2)) / 2;
-        const normalizedBasinVal = (Math.pow(Math.abs(basinNoiseVal), 2)); 
+        // Apply basin/depression logic (for potential lakes)
+        if (currentBasinAmp > 0) {
+            const basinNoiseField = (Math.sin(absoluteWorldX * currentBasinFreq + 0.3) + Math.cos(absoluteWorldZ * currentBasinFreq - 0.2)) / 2;
+            const normalizedBasinField = Math.pow(Math.abs(basinNoiseField), 2);
 
-        if (normalizedBasinVal < basinThreshold) { 
-          const depressionStrength = (basinThreshold - normalizedBasinVal) / basinThreshold;
-          height -= depressionStrength * basinAmp;
+            if (normalizedBasinField < currentBasinThreshold) {
+              const depressionStrength = (currentBasinThreshold - normalizedBasinField) / currentBasinThreshold;
+              height -= depressionStrength * currentBasinAmp;
+            }
         }
 
         let surfaceY = Math.floor(height);
-        surfaceY = Math.max(1, Math.min(this.world.layers - 2, surfaceY)); 
+        surfaceY = Math.max(1, Math.min(this.world.layers - 2, surfaceY));
 
         for (let y = 0; y < this.world.layers; y++) {
-          if (y < surfaceY - 3) { 
+          if (y < surfaceY - 3) {
             this.blocks[x][y][z] = stoneBlockName;
-          } else if (y < surfaceY) { 
-            if (surfaceY < waterLevel && y >= surfaceY - 1 ) { 
+          } else if (y < surfaceY) {
+            if (surfaceY < waterLevel && y >= surfaceY - 1) { // Near water level and below, use sand
                  this.blocks[x][y][z] = sandBlockName;
             } else {
                  this.blocks[x][y][z] = dirtBlockName;
             }
-          } else if (y === surfaceY) { 
-            if (surfaceY < waterLevel - 1) { 
+          } else if (y === surfaceY) {
+            if (surfaceY < waterLevel -1) { // Surface is below water level (potential lake bed)
                 this.blocks[x][y][z] = sandBlockName;
             } else {
                 this.blocks[x][y][z] = grassBlockName;
             }
-          } else { 
+          } else {
             this.blocks[x][y][z] = 'air';
           }
         }
@@ -184,21 +229,21 @@ export class Chunk {
           };
 
           const isNeighborSolid = (type: string | null) => type !== null && type !== 'air';
-          
+
           const addFace = (material: THREE.Material, faceRotation: [number, number, number], faceTranslation: [number, number, number]) => {
             const faceGeometry = new THREE.PlaneGeometry(1, 1);
             faceGeometry.rotateX(faceRotation[0]);
             faceGeometry.rotateY(faceRotation[1]);
             faceGeometry.rotateZ(faceRotation[2]);
             faceGeometry.translate(x + 0.5 + faceTranslation[0] - 0.5, y + 0.5 + faceTranslation[1] -0.5, z + 0.5 + faceTranslation[2] -0.5);
-            
-            const materialKey = material.uuid; 
+
+            const materialKey = material.uuid;
             if (!geometriesByMaterial.has(materialKey)) {
               geometriesByMaterial.set(materialKey, { material: material, geometries: [] });
             }
             geometriesByMaterial.get(materialKey)!.geometries.push(faceGeometry);
           };
-          
+
           if (!isNeighborSolid(neighbors.right)) {
             const materialIndex = blockProto.multiTexture ? 0 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;

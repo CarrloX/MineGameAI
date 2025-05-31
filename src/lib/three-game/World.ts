@@ -16,8 +16,8 @@ export class World {
   public lighting: { ambient: THREE.AmbientLight; directional: THREE.DirectionalLight };
   
   private gameRefs: GameRefs;
-  public activeChunks: Map<string, Chunk>; // Renamed from 'chunks'
-  private chunkDataStore: Map<string, string[][][]>; // Stores block data for all generated/modified chunks
+  public activeChunks: Map<string, Chunk>; 
+  private chunkDataStore: Map<string, string[][][]>; 
   private blockPrototypes: Map<string, Block>;
   private renderDistanceInChunks: number = 4; 
   private remeshQueue: Set<string>; 
@@ -29,10 +29,10 @@ export class World {
   constructor(gameRefs: GameRefs) {
     this.gameRefs = gameRefs;
     this.size = 128; 
-    this.layers = 16; 
-    this.skyHeight = this.layers * 2; 
+    this.layers = 64; // Increased world height
+    this.skyHeight = this.layers * 2; // Adjusted sky height
     this.voidHeight = 64; 
-    this.skyColor = 0xf1f1f1; // Light cyan from PRD: #E0FFFF (HSL: 180 100% 94.1%)
+    this.skyColor = 0xf1f1f1; 
     this.lightColor = 0xffffff;
     this.gravity = 0.004;
     this.activeChunks = new Map();
@@ -54,9 +54,9 @@ export class World {
     this.lighting.ambient.name = "Ambient Light";
     scene.add(this.lighting.ambient);
     
-    const shadowCameraCoverage = CHUNK_SIZE * (this.renderDistanceInChunks + 3); // Increased buffer
+    const shadowCameraCoverage = CHUNK_SIZE * (this.renderDistanceInChunks + 3); 
     this.lighting.directional.name = "Directional Light";
-    this.lighting.directional.position.set(shadowCameraCoverage / 2, this.skyHeight, shadowCameraCoverage / 2); // Position light high and centered
+    this.lighting.directional.position.set(shadowCameraCoverage / 2, this.skyHeight, shadowCameraCoverage / 2); 
     this.lighting.directional.castShadow = true;
     this.lighting.directional.shadow.camera = new THREE.OrthographicCamera(
       -shadowCameraCoverage, shadowCameraCoverage, shadowCameraCoverage, -shadowCameraCoverage, 0.5, this.skyHeight * 2
@@ -84,22 +84,20 @@ export class World {
     let blockData: string[][][] | undefined = this.chunkDataStore.get(key);
 
     if (!blockData) {
-      // Temporarily create chunk data if not found, to determine spawn height
-      const tempChunk = new Chunk(this, chunkX, chunkZ, this.blockPrototypes); // Will call generateTerrainData
+      const tempChunk = new Chunk(this, chunkX, chunkZ, this.blockPrototypes); 
       blockData = tempChunk.blocks;
-      this.chunkDataStore.set(key, blockData); // Store it for future loads
+      this.chunkDataStore.set(key, blockData); 
     }
     
-    // Find the highest solid block in the specified column of this chunk's data
     const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
 
     for (let y = this.layers - 1; y >= 0; y--) {
       if (blockData && blockData[localX] && blockData[localX][y] && blockData[localX][y][localZ] !== 'air') {
-        return this.layers + y + 1.7; // Add player height
+        return y + 1.7; // Spawn relative to the top of the highest block
       }
     }
-    return this.layers / 2 + 1.7; // Fallback spawn height
+    return Math.floor(this.layers / 3) + 1 + 1.7; // Fallback if no solid ground found (e.g., all air chunk)
   }
 
 
@@ -107,19 +105,17 @@ export class World {
     const playerChunkX = Math.floor(playerPosition.x / CHUNK_SIZE);
     const playerChunkZ = Math.floor(playerPosition.z / CHUNK_SIZE);
 
-    // Load chunks within render distance
     for (let dChunkX = -this.renderDistanceInChunks; dChunkX <= this.renderDistanceInChunks; dChunkX++) {
       for (let dChunkZ = -this.renderDistanceInChunks; dChunkZ <= this.renderDistanceInChunks; dChunkZ++) {
         const chunkX = playerChunkX + dChunkX;
         const chunkZ = playerChunkZ + dChunkZ;
         const key = `${chunkX},${chunkZ}`;
-        if (!this.activeChunks.has(key)) { // Only load if not already active
+        if (!this.activeChunks.has(key)) { 
             this.loadChunk(chunkX, chunkZ); 
         }
       }
     }
 
-    // Unload chunks outside render distance
     const chunksToUnloadKeys: string[] = [];
     this.activeChunks.forEach((chunk, key) => {
       const dx = Math.abs(chunk.worldX - playerChunkX);
@@ -150,7 +146,7 @@ export class World {
         const chunkCenterZ = chunk.worldZ * CHUNK_SIZE + CHUNK_SIZE / 2;
         
         const chunkCenterVec = new THREE.Vector3(chunkCenterX, chunkCenterY, chunkCenterZ);
-        const chunkSizeVec = new THREE.Vector3(CHUNK_SIZE, this.layers, CHUNK_SIZE); // Use actual chunk dimensions
+        const chunkSizeVec = new THREE.Vector3(CHUNK_SIZE, this.layers, CHUNK_SIZE); 
         const chunkBox = new THREE.Box3().setFromCenterAndSize(chunkCenterVec, chunkSizeVec);
 
         if (!this.frustum.intersectsBox(chunkBox)) {
@@ -174,14 +170,11 @@ export class World {
 
   private loadChunk(chunkX: number, chunkZ: number): void {
     const key = `${chunkX},${chunkZ}`;
-    // No need to check activeChunks here, updateChunks handles that.
-    // This method is now just for the creation/loading process.
-
+    
     const existingBlockData = this.chunkDataStore.get(key);
     const newChunk = new Chunk(this, chunkX, chunkZ, this.blockPrototypes, existingBlockData);
     
     if (!existingBlockData) {
-      // If it was newly generated, store its data
       this.chunkDataStore.set(key, newChunk.blocks);
     }
 
@@ -193,13 +186,11 @@ export class World {
   private unloadChunkByKey(key: string): void {
     const chunk = this.activeChunks.get(key);
     if (chunk) {
-      // Ensure latest block data is in the store before disposing the chunk instance
       this.chunkDataStore.set(key, chunk.blocks); 
       
       this.gameRefs.scene!.remove(chunk.chunkRoot);
       chunk.dispose(); 
       this.activeChunks.delete(key);
-      // No need to delete from remeshQueue here, processRemeshQueue handles non-existent chunks
     }
   }
 
@@ -208,17 +199,18 @@ export class World {
     const chunkZ = Math.floor(worldZ / CHUNK_SIZE);
     const localY = worldY; 
 
-    const key = `${chunkX},${chunkZ}`;
-    const chunk = this.activeChunks.get(key); // Prioritize active chunks for immediate access
+    if (localY < 0 || localY >= this.layers) return 'air'; // Out of Y bounds
 
-    if (chunk && localY >= 0 && localY < this.layers) {
+    const key = `${chunkX},${chunkZ}`;
+    const chunk = this.activeChunks.get(key); 
+
+    if (chunk) {
       const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       return chunk.getBlock(localX, localY, localZ);
     } else {
-      // If chunk is not active but data exists, check chunkDataStore (e.g., for far interactions)
       const storedData = this.chunkDataStore.get(key);
-      if (storedData && localY >= 0 && localY < this.layers) {
+      if (storedData) {
         const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
         const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
         if (storedData[localX] && storedData[localX][localY] && storedData[localX][localY][localZ] !== undefined) {
@@ -226,7 +218,7 @@ export class World {
         }
       }
     }
-    return 'air'; // Default to air if block is out of bounds or chunk not found
+    return 'air'; 
   }
 
   public setBlock(worldX: number, worldY: number, worldZ: number, blockType: string): void {
@@ -234,37 +226,47 @@ export class World {
     const chunkZ = Math.floor(worldZ / CHUNK_SIZE);
     const localY = worldY;
 
+    if (localY < 0 || localY >= this.layers) {
+        console.warn(`Attempted to set block out of Y bounds: ${worldX},${worldY},${worldZ}`);
+        return;
+    }
+
     const key = `${chunkX},${chunkZ}`;
     let chunk = this.activeChunks.get(key);
 
     if (!chunk) {
-      // If chunk is not active, we need to load its data, modify it, and save it back
-      // This scenario should ideally be rare for player interactions which target nearby blocks
-      console.warn(`Setting block in non-active chunk: ${key}. This might be slow.`);
+      console.warn(`Setting block in non-active chunk: ${key}. Loading it temporarily.`);
       const existingBlockData = this.chunkDataStore.get(key);
-      if (existingBlockData && localY >= 0 && localY < this.layers) {
-        const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-        const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-        if (existingBlockData[localX][localY][localZ] !== blockType) {
-            existingBlockData[localX][localY][localZ] = blockType;
-            this.chunkDataStore.set(key, existingBlockData); // Save modified data back
-            this.queueChunkRemesh(chunkX, chunkZ); // If it becomes active later, it needs remesh
-        }
-        return; // Exit, as we are not operating on an active Chunk instance
-      } else if (!existingBlockData && localY >= 0 && localY < this.layers) {
-          // If chunk data doesn't exist at all, we might need to generate it first
-          // This is complex; for now, assume player interaction only hits loaded chunks.
-          console.error(`Cannot set block in ungenerated, non-active chunk: ${key}`);
-          return;
+      let newBlockData: string[][][];
+      if (existingBlockData) {
+          newBlockData = existingBlockData.map(arrY => arrY.map(arrZ => [...arrZ])); // Deep copy
+      } else {
+          // Need to create a temporary chunk structure to generate its data if it doesn't exist
+          const tempChunkGen = new Chunk(this, chunkX, chunkZ, this.blockPrototypes);
+          newBlockData = tempChunkGen.blocks.map(arrY => arrY.map(arrZ => [...arrZ]));
       }
+      
+      const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+      const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+      if (newBlockData[localX] && newBlockData[localX][localY] && newBlockData[localX][localY][localZ] !== blockType) {
+          newBlockData[localX][localY][localZ] = blockType;
+          this.chunkDataStore.set(key, newBlockData); 
+          this.queueChunkRemesh(chunkX, chunkZ); 
+          
+          // Queue neighbors if on edge
+          if (localX === 0) this.queueChunkRemesh(chunkX - 1, chunkZ);
+          if (localX === CHUNK_SIZE - 1) this.queueChunkRemesh(chunkX + 1, chunkZ);
+          if (localZ === 0) this.queueChunkRemesh(chunkX, chunkZ - 1);
+          if (localZ === CHUNK_SIZE - 1) this.queueChunkRemesh(chunkX, chunkZ + 1);
+      }
+      return; 
     }
 
 
-    if (chunk && localY >= 0 && localY < this.layers) {
+    if (chunk) {
       const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-      chunk.setBlock(localX, localY, localZ, blockType); // This will call world.notifyChunkUpdate
-      // chunk.setBlock also queues this chunk for remesh, and notifyChunkUpdate updates chunkDataStore
+      chunk.setBlock(localX, localY, localZ, blockType); 
       this.remeshQueue.add(key);
 
       if (localX === 0) this.queueChunkRemesh(chunkX - 1, chunkZ);
@@ -273,11 +275,10 @@ export class World {
       if (localZ === CHUNK_SIZE - 1) this.queueChunkRemesh(chunkX, chunkZ + 1);
 
     } else {
-      console.warn(`Attempted to set block in non-existent or out-of-bounds active chunk: ${worldX},${worldY},${worldZ}`);
+      console.warn(`Attempted to set block in non-existent active chunk: ${worldX},${worldY},${worldZ}`);
     }
   }
 
-  // Called by Chunk when its block data is updated
   public notifyChunkUpdate(chunkX: number, chunkZ: number, updatedBlockData: string[][][]): void {
     const key = `${chunkX},${chunkZ}`;
     this.chunkDataStore.set(key, updatedBlockData);
@@ -285,7 +286,6 @@ export class World {
   
   public queueChunkRemesh(chunkX: number, chunkZ: number): void {
     const key = `${chunkX},${chunkZ}`;
-    // Only queue if chunk is active OR if its data exists (might become active soon)
     if (this.activeChunks.has(key) || this.chunkDataStore.has(key)) { 
       const chunk = this.activeChunks.get(key);
       if(chunk) chunk.needsMeshUpdate = true;
@@ -300,7 +300,7 @@ export class World {
     for (const key of queueArray) {
       if (processedCount >= maxPerFrame) break;
       
-      const chunk = this.activeChunks.get(key); // Only remesh active chunks
+      const chunk = this.activeChunks.get(key); 
       if (chunk && chunk.needsMeshUpdate) { 
         chunk.buildMesh();
       }
@@ -313,3 +313,4 @@ export class World {
     return this.remeshQueue.size;
   }
 }
+

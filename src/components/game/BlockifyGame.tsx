@@ -45,6 +45,7 @@ const BlockifyGame: React.FC = () => {
     visibleChunks: 0,
     totalChunks: 0,
   });
+  const [crosshairBgColor, setCrosshairBgColor] = useState('rgba(0, 0, 0, 0.75)'); // Default dark
   const lastFrameTimeRef = useRef(performance.now());
   const frameCountRef = useRef(0);
 
@@ -75,17 +76,19 @@ const BlockifyGame: React.FC = () => {
     ];
     
     refs.world = new World(refs);
-    refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor)); // Updated to use world's skyColor
+    if (refs.renderer && refs.world) {
+       refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
+    }
     refs.canvasRef.appendChild(refs.renderer.domElement);
 
     refs.world.updateChunks(new THREE.Vector3(0,0,0)); 
-    // Process all pending remeshes for initial load
+    
     while(refs.world.getRemeshQueueSize() > 0) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize()); 
     }
 
-    const spawnX = 0.5; // Center of block 0
-    const spawnZ = 0.5; // Center of block 0
+    const spawnX = 0.5; 
+    const spawnZ = 0.5; 
     const spawnY = refs.world.getSpawnHeight(spawnX, spawnZ);
     refs.player = new Player("Player", refs, spawnX, spawnY, spawnZ);
 
@@ -159,11 +162,14 @@ const BlockifyGame: React.FC = () => {
       const { object, distance, blockWorldCoords } = player.lookingAt;
       const objName = object.name.length > 20 ? object.name.substring(0, 20) + "..." : object.name;
       rayTargetStr = `Ray: ${objName} D:${distance.toFixed(1)} B:[${blockWorldCoords.x.toFixed(0)},${blockWorldCoords.y.toFixed(0)},${blockWorldCoords.z.toFixed(0)}]`;
+      setCrosshairBgColor('rgba(255, 255, 255, 0.75)'); // Light crosshair when looking at a block
+    } else {
+      setCrosshairBgColor('rgba(0, 0, 0, 0.75)'); // Dark crosshair when looking at the sky
     }
     const highlightStr = `HL: ${refs.player.blockFaceHL.dir || 'Inactive'}`;
     
     let visibleChunksCount = 0;
-    refs.world.activeChunks.forEach(chunk => { // Iterate over activeChunks
+    refs.world.activeChunks.forEach(chunk => { 
       if(chunk.chunkRoot.visible) visibleChunksCount++;
     });
 
@@ -174,7 +180,7 @@ const BlockifyGame: React.FC = () => {
       raycastTarget: rayTargetStr,
       highlightStatus: highlightStr,
       visibleChunks: visibleChunksCount,
-      totalChunks: refs.world!.activeChunks.size, // Count activeChunks
+      totalChunks: refs.world!.activeChunks.size, 
     }));
 
 
@@ -192,7 +198,7 @@ const BlockifyGame: React.FC = () => {
     if (refs.cursor.holding) {
       refs.cursor.holdTime++;
       if (refs.cursor.holdTime === refs.cursor.triggerHoldTime) {
-        refs.player.interactWithBlock(false); // Place block on long press
+        refs.player.interactWithBlock(false); 
       }
     }
     
@@ -211,29 +217,24 @@ const BlockifyGame: React.FC = () => {
     const handleKeyUp = (e: KeyboardEvent) => refs.player?.handleKeyUp(e);
     const handleMouseMove = (e: MouseEvent) => refs.player?.lookAround(e);
     const handleMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) refs.player?.interactWithBlock(true); // Left click: Destroy
-      if (e.button === 2) refs.player?.interactWithBlock(false); // Right click: Place
+      if (e.button === 0) refs.player?.interactWithBlock(true); 
+      if (e.button === 2) refs.player?.interactWithBlock(false); 
     };
 
     const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 1) { // Single touch
+      if (e.touches.length === 1) { 
         refs.cursor.holding = true;
         refs.cursor.holdTime = 0;
       }
-      // Could add logic for multi-touch (e.g., movement) here if needed
     };
     const handleTouchMove = (e: TouchEvent) => {
-      // If movement is primarily for looking around on touch, handle here
-      // For simplicity, current setup relies on pointer lock for look, which isn't ideal for touch
-      // For block interaction, if touch moves significantly, cancel hold
       refs.cursor.holdTime = 0; 
     };
     const handleTouchEnd = (e: TouchEvent) => {
-      if (refs.cursor.holding) { // Was holding
+      if (refs.cursor.holding) { 
         if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) { 
-          refs.player?.interactWithBlock(true); // Short tap: Destroy
+          refs.player?.interactWithBlock(true); 
         }
-        // Long press is handled by renderScene's holdTime check
         refs.cursor.holding = false;
       }
     };
@@ -244,7 +245,7 @@ const BlockifyGame: React.FC = () => {
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("mousemove", handleMouseMove);
     refs.canvasRef?.addEventListener("mousedown", handleMouseDown); 
-    refs.canvasRef?.addEventListener("touchstart", handleTouchStart, { passive: true }); // Passive true for scroll performance if not preventing default
+    refs.canvasRef?.addEventListener("touchstart", handleTouchStart, { passive: true }); 
     refs.canvasRef?.addEventListener("touchmove", handleTouchMove, { passive: true });
     refs.canvasRef?.addEventListener("touchend", handleTouchEnd);
 
@@ -274,7 +275,7 @@ const BlockifyGame: React.FC = () => {
       document.removeEventListener('pointerlockchange', pointerLockListener, false);
 
 
-      refs.world?.activeChunks.forEach((chunk) => { // Iterate over activeChunks
+      refs.world?.activeChunks.forEach((chunk) => { 
         if (chunk && typeof chunk.dispose === 'function') {
           chunk.dispose();
         }
@@ -307,8 +308,14 @@ const BlockifyGame: React.FC = () => {
   return (
     <div ref={mountRef} className="relative w-full h-screen overflow-hidden cursor-crosshair">
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none w-5 h-5 z-10">
-        <div className="w-full h-[2px] bg-foreground/75 absolute top-1/2 left-0 transform -translate-y-1/2 rounded-sm"></div>
-        <div className="w-[2px] h-full bg-foreground/75 absolute top-0 left-1/2 transform -translate-x-1/2 rounded-sm"></div>
+        <div 
+          className="w-full h-[2px] absolute top-1/2 left-0 transform -translate-y-1/2 rounded-sm"
+          style={{ backgroundColor: crosshairBgColor }}
+        ></div>
+        <div 
+          className="w-[2px] h-full absolute top-0 left-1/2 transform -translate-x-1/2 rounded-sm"
+          style={{ backgroundColor: crosshairBgColor }}
+        ></div>
       </div>
       <div className="absolute top-2 right-2 text-foreground bg-background/50 p-1 rounded-md text-sm pointer-events-none z-10">
         <div>FPS: {debugInfo.fps}</div>
@@ -323,3 +330,5 @@ const BlockifyGame: React.FC = () => {
 };
 
 export default BlockifyGame;
+
+    

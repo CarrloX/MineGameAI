@@ -45,7 +45,7 @@ const BlockifyGame: React.FC = () => {
     visibleChunks: 0,
     totalChunks: 0,
   });
-  const [crosshairBgColor, setCrosshairBgColor] = useState('rgba(0, 0, 0, 0.75)'); // Default dark
+  const [crosshairBgColor, setCrosshairBgColor] = useState<string | undefined>(undefined); 
   const lastFrameTimeRef = useRef(performance.now());
   const frameCountRef = useRef(0);
 
@@ -80,17 +80,17 @@ const BlockifyGame: React.FC = () => {
        refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
     }
     refs.canvasRef.appendChild(refs.renderer.domElement);
-
-    refs.world.updateChunks(new THREE.Vector3(0,0,0)); 
+   
+    const initialPlayerX = 0.5;
+    const initialPlayerZ = 0.5;
+    refs.world.updateChunks(new THREE.Vector3(initialPlayerX,0,initialPlayerZ)); 
     
     while(refs.world.getRemeshQueueSize() > 0) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize()); 
     }
 
-    const spawnX = 0.5; 
-    const spawnZ = 0.5; 
-    const spawnY = refs.world.getSpawnHeight(spawnX, spawnZ);
-    refs.player = new Player("Player", refs, spawnX, spawnY, spawnZ);
+    const spawnY = refs.world.getSpawnHeight(initialPlayerX, initialPlayerZ);
+    refs.player = new Player("Player", refs, initialPlayerX, spawnY, initialPlayerZ);
 
     if (refs.camera && refs.player) {
       refs.camera.position.set(refs.player.x, refs.player.y + (refs.player.height - 0.5), refs.player.z);
@@ -316,16 +316,18 @@ const BlockifyGame: React.FC = () => {
 
   return (
     <div ref={mountRef} className="relative w-full h-screen overflow-hidden cursor-crosshair">
-      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none w-5 h-5 z-10">
-        <div 
-          className="w-full h-[2px] absolute top-1/2 left-0 transform -translate-y-1/2 rounded-sm"
-          style={{ backgroundColor: crosshairBgColor }}
-        ></div>
-        <div 
-          className="w-[2px] h-full absolute top-0 left-1/2 transform -translate-x-1/2 rounded-sm"
-          style={{ backgroundColor: crosshairBgColor }}
-        ></div>
-      </div>
+      {crosshairBgColor && (
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none w-5 h-5 z-10">
+          <div 
+            className="w-full h-[2px] absolute top-1/2 left-0 transform -translate-y-1/2 rounded-sm"
+            style={{ backgroundColor: crosshairBgColor }}
+          ></div>
+          <div 
+            className="w-[2px] h-full absolute top-0 left-1/2 transform -translate-x-1/2 rounded-sm"
+            style={{ backgroundColor: crosshairBgColor }}
+          ></div>
+        </div>
+      )}
       <div className="absolute top-2 right-2 text-foreground bg-background/50 p-1 rounded-md text-sm pointer-events-none z-10">
         <div>FPS: {debugInfo.fps}</div>
         <div>{debugInfo.playerPosition}</div>
@@ -340,4 +342,4 @@ const BlockifyGame: React.FC = () => {
 
 export default BlockifyGame;
 
-    
+      

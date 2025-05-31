@@ -75,16 +75,17 @@ const BlockifyGame: React.FC = () => {
     ];
     
     refs.world = new World(refs);
-    refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
+    refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor)); // Updated to use world's skyColor
     refs.canvasRef.appendChild(refs.renderer.domElement);
 
     refs.world.updateChunks(new THREE.Vector3(0,0,0)); 
+    // Process all pending remeshes for initial load
     while(refs.world.getRemeshQueueSize() > 0) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize()); 
     }
 
-    const spawnX = 0;
-    const spawnZ = 0;
+    const spawnX = 0.5; // Center of block 0
+    const spawnZ = 0.5; // Center of block 0
     const spawnY = refs.world.getSpawnHeight(spawnX, spawnZ);
     refs.player = new Player("Player", refs, spawnX, spawnY, spawnZ);
 
@@ -155,12 +156,14 @@ const BlockifyGame: React.FC = () => {
     
     let rayTargetStr = 'Ray: None';
     if (player.lookingAt) {
-      rayTargetStr = `Ray: ${player.lookingAt.object.name.substring(0,20)} D:${player.lookingAt.distance.toFixed(1)} B:[${player.lookingAt.blockWorldCoords.x.toFixed(0)},${player.lookingAt.blockWorldCoords.y.toFixed(0)},${player.lookingAt.blockWorldCoords.z.toFixed(0)}]`;
+      const { object, distance, blockWorldCoords } = player.lookingAt;
+      const objName = object.name.length > 20 ? object.name.substring(0, 20) + "..." : object.name;
+      rayTargetStr = `Ray: ${objName} D:${distance.toFixed(1)} B:[${blockWorldCoords.x.toFixed(0)},${blockWorldCoords.y.toFixed(0)},${blockWorldCoords.z.toFixed(0)}]`;
     }
     const highlightStr = `HL: ${refs.player.blockFaceHL.dir || 'Inactive'}`;
     
     let visibleChunksCount = 0;
-    refs.world.chunks.forEach(chunk => {
+    refs.world.activeChunks.forEach(chunk => { // Iterate over activeChunks
       if(chunk.chunkRoot.visible) visibleChunksCount++;
     });
 
@@ -171,13 +174,13 @@ const BlockifyGame: React.FC = () => {
       raycastTarget: rayTargetStr,
       highlightStatus: highlightStr,
       visibleChunks: visibleChunksCount,
-      totalChunks: refs.world!.chunks.size,
+      totalChunks: refs.world!.activeChunks.size, // Count activeChunks
     }));
 
 
     if (refs.player.dead) {
-      const respawnX = 0; 
-      const respawnZ = 0;
+      const respawnX = 0.5; 
+      const respawnZ = 0.5;
       refs.world.updateChunks(new THREE.Vector3(respawnX, refs.player.y, respawnZ)); 
       while(refs.world.getRemeshQueueSize() > 0) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
@@ -189,7 +192,7 @@ const BlockifyGame: React.FC = () => {
     if (refs.cursor.holding) {
       refs.cursor.holdTime++;
       if (refs.cursor.holdTime === refs.cursor.triggerHoldTime) {
-        refs.player.interactWithBlock(false); 
+        refs.player.interactWithBlock(false); // Place block on long press
       }
     }
     
@@ -208,22 +211,31 @@ const BlockifyGame: React.FC = () => {
     const handleKeyUp = (e: KeyboardEvent) => refs.player?.handleKeyUp(e);
     const handleMouseMove = (e: MouseEvent) => refs.player?.lookAround(e);
     const handleMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) refs.player?.interactWithBlock(true); 
-      if (e.button === 2) refs.player?.interactWithBlock(false); 
+      if (e.button === 0) refs.player?.interactWithBlock(true); // Left click: Destroy
+      if (e.button === 2) refs.player?.interactWithBlock(false); // Right click: Place
     };
 
     const handleTouchStart = (e: TouchEvent) => {
-      refs.cursor.holding = true;
-      refs.cursor.holdTime = 0;
+      if (e.touches.length === 1) { // Single touch
+        refs.cursor.holding = true;
+        refs.cursor.holdTime = 0;
+      }
+      // Could add logic for multi-touch (e.g., movement) here if needed
     };
     const handleTouchMove = (e: TouchEvent) => {
+      // If movement is primarily for looking around on touch, handle here
+      // For simplicity, current setup relies on pointer lock for look, which isn't ideal for touch
+      // For block interaction, if touch moves significantly, cancel hold
       refs.cursor.holdTime = 0; 
     };
     const handleTouchEnd = (e: TouchEvent) => {
-      if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) { 
-        refs.player?.interactWithBlock(true); 
+      if (refs.cursor.holding) { // Was holding
+        if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) { 
+          refs.player?.interactWithBlock(true); // Short tap: Destroy
+        }
+        // Long press is handled by renderScene's holdTime check
+        refs.cursor.holding = false;
       }
-      refs.cursor.holding = false;
     };
 
     window.addEventListener("resize", handleResize);
@@ -232,8 +244,8 @@ const BlockifyGame: React.FC = () => {
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("mousemove", handleMouseMove);
     refs.canvasRef?.addEventListener("mousedown", handleMouseDown); 
-    refs.canvasRef?.addEventListener("touchstart", handleTouchStart, { passive: false });
-    refs.canvasRef?.addEventListener("touchmove", handleTouchMove, { passive: false });
+    refs.canvasRef?.addEventListener("touchstart", handleTouchStart, { passive: true }); // Passive true for scroll performance if not preventing default
+    refs.canvasRef?.addEventListener("touchmove", handleTouchMove, { passive: true });
     refs.canvasRef?.addEventListener("touchend", handleTouchEnd);
 
 
@@ -262,7 +274,7 @@ const BlockifyGame: React.FC = () => {
       document.removeEventListener('pointerlockchange', pointerLockListener, false);
 
 
-      refs.world?.chunks.forEach((chunk) => {
+      refs.world?.activeChunks.forEach((chunk) => { // Iterate over activeChunks
         if (chunk && typeof chunk.dispose === 'function') {
           chunk.dispose();
         }
@@ -272,7 +284,13 @@ const BlockifyGame: React.FC = () => {
         if (object instanceof THREE.Mesh) {
           object.geometry?.dispose();
           if (Array.isArray(object.material)) {
-            object.material.forEach(material => material.dispose());
+            object.material.forEach(material => {
+                material.map?.dispose();
+                material.dispose();
+            });
+          } else if ((object.material as THREE.Material)?.map) {
+             (object.material as THREE.Material).map?.dispose();
+             (object.material as THREE.Material)?.dispose();
           } else {
             (object.material as THREE.Material)?.dispose();
           }

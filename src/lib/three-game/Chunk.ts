@@ -15,25 +15,32 @@ export class Chunk {
   public needsMeshUpdate: boolean = false;
   private blockPrototypes: Map<string, Block>;
 
-  constructor(world: World, worldX: number, worldZ: number, blockPrototypes: Map<string, Block>) {
+  constructor(world: World, worldX: number, worldZ: number, blockPrototypes: Map<string, Block>, initialBlockData?: string[][][]) {
     this.world = world;
     this.worldX = worldX;
     this.worldZ = worldZ;
     this.blockPrototypes = blockPrototypes;
 
-    this.blocks = [];
-    for (let x = 0; x < CHUNK_SIZE; x++) {
-      this.blocks[x] = [];
-      for (let y = 0; y < this.world.layers; y++) {
-        this.blocks[x][y] = [];
-        for (let z = 0; z < CHUNK_SIZE; z++) {
-          this.blocks[x][y][z] = 'air';
-        }
-      }
-    }
     this.chunkRoot = new THREE.Group();
     this.chunkRoot.name = `ChunkRoot_${worldX}_${worldZ}`;
     this.chunkRoot.position.set(this.worldX * CHUNK_SIZE, this.worldY, this.worldZ * CHUNK_SIZE);
+
+    if (initialBlockData) {
+      this.blocks = initialBlockData;
+      this.needsMeshUpdate = true; // Assume it needs remeshing if loaded from data
+    } else {
+      this.blocks = [];
+      for (let x = 0; x < CHUNK_SIZE; x++) {
+        this.blocks[x] = [];
+        for (let y = 0; y < this.world.layers; y++) {
+          this.blocks[x][y] = [];
+          for (let z = 0; z < CHUNK_SIZE; z++) {
+            this.blocks[x][y][z] = 'air';
+          }
+        }
+      }
+      this.generateTerrainData(); // This will set needsMeshUpdate to true
+    }
   }
 
   getBlock(localX: number, localY: number, localZ: number): string | null {
@@ -55,6 +62,10 @@ export class Chunk {
     if (this.blocks[localX][localY][localZ] !== blockType) {
       this.blocks[localX][localY][localZ] = blockType;
       this.needsMeshUpdate = true;
+
+      // Notify world so it can update its central store if needed, and queue neighbor remeshes
+      this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
+
 
       if (localX === 0) this.world.queueChunkRemesh(this.worldX - 1, this.worldZ);
       if (localX === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX + 1, this.worldZ);
@@ -80,14 +91,16 @@ export class Chunk {
         let surfaceY = baseHeight + Math.floor(
           amplitude * (Math.sin(absoluteWorldX * frequency) + Math.cos(absoluteWorldZ * frequency * 0.8))
         );
-        surfaceY = Math.max(0, Math.min(this.world.layers - 1, surfaceY));
+        surfaceY = Math.max(1, Math.min(this.world.layers - 1, surfaceY)); // Ensure at least 1 block of depth
 
         for (let y = 0; y < this.world.layers; y++) {
-          if (y < surfaceY) {
-            this.blocks[x][y][z] = (surfaceY - y < 3 && y < surfaceY) ? dirtBlockName : stoneBlockName;
-          } else if (y === surfaceY) {
+          if (y < surfaceY - 2) { // Deeper blocks are stone
+            this.blocks[x][y][z] = stoneBlockName;
+          } else if (y < surfaceY) { // Blocks just below surface are dirt
+            this.blocks[x][y][z] = dirtBlockName;
+          } else if (y === surfaceY) { // Surface block is grass
             this.blocks[x][y][z] = grassBlockName;
-          } else {
+          } else { // Above surface is air
             this.blocks[x][y][z] = 'air';
           }
         }
@@ -103,14 +116,18 @@ export class Chunk {
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose();
         if (Array.isArray(child.material)) {
-          child.material.forEach(m => m.dispose());
+          child.material.forEach(m => {
+            m.map?.dispose();
+            m.dispose();
+          });
         } else if (child.material) {
-          child.material.dispose();
+          (child.material as THREE.Material).map?.dispose();
+          (child.material as THREE.Material).dispose();
         }
       }
     }
 
-    const geometriesByMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
+    const geometriesByMaterial = new Map<string, { material: THREE.Material, geometries: THREE.BufferGeometry[] }>();
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let y = 0; y < this.world.layers; y++) {
@@ -136,70 +153,71 @@ export class Chunk {
 
           const isNeighborSolid = (type: string | null) => type !== null && type !== 'air';
           
-          const addFace = (faceMaterial: THREE.Material, rotation: [number, number, number], translation: [number, number, number]) => {
+          const addFace = (material: THREE.Material, faceRotation: [number, number, number], faceTranslation: [number, number, number]) => {
             const faceGeometry = new THREE.PlaneGeometry(1, 1);
-            faceGeometry.rotateX(rotation[0]);
-            faceGeometry.rotateY(rotation[1]);
-            faceGeometry.rotateZ(rotation[2]);
-            faceGeometry.translate(translation[0], translation[1], translation[2]);
-
-            if (!geometriesByMaterial.has(faceMaterial)) {
-              geometriesByMaterial.set(faceMaterial, []);
+            faceGeometry.rotateX(faceRotation[0]);
+            faceGeometry.rotateY(faceRotation[1]);
+            faceGeometry.rotateZ(faceRotation[2]);
+            faceGeometry.translate(x + 0.5 + faceTranslation[0] - 0.5, y + 0.5 + faceTranslation[1] -0.5, z + 0.5 + faceTranslation[2] -0.5);
+            
+            const materialKey = material.uuid; // Use material UUID as key
+            if (!geometriesByMaterial.has(materialKey)) {
+              geometriesByMaterial.set(materialKey, { material: material, geometries: [] });
             }
-            geometriesByMaterial.get(faceMaterial)!.push(faceGeometry);
+            geometriesByMaterial.get(materialKey)!.geometries.push(faceGeometry);
           };
-
-          // Top face (+Y)
-          if (!isNeighborSolid(neighbors.top)) {
-            const materialIndex = blockProto.multiTexture ? 2 : 0;
-            const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [-Math.PI / 2, 0, 0], [x + 0.5, y + 1, z + 0.5]);
-          }
-          // Bottom face (-Y)
-          if (!isNeighborSolid(neighbors.bottom)) {
-            const materialIndex = blockProto.multiTexture ? 3 : 0;
-            const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [Math.PI / 2, 0, 0], [x + 0.5, y, z + 0.5]);
-          }
-          // Front face (+Z)
-          if (!isNeighborSolid(neighbors.front)) {
-            const materialIndex = blockProto.multiTexture ? 4 : 0;
-            const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, 0, 0], [x + 0.5, y + 0.5, z + 1]);
-          }
-          // Back face (-Z)
-          if (!isNeighborSolid(neighbors.back)) {
-            const materialIndex = blockProto.multiTexture ? 5 : 0;
-            const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, Math.PI, 0], [x + 0.5, y + 0.5, z]);
-          }
+          
           // Right face (+X)
           if (!isNeighborSolid(neighbors.right)) {
             const materialIndex = blockProto.multiTexture ? 0 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, Math.PI / 2, 0], [x + 1, y + 0.5, z + 0.5]);
+            addFace(material, [0, Math.PI / 2, 0], [1, 0.5, 0.5]);
           }
           // Left face (-X)
           if (!isNeighborSolid(neighbors.left)) {
             const materialIndex = blockProto.multiTexture ? 1 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, -Math.PI / 2, 0], [x, y + 0.5, z + 0.5]);
+            addFace(material, [0, -Math.PI / 2, 0], [0, 0.5, 0.5]);
+          }
+          // Top face (+Y)
+          if (!isNeighborSolid(neighbors.top)) {
+            const materialIndex = blockProto.multiTexture ? 2 : 0;
+            const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
+            addFace(material, [-Math.PI / 2, 0, 0], [0.5, 1, 0.5]);
+          }
+          // Bottom face (-Y)
+          if (!isNeighborSolid(neighbors.bottom)) {
+            const materialIndex = blockProto.multiTexture ? 3 : 0;
+            const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
+            addFace(material, [Math.PI / 2, 0, 0], [0.5, 0, 0.5]);
+          }
+          // Front face (+Z)
+          if (!isNeighborSolid(neighbors.front)) {
+            const materialIndex = blockProto.multiTexture ? 4 : 0;
+            const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
+            addFace(material, [0, 0, 0], [0.5, 0.5, 1]);
+          }
+          // Back face (-Z)
+          if (!isNeighborSolid(neighbors.back)) {
+            const materialIndex = blockProto.multiTexture ? 5 : 0;
+            const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
+            addFace(material, [0, Math.PI, 0], [0.5, 0.5, 0]);
           }
         }
       }
     }
 
-    geometriesByMaterial.forEach((geometries, material) => {
-      if (geometries.length > 0) {
-        const mergedGeometry = BufferGeometryUtils.mergeGeometries(geometries, false);
+    geometriesByMaterial.forEach((data) => {
+      if (data.geometries.length > 0) {
+        const mergedGeometry = BufferGeometryUtils.mergeGeometries(data.geometries, false);
         if (mergedGeometry) {
-          const chunkMesh = new THREE.Mesh(mergedGeometry, material);
-          chunkMesh.name = `MergedChunkMesh_${this.worldX}_${this.worldZ}_${material.uuid.substring(0,6)}`;
+          const chunkMesh = new THREE.Mesh(mergedGeometry, data.material);
+          chunkMesh.name = `MergedChunkMesh_${this.worldX}_${this.worldZ}_${data.material.uuid.substring(0,6)}`;
           chunkMesh.castShadow = true;
           chunkMesh.receiveShadow = true;
           this.chunkRoot.add(chunkMesh);
         }
-        geometries.forEach(g => g.dispose()); // Dispose individual geometries after merging
+        data.geometries.forEach(g => g.dispose());
       }
     });
 
@@ -213,9 +231,13 @@ export class Chunk {
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose();
         if (Array.isArray(child.material)) {
-          child.material.forEach(m => m.dispose());
+          child.material.forEach(m => {
+            m.map?.dispose();
+            m.dispose();
+          });
         } else if (child.material) {
-          child.material.dispose();
+          (child.material as THREE.Material).map?.dispose();
+          (child.material as THREE.Material).dispose();
         }
       }
     }

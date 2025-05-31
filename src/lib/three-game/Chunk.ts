@@ -3,12 +3,13 @@ import * as THREE from 'three';
 import type { World } from './World';
 import type { Block } from './Block';
 import { CHUNK_SIZE } from './utils';
+import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export class Chunk {
   public worldX: number;
   public worldZ: number;
-  public worldY: number = 0; // Base Y position of the chunk in the world
-  public blocks: string[][][]; // [x][y][z] -> block type name (e.g., 'grassBlock')
+  public worldY: number = 0;
+  public blocks: string[][][];
   public chunkRoot: THREE.Group;
   private world: World;
   public needsMeshUpdate: boolean = false;
@@ -16,8 +17,8 @@ export class Chunk {
 
   constructor(world: World, worldX: number, worldZ: number, blockPrototypes: Map<string, Block>) {
     this.world = world;
-    this.worldX = worldX; // Chunk's X coordinate in chunk units
-    this.worldZ = worldZ; // Chunk's Z coordinate in chunk units
+    this.worldX = worldX;
+    this.worldZ = worldZ;
     this.blockPrototypes = blockPrototypes;
 
     this.blocks = [];
@@ -26,12 +27,12 @@ export class Chunk {
       for (let y = 0; y < this.world.layers; y++) {
         this.blocks[x][y] = [];
         for (let z = 0; z < CHUNK_SIZE; z++) {
-          this.blocks[x][y][z] = 'air'; // Initialize with air
+          this.blocks[x][y][z] = 'air';
         }
       }
     }
     this.chunkRoot = new THREE.Group();
-    this.chunkRoot.name = `Chunk_${worldX}_${worldZ}`;
+    this.chunkRoot.name = `ChunkRoot_${worldX}_${worldZ}`;
     this.chunkRoot.position.set(this.worldX * CHUNK_SIZE, this.worldY, this.worldZ * CHUNK_SIZE);
   }
 
@@ -39,7 +40,7 @@ export class Chunk {
     if (localX < 0 || localX >= CHUNK_SIZE ||
         localY < 0 || localY >= this.world.layers ||
         localZ < 0 || localZ >= CHUNK_SIZE) {
-      return null; // Out of bounds for this chunk
+      return null;
     }
     return this.blocks[localX][localY][localZ];
   }
@@ -67,9 +68,9 @@ export class Chunk {
     const dirtBlockName = 'dirtBlock';
     const stoneBlockName = 'stoneBlock';
 
-    const baseHeight = Math.floor(this.world.layers / 3) + 1; 
-    const amplitude = 2; 
-    const frequency = 0.15; 
+    const baseHeight = Math.floor(this.world.layers / 3) + 1;
+    const amplitude = 2;
+    const frequency = 0.15;
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -103,13 +104,13 @@ export class Chunk {
         child.geometry.dispose();
         if (Array.isArray(child.material)) {
           child.material.forEach(m => m.dispose());
-        } else {
+        } else if (child.material) {
           child.material.dispose();
         }
       }
     }
 
-    const faceGeometry = new THREE.PlaneGeometry(1, 1);
+    const geometriesByMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let y = 0; y < this.world.layers; y++) {
@@ -118,12 +119,8 @@ export class Chunk {
           if (blockType === 'air') continue;
 
           const blockProto = this.blockPrototypes.get(blockType);
-          if (!blockProto) {
-            console.warn(`No prototype found for block type: ${blockType}`);
-            continue;
-          }
+          if (!blockProto) continue;
 
-          // World coordinates of the current block's origin (min corner)
           const blockWorldX = this.worldX * CHUNK_SIZE + x;
           const blockWorldY = this.worldY + y;
           const blockWorldZ = this.worldZ * CHUNK_SIZE + z;
@@ -131,82 +128,81 @@ export class Chunk {
           const neighbors = {
             top: this.world.getBlock(blockWorldX, blockWorldY + 1, blockWorldZ),
             bottom: this.world.getBlock(blockWorldX, blockWorldY - 1, blockWorldZ),
-            front: this.world.getBlock(blockWorldX, blockWorldY, blockWorldZ + 1), 
-            back: this.world.getBlock(blockWorldX, blockWorldY, blockWorldZ - 1),  
-            right: this.world.getBlock(blockWorldX + 1, blockWorldY, blockWorldZ), 
-            left: this.world.getBlock(blockWorldX - 1, blockWorldY, blockWorldZ)   
+            front: this.world.getBlock(blockWorldX, blockWorldY, blockWorldZ + 1),
+            back: this.world.getBlock(blockWorldX, blockWorldY, blockWorldZ - 1),
+            right: this.world.getBlock(blockWorldX + 1, blockWorldY, blockWorldZ),
+            left: this.world.getBlock(blockWorldX - 1, blockWorldY, blockWorldZ)
           };
-          
+
           const isNeighborSolid = (type: string | null) => type !== null && type !== 'air';
+          
+          const addFace = (faceMaterial: THREE.Material, rotation: [number, number, number], translation: [number, number, number]) => {
+            const faceGeometry = new THREE.PlaneGeometry(1, 1);
+            faceGeometry.rotateX(rotation[0]);
+            faceGeometry.rotateY(rotation[1]);
+            faceGeometry.rotateZ(rotation[2]);
+            faceGeometry.translate(translation[0], translation[1], translation[2]);
+
+            if (!geometriesByMaterial.has(faceMaterial)) {
+              geometriesByMaterial.set(faceMaterial, []);
+            }
+            geometriesByMaterial.get(faceMaterial)!.push(faceGeometry);
+          };
 
           // Top face (+Y)
           if (!isNeighborSolid(neighbors.top)) {
             const materialIndex = blockProto.multiTexture ? 2 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            const faceMesh = new THREE.Mesh(faceGeometry, material);
-            faceMesh.position.set(x + 0.5, y + 1, z + 0.5); // Center of top face
-            faceMesh.rotation.x = -Math.PI / 2;
-            faceMesh.name = `BlockFace_Top_${blockWorldX}_${blockWorldY}_${blockWorldZ}`;
-            this.chunkRoot.add(faceMesh);
+            addFace(material, [-Math.PI / 2, 0, 0], [x + 0.5, y + 1, z + 0.5]);
           }
-
           // Bottom face (-Y)
           if (!isNeighborSolid(neighbors.bottom)) {
             const materialIndex = blockProto.multiTexture ? 3 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            const faceMesh = new THREE.Mesh(faceGeometry, material);
-            faceMesh.position.set(x + 0.5, y, z + 0.5); // Center of bottom face
-            faceMesh.rotation.x = Math.PI / 2;
-            faceMesh.name = `BlockFace_Bottom_${blockWorldX}_${blockWorldY}_${blockWorldZ}`;
-            this.chunkRoot.add(faceMesh);
+            addFace(material, [Math.PI / 2, 0, 0], [x + 0.5, y, z + 0.5]);
           }
-
           // Front face (+Z)
           if (!isNeighborSolid(neighbors.front)) {
             const materialIndex = blockProto.multiTexture ? 4 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            const faceMesh = new THREE.Mesh(faceGeometry, material);
-            faceMesh.position.set(x + 0.5, y + 0.5, z + 1); // Center of front face
-            // No rotation needed for Z+ face if PlaneGeometry is in XY plane
-            faceMesh.name = `BlockFace_Front_${blockWorldX}_${blockWorldY}_${blockWorldZ}`;
-            this.chunkRoot.add(faceMesh);
+            addFace(material, [0, 0, 0], [x + 0.5, y + 0.5, z + 1]);
           }
-
           // Back face (-Z)
           if (!isNeighborSolid(neighbors.back)) {
             const materialIndex = blockProto.multiTexture ? 5 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            const faceMesh = new THREE.Mesh(faceGeometry, material);
-            faceMesh.position.set(x + 0.5, y + 0.5, z); // Center of back face
-            faceMesh.rotation.y = Math.PI; 
-            faceMesh.name = `BlockFace_Back_${blockWorldX}_${blockWorldY}_${blockWorldZ}`;
-            this.chunkRoot.add(faceMesh);
+            addFace(material, [0, Math.PI, 0], [x + 0.5, y + 0.5, z]);
           }
-
           // Right face (+X)
           if (!isNeighborSolid(neighbors.right)) {
             const materialIndex = blockProto.multiTexture ? 0 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            const faceMesh = new THREE.Mesh(faceGeometry, material);
-            faceMesh.position.set(x + 1, y + 0.5, z + 0.5); // Center of right face
-            faceMesh.rotation.y = Math.PI / 2;
-            faceMesh.name = `BlockFace_Right_${blockWorldX}_${blockWorldY}_${blockWorldZ}`;
-            this.chunkRoot.add(faceMesh);
+            addFace(material, [0, Math.PI / 2, 0], [x + 1, y + 0.5, z + 0.5]);
           }
-          
           // Left face (-X)
           if (!isNeighborSolid(neighbors.left)) {
             const materialIndex = blockProto.multiTexture ? 1 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            const faceMesh = new THREE.Mesh(faceGeometry, material);
-            faceMesh.position.set(x, y + 0.5, z + 0.5); // Center of left face
-            faceMesh.rotation.y = -Math.PI / 2;
-            faceMesh.name = `BlockFace_Left_${blockWorldX}_${blockWorldY}_${blockWorldZ}`;
-            this.chunkRoot.add(faceMesh);
+            addFace(material, [0, -Math.PI / 2, 0], [x, y + 0.5, z + 0.5]);
           }
         }
       }
     }
+
+    geometriesByMaterial.forEach((geometries, material) => {
+      if (geometries.length > 0) {
+        const mergedGeometry = BufferGeometryUtils.mergeGeometries(geometries, false);
+        if (mergedGeometry) {
+          const chunkMesh = new THREE.Mesh(mergedGeometry, material);
+          chunkMesh.name = `MergedChunkMesh_${this.worldX}_${this.worldZ}_${material.uuid.substring(0,6)}`;
+          chunkMesh.castShadow = true;
+          chunkMesh.receiveShadow = true;
+          this.chunkRoot.add(chunkMesh);
+        }
+        geometries.forEach(g => g.dispose()); // Dispose individual geometries after merging
+      }
+    });
+
     this.needsMeshUpdate = false;
   }
 

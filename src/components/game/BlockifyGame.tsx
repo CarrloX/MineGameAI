@@ -15,6 +15,8 @@ interface DebugInfoState {
   playerChunk: string;
   raycastTarget: string;
   highlightStatus: string;
+  visibleChunks: number;
+  totalChunks: number;
 }
 
 const BlockifyGame: React.FC = () => {
@@ -40,6 +42,8 @@ const BlockifyGame: React.FC = () => {
     playerChunk: 'Chunk: N/A',
     raycastTarget: 'Ray: None',
     highlightStatus: 'HL: Inactive',
+    visibleChunks: 0,
+    totalChunks: 0,
   });
   const lastFrameTimeRef = useRef(performance.now());
   const frameCountRef = useRef(0);
@@ -148,18 +152,26 @@ const BlockifyGame: React.FC = () => {
     const playerChunkX = Math.floor(player.x / CHUNK_SIZE);
     const playerChunkZ = Math.floor(player.z / CHUNK_SIZE);
     const playerChunkStr = `Chunk: CX:${playerChunkX}, CZ:${playerChunkZ}`;
+    
     let rayTargetStr = 'Ray: None';
     if (player.lookingAt) {
-      rayTargetStr = `Ray: ${player.lookingAt.object.name} (Dist: ${player.lookingAt.distance.toFixed(2)})`;
+      rayTargetStr = `Ray: ${player.lookingAt.object.name.substring(0,20)} D:${player.lookingAt.distance.toFixed(1)} B:[${player.lookingAt.blockWorldCoords.x.toFixed(0)},${player.lookingAt.blockWorldCoords.y.toFixed(0)},${player.lookingAt.blockWorldCoords.z.toFixed(0)}]`;
     }
-    const highlightStr = `HL: ${refs.scene.getObjectByName(player.blockFaceHL.mesh.name) ? `${player.blockFaceHL.mesh.name.split('_').slice(0,3).join('_')} (${player.blockFaceHL.dir})` : 'Inactive'}`;
+    const highlightStr = `HL: ${refs.player.blockFaceHL.dir || 'Inactive'}`;
     
+    let visibleChunksCount = 0;
+    refs.world.chunks.forEach(chunk => {
+      if(chunk.chunkRoot.visible) visibleChunksCount++;
+    });
+
     setDebugInfo(prev => ({
       fps: newFpsValue !== undefined ? newFpsValue : prev.fps,
       playerPosition: playerPosStr,
       playerChunk: playerChunkStr,
       raycastTarget: rayTargetStr,
       highlightStatus: highlightStr,
+      visibleChunks: visibleChunksCount,
+      totalChunks: refs.world!.chunks.size,
     }));
 
 
@@ -262,7 +274,7 @@ const BlockifyGame: React.FC = () => {
           if (Array.isArray(object.material)) {
             object.material.forEach(material => material.dispose());
           } else {
-            object.material?.dispose();
+            (object.material as THREE.Material)?.dispose();
           }
         }
       });
@@ -286,6 +298,7 @@ const BlockifyGame: React.FC = () => {
         <div>{debugInfo.playerChunk}</div>
         <div>{debugInfo.raycastTarget}</div>
         <div>{debugInfo.highlightStatus}</div>
+        <div>Chunks: {debugInfo.visibleChunks} / {debugInfo.totalChunks}</div>
       </div>
     </div>
   );

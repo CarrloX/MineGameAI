@@ -9,6 +9,14 @@ import { Player } from '@/lib/three-game/Player';
 import { getBlockDefinitions, CONTROL_CONFIG, CURSOR_STATE, CHUNK_SIZE } from '@/lib/three-game/utils';
 import type { GameRefs } from '@/lib/three-game/types';
 
+interface DebugInfoState {
+  fps: number;
+  playerPosition: string;
+  playerChunk: string;
+  raycastTarget: string;
+  highlightStatus: string;
+}
+
 const BlockifyGame: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
   const gameRefs = useRef<GameRefs>({
@@ -18,7 +26,7 @@ const BlockifyGame: React.FC = () => {
     raycaster: null,
     textureLoader: null,
     world: null,
-    blocks: null, // Will hold block prototypes
+    blocks: null, 
     player: null,
     controlConfig: { ...CONTROL_CONFIG }, 
     cursor: { ...CURSOR_STATE }, 
@@ -26,7 +34,13 @@ const BlockifyGame: React.FC = () => {
     canvasRef: null,
   });
 
-  const [fps, setFps] = useState(0);
+  const [debugInfo, setDebugInfo] = useState<DebugInfoState>({
+    fps: 0,
+    playerPosition: 'Player: N/A',
+    playerChunk: 'Chunk: N/A',
+    raycastTarget: 'Ray: None',
+    highlightStatus: 'HL: Inactive',
+  });
   const lastFrameTimeRef = useRef(performance.now());
   const frameCountRef = useRef(0);
 
@@ -45,25 +59,24 @@ const BlockifyGame: React.FC = () => {
     refs.textureLoader = new THREE.TextureLoader();
     
     const blockData = getBlockDefinitions();
-    refs.blocks = [ // These are block PROTOTYPES
+    refs.blocks = [ 
       new Block("grassBlock", blockData.grassBlock, refs.textureLoader, true),
-      new Block("dirtBlock", {side: blockData.dirtBlock}, refs.textureLoader, false),
-      new Block("stoneBlock", {side: blockData.stoneBlock}, refs.textureLoader, false),
-      new Block("sandBlock", {side: blockData.sandBlock}, refs.textureLoader, false),
+      new Block("dirtBlock", {side: blockData.dirtBlock.side}, refs.textureLoader, false),
+      new Block("stoneBlock", {side: blockData.stoneBlock.side}, refs.textureLoader, false),
+      new Block("sandBlock", {side: blockData.sandBlock.side}, refs.textureLoader, false),
       new Block("woodLogBlock", blockData.woodLogBlock, refs.textureLoader, true),
-      new Block("redstoneBlock", {side: blockData.redstoneBlock}, refs.textureLoader, false),
-      new Block("orangeWoolBlock", {side: blockData.orangeWoolBlock}, refs.textureLoader, false),
-      new Block("cobblestoneBlock", {side: blockData.cobblestoneBlock}, refs.textureLoader, false),
+      new Block("redstoneBlock", {side: blockData.redstoneBlock.side}, refs.textureLoader, false),
+      new Block("orangeWoolBlock", {side: blockData.orangeWoolBlock.side}, refs.textureLoader, false),
+      new Block("cobblestoneBlock", {side: blockData.cobblestoneBlock.side}, refs.textureLoader, false),
     ];
     
     refs.world = new World(refs);
     refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
     refs.canvasRef.appendChild(refs.renderer.domElement);
 
-    // Initial chunk processing
-    refs.world.updateChunks(new THREE.Vector3(0,0,0)); // Load initial chunks around origin
+    refs.world.updateChunks(new THREE.Vector3(0,0,0)); 
     while(refs.world.getRemeshQueueSize() > 0) {
-        refs.world.processRemeshQueue(refs.world.getRemeshQueueSize()); // Process all pending meshes
+        refs.world.processRemeshQueue(refs.world.getRemeshQueueSize()); 
     }
 
     const spawnX = 0;
@@ -115,7 +128,7 @@ const BlockifyGame: React.FC = () => {
     const now = performance.now();
     frameCountRef.current++;
     if (now >= lastFrameTimeRef.current + 1000) {
-      setFps(frameCountRef.current);
+      setDebugInfo(prev => ({ ...prev, fps: frameCountRef.current }));
       frameCountRef.current = 0;
       lastFrameTimeRef.current = now;
     }
@@ -123,17 +136,37 @@ const BlockifyGame: React.FC = () => {
     refs.player.updatePosition();
     refs.player.highlightBlock();
     refs.world.updateChunks(refs.player.mesh.position);
-    refs.world.processRemeshQueue(1); // Process one chunk mesh update per frame
+    refs.world.processRemeshQueue(1); 
+
+    // Update debug info
+    const player = refs.player;
+    const playerPosStr = `Player: X:${player.x.toFixed(2)}, Y:${player.y.toFixed(2)}, Z:${player.z.toFixed(2)}`;
+    const playerChunkX = Math.floor(player.x / CHUNK_SIZE);
+    const playerChunkZ = Math.floor(player.z / CHUNK_SIZE);
+    const playerChunkStr = `Chunk: CX:${playerChunkX}, CZ:${playerChunkZ}`;
+    let rayTargetStr = 'Ray: None';
+    if (player.lookingAt) {
+      rayTargetStr = `Ray: ${player.lookingAt.object.name} (Dist: ${player.lookingAt.distance.toFixed(2)})`;
+    }
+    const highlightStr = `HL: ${player.blockFaceHL.mesh.parent ? `${player.blockFaceHL.mesh.name.split('_').slice(0,3).join('_')} (${player.blockFaceHL.dir})` : 'Inactive'}`;
+    
+    setDebugInfo(prev => ({
+      ...prev, // Keep existing FPS
+      playerPosition: playerPosStr,
+      playerChunk: playerChunkStr,
+      raycastTarget: rayTargetStr,
+      highlightStatus: highlightStr,
+    }));
+
 
     if (refs.player.dead) {
-      const respawnX = 0; // Or some other logic
+      const respawnX = 0; 
       const respawnZ = 0;
-      const respawnY = refs.world.getSpawnHeight(respawnX, respawnZ);
-      // Force remesh around spawn before creating player
-      refs.world.updateChunks(new THREE.Vector3(respawnX, respawnY, respawnZ));
+      refs.world.updateChunks(new THREE.Vector3(respawnX, refs.player.y, respawnZ)); 
       while(refs.world.getRemeshQueueSize() > 0) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
       }
+      const respawnY = refs.world.getSpawnHeight(respawnX, respawnZ);
       refs.player = new Player(refs.player['name'], refs, respawnX, respawnY, respawnZ, true);
     }
 
@@ -159,36 +192,30 @@ const BlockifyGame: React.FC = () => {
     const handleKeyUp = (e: KeyboardEvent) => refs.player?.handleKeyUp(e);
     const handleMouseMove = (e: MouseEvent) => refs.player?.lookAround(e);
     const handleMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) refs.player?.interactWithBlock(true); // true for destroy
-      if (e.button === 2) refs.player?.interactWithBlock(false); // false for place
+      if (e.button === 0) refs.player?.interactWithBlock(true); 
+      if (e.button === 2) refs.player?.interactWithBlock(false); 
     };
 
     const handleTouchStart = (e: TouchEvent) => {
       refs.cursor.holding = true;
       refs.cursor.holdTime = 0;
-      // For touch look, you might want to record initial touch position here
     };
     const handleTouchMove = (e: TouchEvent) => {
       refs.cursor.holdTime = 0; 
-      // For touch look, calculate delta from initial touch and call player.lookAround
     };
     const handleTouchEnd = (e: TouchEvent) => {
-      if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) { // Short tap
-        refs.player?.interactWithBlock(true); // Destroy
-      } else if (refs.cursor.holdTime >= refs.cursor.triggerHoldTime) {
-        // Placing is handled by the check in renderScene based on holdTime reaching triggerHoldTime
-        // but if it was released exactly at triggerHoldTime, interactWithBlock might be called twice.
-        // The logic in renderScene already calls interactWithBlock for placing.
+      if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) { 
+        refs.player?.interactWithBlock(true); 
       }
       refs.cursor.holding = false;
     };
 
     window.addEventListener("resize", handleResize);
-    document.addEventListener("contextmenu", handleContextMenu); // Attached to document
+    document.addEventListener("contextmenu", handleContextMenu); 
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("mousemove", handleMouseMove);
-    refs.canvasRef?.addEventListener("mousedown", handleMouseDown); // Attached to canvas
+    refs.canvasRef?.addEventListener("mousedown", handleMouseDown); 
     refs.canvasRef?.addEventListener("touchstart", handleTouchStart, { passive: false });
     refs.canvasRef?.addEventListener("touchmove", handleTouchMove, { passive: false });
     refs.canvasRef?.addEventListener("touchend", handleTouchEnd);
@@ -219,7 +246,11 @@ const BlockifyGame: React.FC = () => {
       document.removeEventListener('pointerlockchange', pointerLockListener, false);
 
 
-      refs.world?.chunks.forEach(chunk => chunk.dispose());
+      refs.world?.chunks.forEach((chunk) => {
+        if (chunk && typeof chunk.dispose === 'function') {
+          chunk.dispose();
+        }
+      });
       refs.renderer?.dispose();
       refs.scene?.traverse(object => {
         if (object instanceof THREE.Mesh) {
@@ -246,7 +277,11 @@ const BlockifyGame: React.FC = () => {
         <div className="w-[2px] h-full bg-foreground/75 absolute top-0 left-1/2 transform -translate-x-1/2 rounded-sm"></div>
       </div>
       <div className="absolute top-2 right-2 text-foreground bg-background/50 p-1 rounded-md text-sm pointer-events-none z-10">
-        FPS: {fps}
+        <div>FPS: {debugInfo.fps}</div>
+        <div>{debugInfo.playerPosition}</div>
+        <div>{debugInfo.playerChunk}</div>
+        <div>{debugInfo.raycastTarget}</div>
+        <div>{debugInfo.highlightStatus}</div>
       </div>
     </div>
   );

@@ -55,12 +55,10 @@ export class Chunk {
       this.blocks[localX][localY][localZ] = blockType;
       this.needsMeshUpdate = true;
 
-      // If the change is on a boundary, the neighbor might need remeshing too
       if (localX === 0) this.world.queueChunkRemesh(this.worldX - 1, this.worldZ);
       if (localX === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX + 1, this.worldZ);
       if (localZ === 0) this.world.queueChunkRemesh(this.worldX, this.worldZ - 1);
       if (localZ === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX, this.worldZ + 1);
-      // Note: Vertical neighbors (chunks above/below) are not handled as we only have one layer of chunks vertically.
     }
   }
 
@@ -69,28 +67,22 @@ export class Chunk {
     const dirtBlockName = 'dirtBlock';
     const stoneBlockName = 'stoneBlock';
 
-    const baseHeight = Math.floor(this.world.layers / 3) + 1; // Ground level around 1/3 of chunk height, ensure at least 1
-    const amplitude = 2; // How much the terrain varies
-    const frequency = 0.15; // How "wavy" the terrain is
+    const baseHeight = Math.floor(this.world.layers / 3) + 1; 
+    const amplitude = 2; 
+    const frequency = 0.15; 
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
-        // Calculate absolute world coordinates for the noise function input
-        // This helps in creating seamless terrain if/when we use Perlin noise
         const absoluteWorldX = this.worldX * CHUNK_SIZE + x;
         const absoluteWorldZ = this.worldZ * CHUNK_SIZE + z;
 
-        // Simple sine wave for height variation
         let surfaceY = baseHeight + Math.floor(
-          amplitude * (Math.sin(absoluteWorldX * frequency) + Math.cos(absoluteWorldZ * frequency * 0.8)) // Slightly different frequencies for more variation
+          amplitude * (Math.sin(absoluteWorldX * frequency) + Math.cos(absoluteWorldZ * frequency * 0.8))
         );
-        // Clamp height to be within the chunk's vertical layers (0 to world.layers - 1)
-        // Ensure surfaceY is at least 0 so there's always a ground.
         surfaceY = Math.max(0, Math.min(this.world.layers - 1, surfaceY));
 
         for (let y = 0; y < this.world.layers; y++) {
           if (y < surfaceY) {
-            // Stone for lower layers, dirt closer to the surface
             this.blocks[x][y][z] = (surfaceY - y < 3 && y < surfaceY) ? dirtBlockName : stoneBlockName;
           } else if (y === surfaceY) {
             this.blocks[x][y][z] = grassBlockName;
@@ -104,7 +96,6 @@ export class Chunk {
   }
 
   public buildMesh(): void {
-    // Clear existing mesh children
     while (this.chunkRoot.children.length > 0) {
       const child = this.chunkRoot.children[0];
       this.chunkRoot.remove(child);
@@ -132,85 +123,85 @@ export class Chunk {
             continue;
           }
 
-          const worldX = this.worldX * CHUNK_SIZE + x;
-          const worldBlockY = this.worldY + y; // Block's Y position in world space
-          const worldZ = this.worldZ * CHUNK_SIZE + z;
+          // World coordinates of the current block's origin (min corner)
+          const blockWorldX = this.worldX * CHUNK_SIZE + x;
+          const blockWorldY = this.worldY + y;
+          const blockWorldZ = this.worldZ * CHUNK_SIZE + z;
 
-          // Check neighbors (N, S, E, W, Top, Bottom)
           const neighbors = {
-            top: this.world.getBlock(worldX, worldBlockY + 1, worldZ),
-            bottom: this.world.getBlock(worldX, worldBlockY - 1, worldZ),
-            front: this.world.getBlock(worldX, worldBlockY, worldZ + 1), // Positive Z
-            back: this.world.getBlock(worldX, worldBlockY, worldZ - 1),  // Negative Z
-            right: this.world.getBlock(worldX + 1, worldBlockY, worldZ), // Positive X
-            left: this.world.getBlock(worldX - 1, worldBlockY, worldZ)   // Negative X
+            top: this.world.getBlock(blockWorldX, blockWorldY + 1, blockWorldZ),
+            bottom: this.world.getBlock(blockWorldX, blockWorldY - 1, blockWorldZ),
+            front: this.world.getBlock(blockWorldX, blockWorldY, blockWorldZ + 1), 
+            back: this.world.getBlock(blockWorldX, blockWorldY, blockWorldZ - 1),  
+            right: this.world.getBlock(blockWorldX + 1, blockWorldY, blockWorldZ), 
+            left: this.world.getBlock(blockWorldX - 1, blockWorldY, blockWorldZ)   
           };
           
           const isNeighborSolid = (type: string | null) => type !== null && type !== 'air';
 
-          // Top face (Positive Y)
+          // Top face (+Y)
           if (!isNeighborSolid(neighbors.top)) {
-            const materialIndex = blockProto.multiTexture ? 2 : 0; // Assuming top texture is at index 2 for multi-texture blocks
+            const materialIndex = blockProto.multiTexture ? 2 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             const faceMesh = new THREE.Mesh(faceGeometry, material);
-            faceMesh.position.set(x + 0.5, y + 0.5, z + 0.5); // Position relative to chunkRoot origin
-            faceMesh.rotation.x = -Math.PI / 2; // Pointing up
-            faceMesh.name = `BlockFace_Top_${worldX}_${worldBlockY}_${worldZ}`;
+            faceMesh.position.set(x + 0.5, y + 1, z + 0.5); // Center of top face
+            faceMesh.rotation.x = -Math.PI / 2;
+            faceMesh.name = `BlockFace_Top_${blockWorldX}_${blockWorldY}_${blockWorldZ}`;
             this.chunkRoot.add(faceMesh);
           }
 
-          // Bottom face (Negative Y)
+          // Bottom face (-Y)
           if (!isNeighborSolid(neighbors.bottom)) {
-            const materialIndex = blockProto.multiTexture ? 3 : 0; // Assuming bottom texture is at index 3
+            const materialIndex = blockProto.multiTexture ? 3 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             const faceMesh = new THREE.Mesh(faceGeometry, material);
-            faceMesh.position.set(x + 0.5, y - 0.5, z + 0.5);
-            faceMesh.rotation.x = Math.PI / 2; // Pointing down
-            faceMesh.name = `BlockFace_Bottom_${worldX}_${worldBlockY}_${worldZ}`;
+            faceMesh.position.set(x + 0.5, y, z + 0.5); // Center of bottom face
+            faceMesh.rotation.x = Math.PI / 2;
+            faceMesh.name = `BlockFace_Bottom_${blockWorldX}_${blockWorldY}_${blockWorldZ}`;
             this.chunkRoot.add(faceMesh);
           }
 
-          // Front face (Positive Z)
+          // Front face (+Z)
           if (!isNeighborSolid(neighbors.front)) {
-            const materialIndex = blockProto.multiTexture ? 4 : 0; // Assuming front texture is at index 4
+            const materialIndex = blockProto.multiTexture ? 4 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             const faceMesh = new THREE.Mesh(faceGeometry, material);
-            faceMesh.position.set(x + 0.5, y, z + 0.5 + 0.5);
-            // No rotation needed, default PlaneGeometry faces +Z
-            faceMesh.name = `BlockFace_Front_${worldX}_${worldBlockY}_${worldZ}`;
+            faceMesh.position.set(x + 0.5, y + 0.5, z + 1); // Center of front face
+            // No rotation needed for Z+ face if PlaneGeometry is in XY plane
+            faceMesh.name = `BlockFace_Front_${blockWorldX}_${blockWorldY}_${blockWorldZ}`;
             this.chunkRoot.add(faceMesh);
           }
 
-          // Back face (Negative Z)
+          // Back face (-Z)
           if (!isNeighborSolid(neighbors.back)) {
-            const materialIndex = blockProto.multiTexture ? 5 : 0; // Assuming back texture is at index 5
+            const materialIndex = blockProto.multiTexture ? 5 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             const faceMesh = new THREE.Mesh(faceGeometry, material);
-            faceMesh.position.set(x + 0.5, y, z - 0.5 + 0.5);
-            faceMesh.rotation.y = Math.PI; // Rotate to face -Z
-            faceMesh.name = `BlockFace_Back_${worldX}_${worldBlockY}_${worldZ}`;
+            faceMesh.position.set(x + 0.5, y + 0.5, z); // Center of back face
+            faceMesh.rotation.y = Math.PI; 
+            faceMesh.name = `BlockFace_Back_${blockWorldX}_${blockWorldY}_${blockWorldZ}`;
             this.chunkRoot.add(faceMesh);
           }
 
-          // Right face (Positive X)
+          // Right face (+X)
           if (!isNeighborSolid(neighbors.right)) {
-            const materialIndex = blockProto.multiTexture ? 0 : 0; // Assuming right texture is at index 0
+            const materialIndex = blockProto.multiTexture ? 0 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             const faceMesh = new THREE.Mesh(faceGeometry, material);
-            faceMesh.position.set(x + 0.5 + 0.5, y, z + 0.5);
-            faceMesh.rotation.y = Math.PI / 2; // Rotate to face +X
-            faceMesh.name = `BlockFace_Right_${worldX}_${worldBlockY}_${worldZ}`;
+            faceMesh.position.set(x + 1, y + 0.5, z + 0.5); // Center of right face
+            faceMesh.rotation.y = Math.PI / 2;
+            faceMesh.name = `BlockFace_Right_${blockWorldX}_${blockWorldY}_${blockWorldZ}`;
             this.chunkRoot.add(faceMesh);
           }
           
-          // Left face (Negative X)
+          // Left face (-X)
           if (!isNeighborSolid(neighbors.left)) {
-            const materialIndex = blockProto.multiTexture ? 1 : 0; // Assuming left texture is at index 1
+            const materialIndex = blockProto.multiTexture ? 1 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             const faceMesh = new THREE.Mesh(faceGeometry, material);
-            faceMesh.position.set(x - 0.5 + 0.5, y, z + 0.5);
-            faceMesh.rotation.y = -Math.PI / 2; // Rotate to face -X
-            faceMesh.name = `BlockFace_Left_${worldX}_${worldBlockY}_${worldZ}`;
+            faceMesh.position.set(x, y + 0.5, z + 0.5); // Center of left face
+            faceMesh.rotation.y = -Math.PI / 2;
+            faceMesh.name = `BlockFace_Left_${blockWorldX}_${blockWorldY}_${blockWorldZ}`;
             this.chunkRoot.add(faceMesh);
           }
         }
@@ -232,6 +223,5 @@ export class Chunk {
         }
       }
     }
-    // Potentially other disposals if chunk holds more complex THREE objects
   }
 }

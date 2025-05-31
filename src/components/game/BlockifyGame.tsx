@@ -74,6 +74,7 @@ const BlockifyGame: React.FC = () => {
     refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
     refs.canvasRef.appendChild(refs.renderer.domElement);
 
+    // Initial chunk loading and processing
     refs.world.updateChunks(new THREE.Vector3(0,0,0)); 
     while(refs.world.getRemeshQueueSize() > 0) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize()); 
@@ -127,8 +128,10 @@ const BlockifyGame: React.FC = () => {
 
     const now = performance.now();
     frameCountRef.current++;
+
+    let newFpsValue: number | undefined = undefined;
     if (now >= lastFrameTimeRef.current + 1000) {
-      setDebugInfo(prev => ({ ...prev, fps: frameCountRef.current }));
+      newFpsValue = frameCountRef.current; // Frames counted in the last ~1 second interval
       frameCountRef.current = 0;
       lastFrameTimeRef.current = now;
     }
@@ -138,8 +141,8 @@ const BlockifyGame: React.FC = () => {
     refs.world.updateChunks(refs.player.mesh.position);
     refs.world.processRemeshQueue(1); 
 
-    // Update debug info
-    const player = refs.player;
+    // Prepare all debug strings using current refs
+    const player = refs.player; // Player ref is guaranteed non-null here
     const playerPosStr = `Player: X:${player.x.toFixed(2)}, Y:${player.y.toFixed(2)}, Z:${player.z.toFixed(2)}`;
     const playerChunkX = Math.floor(player.x / CHUNK_SIZE);
     const playerChunkZ = Math.floor(player.z / CHUNK_SIZE);
@@ -151,7 +154,7 @@ const BlockifyGame: React.FC = () => {
     const highlightStr = `HL: ${player.blockFaceHL.mesh.parent ? `${player.blockFaceHL.mesh.name.split('_').slice(0,3).join('_')} (${player.blockFaceHL.dir})` : 'Inactive'}`;
     
     setDebugInfo(prev => ({
-      ...prev, // Keep existing FPS
+      fps: newFpsValue !== undefined ? newFpsValue : prev.fps,
       playerPosition: playerPosStr,
       playerChunk: playerChunkStr,
       raycastTarget: rayTargetStr,
@@ -173,13 +176,13 @@ const BlockifyGame: React.FC = () => {
     if (refs.cursor.holding) {
       refs.cursor.holdTime++;
       if (refs.cursor.holdTime === refs.cursor.triggerHoldTime) {
-        refs.player.interactWithBlock(false); // false for place
+        refs.player.interactWithBlock(false); // false for place (right-click action)
       }
     }
     
     refs.renderer.render(refs.scene, refs.camera);
     refs.gameLoopId = requestAnimationFrame(renderScene);
-  }, []);
+  }, []); // Empty dependency array means this callback is created once.
 
 
   useEffect(() => {
@@ -192,8 +195,8 @@ const BlockifyGame: React.FC = () => {
     const handleKeyUp = (e: KeyboardEvent) => refs.player?.handleKeyUp(e);
     const handleMouseMove = (e: MouseEvent) => refs.player?.lookAround(e);
     const handleMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) refs.player?.interactWithBlock(true); 
-      if (e.button === 2) refs.player?.interactWithBlock(false); 
+      if (e.button === 0) refs.player?.interactWithBlock(true); // Left click: destroy
+      if (e.button === 2) refs.player?.interactWithBlock(false); // Right click: place
     };
 
     const handleTouchStart = (e: TouchEvent) => {
@@ -201,12 +204,16 @@ const BlockifyGame: React.FC = () => {
       refs.cursor.holdTime = 0;
     };
     const handleTouchMove = (e: TouchEvent) => {
+      // Could add touch-based look around logic here if desired
+      // For now, just reset holdTime if finger moves significantly to avoid accidental placement
       refs.cursor.holdTime = 0; 
     };
     const handleTouchEnd = (e: TouchEvent) => {
       if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) { 
+        // Short tap: destroy
         refs.player?.interactWithBlock(true); 
       }
+      // Long tap (holdTime >= triggerHoldTime) is handled by renderScene for placement
       refs.cursor.holding = false;
     };
 
@@ -288,3 +295,5 @@ const BlockifyGame: React.FC = () => {
 };
 
 export default BlockifyGame;
+
+    

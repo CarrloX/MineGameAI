@@ -31,21 +31,29 @@ export class Player {
   private name: string;
   private gameRefs: GameRefs;
 
+  public flying: boolean = false;
+  public flySpeed: number = 0.1;
+  private lastSpacePressTime: number = 0;
+  private flyToggleDelay: number = 300; // Milliseconds for double tap
+  public isFlyingAscending: boolean = false;
+  public isFlyingDescending: boolean = false;
+
+
   constructor(name: string, gameRefs: GameRefs, x: number = 0, y: number = 0, z: number = 0, preserveCam: boolean = false) {
     this.name = name;
     this.gameRefs = gameRefs;
-    
+
     this.x = x;
     this.y = y;
     this.z = z;
     this.height = 1.7;
-    this.width = 0.6; 
-    this.depth = 0.6; 
+    this.width = 0.6;
+    this.depth = 0.6;
     this.pitch = 0;
     this.yaw = 0;
-    this.speed = 0.07; 
+    this.speed = 0.07;
     this.velocity = 0;
-    this.jumpSpeed = 0.11; 
+    this.jumpSpeed = 0.11;
     this.jumpVelocity = 0;
     this.xdir = "";
     this.zdir = "";
@@ -55,26 +63,26 @@ export class Player {
     this.onGround = false;
     this.dead = false;
 
-    const highlightBoxGeo = new THREE.BoxGeometry(1.002, 1.002, 1.002); // Slightly larger to avoid z-fighting
+    const highlightBoxGeo = new THREE.BoxGeometry(1.002, 1.002, 1.002);
     const highlightEdgesGeo = new THREE.EdgesGeometry(highlightBoxGeo);
-    const highlightMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 }); // Black outline
-    
+    const highlightMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
+
     this.blockFaceHL = {
       mesh: new THREE.LineSegments(highlightEdgesGeo, highlightMaterial),
-      dir: "", // This 'dir' might be less relevant for a full cube outline
+      dir: "",
     };
     this.blockFaceHL.mesh.name = "Block_Wireframe_Highlight_Mesh";
-    this.blockFaceHL.mesh.renderOrder = 1; // Ensure it renders on top
+    this.blockFaceHL.mesh.renderOrder = 1;
 
-    this.mesh = new THREE.Object3D(); 
-    this.mesh.name = name; 
+    this.mesh = new THREE.Object3D();
+    this.mesh.name = name;
     this.mesh.position.set(this.x, this.y, this.z);
-    
+
     if (preserveCam && this.gameRefs.camera) {
         this.pitch = this.gameRefs.camera.rotation.x;
         this.yaw = this.gameRefs.camera.rotation.y;
     } else {
-        this.lookAround(); 
+        this.lookAround();
     }
   }
 
@@ -83,49 +91,47 @@ export class Player {
     if (!raycaster || !camera || !scene || !world) return;
 
     raycaster.setFromCamera({ x: 0, y: 0 }, camera);
-    
+
     const chunkMeshesToTest: THREE.Object3D[] = [];
     world.activeChunks.forEach(chunk => {
-        if (chunk.chunkRoot.visible) { 
+        if (chunk.chunkRoot.visible) {
             chunkMeshesToTest.push(...chunk.chunkRoot.children);
         }
     });
 
     const intersects = raycaster.intersectObjects(chunkMeshesToTest, false);
-    
+
     const firstValidIntersect = intersects.find(
       intersect => intersect.object instanceof THREE.Mesh &&
                    intersect.object.name.startsWith("MergedChunkMesh_") &&
-                   intersect.distance > 0.1 && 
+                   intersect.distance > 0.1 &&
                    intersect.distance < this.attackRange &&
-                   intersect.face 
+                   intersect.face
     );
 
     if (firstValidIntersect && firstValidIntersect.face) {
       const intersection = firstValidIntersect;
       const hitObject = intersection.object as THREE.Mesh;
-      
+
       const hitPointWorld = intersection.point.clone();
       const hitNormalLocal = intersection.face.normal.clone();
       const hitNormalWorld = hitNormalLocal.clone().transformDirection(hitObject.matrixWorld).normalize();
 
-      // Calculate the world coordinates of the block being looked at (for destruction)
       const calculatedBlockWorldCoords = new THREE.Vector3(
         Math.floor(hitPointWorld.x - hitNormalWorld.x * 0.49),
         Math.floor(hitPointWorld.y - hitNormalWorld.y * 0.49),
         Math.floor(hitPointWorld.z - hitNormalWorld.z * 0.49)
       );
-      
-      // Calculate the world coordinates for placing a new block (adjacent to the hit face)
+
       const calculatedPlaceBlockWorldCoords = new THREE.Vector3(
         Math.floor(hitPointWorld.x + hitNormalWorld.x * 0.49),
         Math.floor(hitPointWorld.y + hitNormalWorld.y * 0.49),
         Math.floor(hitPointWorld.z + hitNormalWorld.z * 0.49)
       );
-      
+
       this.lookingAt = {
         object: hitObject,
-        point: intersection.point, 
+        point: intersection.point,
         worldPoint: hitPointWorld,
         face: intersection.face,
         blockWorldCoords: calculatedBlockWorldCoords,
@@ -137,20 +143,18 @@ export class Player {
       if (!scene.getObjectByName(this.blockFaceHL.mesh.name)) {
         scene.add(this.blockFaceHL.mesh);
       }
-      
-      // Position the wireframe highlight at the center of the targeted block cell
+
       this.blockFaceHL.mesh.position.set(
         this.lookingAt.blockWorldCoords.x + 0.5,
         this.lookingAt.blockWorldCoords.y + 0.5,
         this.lookingAt.blockWorldCoords.z + 0.5
       );
-      this.blockFaceHL.mesh.rotation.set(0,0,0); // No rotation needed for a full cube outline
-      
-      // Determine face direction for debug info or other logic (optional, as visual is now a cube)
-      if (Math.abs(hitNormalWorld.x) > 0.5) this.blockFaceHL.dir = hitNormalWorld.x > 0 ? "East (+X)" : "West (-X)";
-      else if (Math.abs(hitNormalWorld.y) > 0.5) this.blockFaceHL.dir = hitNormalWorld.y > 0 ? "Top (+Y)" : "Bottom (-Y)";
-      else if (Math.abs(hitNormalWorld.z) > 0.5) this.blockFaceHL.dir = hitNormalWorld.z > 0 ? "South (+Z)" : "North (-Z)";
-      else this.blockFaceHL.dir = "Unknown";
+      this.blockFaceHL.mesh.rotation.set(0,0,0);
+
+      if (Math.abs(hitNormalWorld.x) > 0.5) this.blockFaceHL.dir = hitNormalWorld.x > 0 ? 'East (+X)' : 'West (-X)';
+      else if (Math.abs(hitNormalWorld.y) > 0.5) this.blockFaceHL.dir = hitNormalWorld.y > 0 ? 'Top (+Y)' : 'Bottom (-Y)';
+      else if (Math.abs(hitNormalWorld.z) > 0.5) this.blockFaceHL.dir = hitNormalWorld.z > 0 ? 'South (+Z)' : 'North (-Z)';
+      else this.blockFaceHL.dir = 'Unknown';
 
 
     } else {
@@ -169,25 +173,25 @@ export class Player {
     if (!cursor || !camera || !this.gameRefs.canvasRef) return;
 
     if (cursor.inWindow) {
-      const sensitivity = 0.002; 
+      const sensitivity = 0.002;
       if (e instanceof MouseEvent) {
         this.yaw -= e.movementX * sensitivity;
         this.pitch -= e.movementY * sensitivity;
       }
-      const maxPitch = Math.PI / 2 - 0.01; 
+      const maxPitch = Math.PI / 2 - 0.01;
       this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
       this.yaw = ((this.yaw % (2 * Math.PI)) + (2 * Math.PI)) % (2 * Math.PI);
       camera.rotation.x = this.pitch;
       camera.rotation.y = this.yaw;
-    } else { 
+    } else {
         camera.rotation.x = this.pitch;
         camera.rotation.y = this.yaw;
     }
   }
 
-  interactWithBlock(destroy: boolean): void { 
-    const { world, blocks: blockPrototypesArray, scene } = this.gameRefs;
-    if (!world || !blockPrototypesArray || !scene || !this.lookingAt) return;
+  interactWithBlock(destroy: boolean): void {
+    const { world, blocks: blockPrototypesArray } = this.gameRefs;
+    if (!world || !blockPrototypesArray || !this.lookingAt) return;
 
     if (destroy) {
       const { x, y, z } = this.lookingAt.blockWorldCoords;
@@ -195,38 +199,28 @@ export class Player {
           world.setBlock(x, y, z, 'air');
       } else {
           console.warn("Invalid block coordinates for destruction:", this.lookingAt.blockWorldCoords);
-          return;
       }
-      
-      // No need to explicitly remove the highlight mesh here, 
-      // highlightBlock will handle its visibility/removal in the next frame
-      // if (scene.getObjectByName(this.blockFaceHL.mesh.name)) {
-      //    scene.remove(this.blockFaceHL.mesh);
-      // }
-      // this.lookingAt = null; 
-      // this.blockFaceHL.dir = "";
-    } else { 
+    } else {
       const { x: placeX, y: placeY, z: placeZ } = this.lookingAt.placeBlockWorldCoords;
        if (!Number.isFinite(placeX) || !Number.isFinite(placeY) || !Number.isFinite(placeZ)) {
           console.warn("Invalid block coordinates for placement:", this.lookingAt.placeBlockWorldCoords);
           return;
       }
-      
-      const playerHeadY = Math.floor(this.y + this.height - 0.1); 
-      const playerFeetY = Math.floor(this.y + 0.1); 
+
+      const playerHeadY = Math.floor(this.y + this.height - 0.1);
+      const playerFeetY = Math.floor(this.y + 0.1);
 
       if ( (Math.floor(placeX) === Math.floor(this.x) && Math.floor(placeZ) === Math.floor(this.z)) &&
            (Math.floor(placeY) === playerFeetY || Math.floor(placeY) === playerHeadY) ) {
-        // Prevent placing blocks inside the player
-        return; 
+        return;
       }
 
-      if (placeY >= 0 && placeY < world.layers) { 
-        const blockToPlace = blockPrototypesArray[0]; 
+      if (placeY >= 0 && placeY < world.layers) {
+        const blockToPlace = blockPrototypesArray[0];
         if (blockToPlace) {
-          const blockMeshName = blockToPlace.mesh.name; 
+          const blockMeshName = blockToPlace.mesh.name;
           const blockNameKey = blockMeshName.startsWith('Block_') ? blockMeshName.substring(6) : 'unknownBlock';
-          
+
           if(blockNameKey && blockNameKey !== 'air' && blockNameKey !== 'unknownBlock') {
             world.setBlock(placeX, placeY, placeZ, blockNameKey);
           } else {
@@ -238,16 +232,45 @@ export class Player {
   }
 
   handleKeyDown(e: KeyboardEvent): void {
-    const { controlConfig } = this.gameRefs;
-    if (!controlConfig) return;
+    const { controlConfig, cursor } = this.gameRefs;
+    if (!controlConfig || !cursor || !cursor.inWindow) return;
 
-    switch (e.code) { 
+    switch (e.code) {
       case controlConfig.left: this.xdir = "left"; break;
       case controlConfig.right: this.xdir = "right"; break;
       case controlConfig.forwards: this.zdir = "forwards"; break;
       case controlConfig.backwards: this.zdir = "backwards"; break;
-      case controlConfig.jump: this.jumping = true; break;
-      case controlConfig.respawn: this.die(); break; 
+      case controlConfig.respawn: this.die(); break;
+      case controlConfig.jump: // Space bar
+        const now = performance.now();
+        if (now - this.lastSpacePressTime < this.flyToggleDelay) {
+          // Double tap detected
+          this.flying = !this.flying;
+          if (this.flying) {
+            this.jumpVelocity = 0; // Stop falling/jumping
+            this.onGround = false;   // Assume not on ground when starting to fly
+            this.jumping = false;    // Cancel any pending jump from the first tap
+            this.isFlyingAscending = false; // Don't ascend immediately on toggle
+          } else {
+            // Stopped flying
+            this.isFlyingAscending = false;
+            this.isFlyingDescending = false;
+          }
+        } else {
+          // Single tap
+          if (this.flying) {
+            this.isFlyingAscending = true;
+          } else {
+            this.jumping = true; // Normal jump
+          }
+        }
+        this.lastSpacePressTime = now;
+        break;
+      case controlConfig.flyDown:
+        if (this.flying) {
+          this.isFlyingDescending = true;
+        }
+        break;
     }
   }
 
@@ -260,10 +283,16 @@ export class Player {
       case controlConfig.right: if(this.xdir === "right") this.xdir = ""; break;
       case controlConfig.forwards: if(this.zdir === "forwards") this.zdir = ""; break;
       case controlConfig.backwards: if(this.zdir === "backwards") this.zdir = ""; break;
-      case controlConfig.jump: this.jumping = false; break;
+      case controlConfig.jump: // Space bar
+        this.jumping = false; // Always stop normal jump intention
+        this.isFlyingAscending = false; // Always stop flying ascent
+        break;
+      case controlConfig.flyDown:
+        this.isFlyingDescending = false; // Always stop flying descent
+        break;
     }
   }
-  
+
   die(): void {
     this.dead = true;
   }
@@ -289,7 +318,7 @@ export class Player {
       moveZ -= Math.cos(this.yaw);
       moveX -= Math.sin(this.yaw);
     }
-    
+
     const moveMagnitude = Math.sqrt(moveX * moveX + moveZ * moveZ);
     if (moveMagnitude > 0) {
         const normalizedMoveX = moveX / moveMagnitude;
@@ -298,27 +327,38 @@ export class Player {
         this.z += normalizedMoveZ * this.speed;
     }
 
-    if (this.jumping && this.onGround) { 
-      this.jumpVelocity = this.jumpSpeed;
-      this.onGround = false;
-    }
-    
-    this.y += this.jumpVelocity;
-    this.jumpVelocity -= world.gravity; 
-    if (this.jumpVelocity < -this.jumpSpeed * 1.5) { 
-        this.jumpVelocity = -this.jumpSpeed * 1.5;
+    if (this.flying) {
+      this.jumpVelocity = 0; // No gravity or jump arc while flying
+      if (this.isFlyingAscending) {
+        this.y += this.flySpeed;
+      }
+      if (this.isFlyingDescending) {
+        this.y -= this.flySpeed;
+      }
+    } else {
+      // Not flying: Apply gravity and normal jump
+      if (this.jumping && this.onGround) {
+        this.jumpVelocity = this.jumpSpeed;
+        this.onGround = false;
+      }
+
+      this.y += this.jumpVelocity;
+      this.jumpVelocity -= world.gravity;
+      if (this.jumpVelocity < -this.jumpSpeed * 1.5) {
+          this.jumpVelocity = -this.jumpSpeed * 1.5;
+      }
     }
 
-    this.onGround = false; 
+    this.onGround = false;
 
     const playerMinX = this.x - this.width / 2;
     const playerMaxX = this.x + this.width / 2;
-    const playerMinY = this.y; 
-    const playerMaxY = this.y + this.height; 
+    const playerMinY = this.y;
+    const playerMaxY = this.y + this.height;
     const playerMinZ = this.z - this.depth / 2;
     const playerMaxZ = this.z + this.depth / 2;
 
-    const checkRadius = 1; 
+    const checkRadius = 1;
     const startBlockY = Math.max(0, Math.floor(this.y) - checkRadius -1);
     const endBlockY = Math.min(world.layers, Math.floor(this.y + this.height) + checkRadius + 1);
 
@@ -347,27 +387,46 @@ export class Player {
                         const minOverlapX = Math.min(overlapXRight, overlapXLeft);
                         const minOverlapY = Math.min(overlapYTop, overlapYBottom);
                         const minOverlapZ = Math.min(overlapZFront, overlapZBack);
-                        
+
                         if (minOverlapY < minOverlapX && minOverlapY < minOverlapZ) {
-                            if (overlapYBottom < overlapYTop) { 
-                                if (this.jumpVelocity <= 0) { 
+                            if (overlapYBottom < overlapYTop) {
+                                // Collision with ground
+                                if (this.flying && !this.isFlyingDescending) { // If flying and not trying to go down, stop at surface
+                                    this.y = blockMaxY;
+                                    this.jumpVelocity = 0; // Stop any residual velocity
+                                    this.onGround = true;
+                                } else if (!this.flying && this.jumpVelocity <= 0) { // If falling or walking
                                     this.y = blockMaxY;
                                     this.jumpVelocity = 0;
                                     this.onGround = true;
+                                } else if (this.flying && this.isFlyingDescending) {
+                                    // Allow passing through if flying down, but stop if not moving fast enough
+                                     if (Math.abs(this.flySpeed) < 0.01 && this.jumpVelocity <=0) { // Prevent getting stuck
+                                        this.y = blockMaxY;
+                                        this.jumpVelocity = 0;
+                                        this.onGround = true;
+                                     }
                                 }
-                            } else { 
-                                if (this.jumpVelocity > 0) { 
+
+                            } else {
+                                // Collision with ceiling
+                                if (this.flying && !this.isFlyingAscending) { // If flying and not trying to go up, stop at surface
                                     this.y = blockMinY - this.height;
-                                    this.jumpVelocity = -0.001; 
+                                    this.jumpVelocity = 0;
+                                } else if (!this.flying && this.jumpVelocity > 0) { // If jumping into ceiling
+                                    this.y = blockMinY - this.height;
+                                    this.jumpVelocity = -0.001;
+                                } else if (this.flying && this.isFlyingAscending) {
+                                     // Allow passing through if flying up
                                 }
                             }
-                        } else if (minOverlapX < minOverlapY && minOverlapX < minOverlapZ) { 
+                        } else if (minOverlapX < minOverlapY && minOverlapX < minOverlapZ) {
                             if (overlapXRight < overlapXLeft) {
                                 this.x = blockMinX - this.width / 2;
                             } else {
                                 this.x = blockMaxX + this.width / 2;
                             }
-                        } else { 
+                        } else {
                             if (overlapZFront < overlapZBack) {
                                 this.z = blockMinZ - this.depth / 2;
                             } else {
@@ -379,10 +438,9 @@ export class Player {
             }
         }
     }
-    
+
     if (this.y < -world.voidHeight) this.die();
-    this.mesh.position.set(this.x, this.y, this.z); 
-    camera.position.set(this.x, this.y + this.height * 0.9, this.z); 
+    this.mesh.position.set(this.x, this.y, this.z);
+    camera.position.set(this.x, this.y + this.height * 0.9, this.z);
   }
 }
-

@@ -5,12 +5,13 @@ import type { World } from './World';
 import type { Block } from './Block';
 
 export interface ControlConfig {
-  backwards: string; // Changed from number to string for e.code
+  backwards: string;
   forwards: string;
   left: string;
   right: string;
   jump: string;
   respawn: string;
+  flyDown: string; // Added for descending while flying
 }
 
 export interface CursorState {
@@ -23,13 +24,13 @@ export interface CursorState {
 }
 
 export interface LookingAtInfo {
-  object: THREE.Object3D; // The merged mesh
-  point: THREE.Vector3;    // Hit point in local space of the object
-  worldPoint: THREE.Vector3; // Hit point in world space
-  face: THREE.Face | null; // Intersected face of merged geo (might be less reliable with merged)
-  blockWorldCoords: THREE.Vector3; // Calculated world coords of the block cell
-  placeBlockWorldCoords: THREE.Vector3; // Calculated world coords for placing a new block
-  worldFaceNormal: THREE.Vector3;  // Normal of the hit face in world space
+  object: THREE.Object3D;
+  point: THREE.Vector3;
+  worldPoint: THREE.Vector3;
+  face: THREE.Face | null;
+  blockWorldCoords: THREE.Vector3;
+  placeBlockWorldCoords: THREE.Vector3;
+  worldFaceNormal: THREE.Vector3;
   distance: number;
 }
 

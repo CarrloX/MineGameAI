@@ -112,49 +112,65 @@ export class Player {
       this.lookingAt = firstBlockFace;
 
       const faceMesh = firstBlockFace.object as THREE.Mesh;
-      const nameParts = faceMesh.name.split('_');
-      const blockWorldX = parseInt(nameParts[3], 10);
-      const blockWorldY = parseInt(nameParts[4], 10);
-      const blockWorldZ = parseInt(nameParts[5], 10);
-      const faceType = nameParts[2]; // Top, Bottom, Front, Back, Right, Left
+      const nameParts = faceMesh.name.split('_'); // BlockFace_Top_X_Y_Z
+      
+      if (nameParts.length < 5) { // Check for "BlockFace", "Type", "X", "Y", "Z"
+        if (scene.getObjectByName(this.blockFaceHL.mesh.name)) {
+            scene.remove(this.blockFaceHL.mesh);
+        }
+        this.lookingAt = null;
+        this.blockFaceHL.dir = "";
+        return;
+      }
 
-      // Corrected Visual Highlight Positioning
-      // The highlight plane is 1x1. Its center needs to be ON the face of the block.
-      // A block at (blockWorldX, blockWorldY, blockWorldZ) spans from X to X+1, Y to Y+1, Z to Z+1.
-      const epsilon = 0.015; // Slightly increased offset for visual clarity
-      this.blockFaceHL.mesh.position.set(blockWorldX + 0.5, blockWorldY + 0.5, blockWorldZ + 0.5); // Start at cell center
-      this.blockFaceHL.mesh.rotation.set(0,0,0); // Reset rotation
+      const blockWorldX = parseInt(nameParts[2], 10);
+      const blockWorldY = parseInt(nameParts[3], 10);
+      const blockWorldZ = parseInt(nameParts[4], 10);
+      const faceType = nameParts[1];
+
+      if (isNaN(blockWorldX) || isNaN(blockWorldY) || isNaN(blockWorldZ)) {
+        if (scene.getObjectByName(this.blockFaceHL.mesh.name)) {
+            scene.remove(this.blockFaceHL.mesh);
+        }
+        this.lookingAt = null;
+        this.blockFaceHL.dir = "";
+        return;
+      }
+      
+      const epsilon = 0.015; 
+      this.blockFaceHL.mesh.position.set(blockWorldX + 0.5, blockWorldY + 0.5, blockWorldZ + 0.5); 
+      this.blockFaceHL.mesh.rotation.set(0,0,0); 
 
       switch(faceType) {
-        case "Top": // Positive Y face is at Y = blockWorldY + 1
+        case "Top": 
             this.blockFaceHL.mesh.position.y = (blockWorldY + 1) + epsilon;
             this.blockFaceHL.mesh.rotation.x = -Math.PI / 2;
-            this.blockFaceHL.dir = "above"; // Place new block ON TOP of current block
+            this.blockFaceHL.dir = "above"; 
             break;
-        case "Bottom": // Negative Y face is at Y = blockWorldY
+        case "Bottom": 
             this.blockFaceHL.mesh.position.y = blockWorldY - epsilon;
             this.blockFaceHL.mesh.rotation.x = Math.PI / 2;
-            this.blockFaceHL.dir = "below"; // Place new block BENEATH current block
+            this.blockFaceHL.dir = "below"; 
             break;
-        case "Front": // Positive Z face is at Z = blockWorldZ + 1 (Chunk.ts places front face mesh at z + 0.5 + 0.5 relative to chunk origin)
+        case "Front": 
             this.blockFaceHL.mesh.position.z = (blockWorldZ + 1) + epsilon;
-            this.blockFaceHL.mesh.rotation.y = 0; // Default PlaneGeometry faces +Z if not rotated
-            this.blockFaceHL.dir = "south"; // Place new block IN FRONT OF (South, +Z) current block
+            this.blockFaceHL.mesh.rotation.y = 0; 
+            this.blockFaceHL.dir = "south"; 
             break;
-        case "Back": // Negative Z face is at Z = blockWorldZ
+        case "Back": 
             this.blockFaceHL.mesh.position.z = blockWorldZ - epsilon;
             this.blockFaceHL.mesh.rotation.y = Math.PI;
-            this.blockFaceHL.dir = "north"; // Place new block BEHIND (North, -Z) current block
+            this.blockFaceHL.dir = "north"; 
             break;
-        case "Right": // Positive X face is at X = blockWorldX + 1
+        case "Right": 
             this.blockFaceHL.mesh.position.x = (blockWorldX + 1) + epsilon;
             this.blockFaceHL.mesh.rotation.y = Math.PI / 2;
-            this.blockFaceHL.dir = "east";  // Place new block to the RIGHT (East, +X) current block
+            this.blockFaceHL.dir = "east";  
             break;
-        case "Left": // Negative X face is at X = blockWorldX
+        case "Left": 
             this.blockFaceHL.mesh.position.x = blockWorldX - epsilon;
             this.blockFaceHL.mesh.rotation.y = -Math.PI / 2;
-            this.blockFaceHL.dir = "west";  // Place new block to the LEFT (West, -X) current block
+            this.blockFaceHL.dir = "west";  
             break;
       }
       
@@ -205,15 +221,44 @@ export class Player {
     if (!world || !blockPrototypesArray || !scene || !this.lookingAt) return;
 
     const faceMesh = this.lookingAt.object as THREE.Mesh;
-    const nameParts = faceMesh.name.split('_');
-    let blockWorldX = parseInt(nameParts[3], 10);
-    let blockWorldY = parseInt(nameParts[4], 10);
-    let blockWorldZ = parseInt(nameParts[5], 10);
+    const nameParts = faceMesh.name.split('_'); // Example: BlockFace_Top_0_1_0
+
+    // nameParts[0] = "BlockFace"
+    // nameParts[1] = "Top" (Face Type)
+    // nameParts[2] = "0" (World X)
+    // nameParts[3] = "1" (World Y)
+    // nameParts[4] = "0" (World Z)
+
+    if (nameParts.length < 5) {
+        console.error("Interaction failed: Invalid faceMesh name:", faceMesh.name);
+        if (scene.getObjectByName(this.blockFaceHL.mesh.name)) {
+            scene.remove(this.blockFaceHL.mesh);
+        }
+        this.lookingAt = null;
+        return;
+    }
+
+    let blockWorldX = parseInt(nameParts[2], 10);
+    let blockWorldY = parseInt(nameParts[3], 10);
+    let blockWorldZ = parseInt(nameParts[4], 10);
+
+    if (isNaN(blockWorldX) || isNaN(blockWorldY) || isNaN(blockWorldZ)) {
+        console.error("Interaction failed: Could not parse coordinates from faceMesh name:", faceMesh.name, nameParts);
+        if (scene.getObjectByName(this.blockFaceHL.mesh.name)) {
+            scene.remove(this.blockFaceHL.mesh);
+        }
+        this.lookingAt = null;
+        return;
+    }
+
 
     if (destroy) {
       world.setBlock(blockWorldX, blockWorldY, blockWorldZ, 'air');
+      // The highlightBlock method will handle removing the highlight on the next frame
+      // by re-evaluating what the player is looking at.
+      // Forcing removal here can be okay too, but ensure lookingAt is nulled.
       if (scene.getObjectByName(this.blockFaceHL.mesh.name)) {
-        scene.remove(this.blockFaceHL.mesh);
+         scene.remove(this.blockFaceHL.mesh);
       }
       this.lookingAt = null; 
     } else { 
@@ -228,7 +273,9 @@ export class Player {
         case "below": placeY--; break;
         case "south": placeZ++; break;
         case "north": placeZ--; break;
-        default: return; 
+        default: 
+          console.warn("Cannot place block: unknown highlight direction", this.blockFaceHL.dir);
+          return; 
       }
       
       const playerHeadY = Math.floor(this.y + this.height - 0.1); 
@@ -236,14 +283,24 @@ export class Player {
 
       if ( (Math.floor(placeX) === Math.floor(this.x) && Math.floor(placeZ) === Math.floor(this.z)) &&
            (Math.floor(placeY) === playerFeetY || Math.floor(placeY) === playerHeadY) ) {
+        // Trying to place block inside player
         return; 
       }
 
       if (placeY >= 0 && placeY < world.layers) { 
-        const blockToPlace = blockPrototypesArray[0]; 
+        const blockToPlace = blockPrototypesArray[0]; // For now, always place the first block type
         if (blockToPlace) {
-          const blockNameKey = (blockToPlace.mesh.name as string).replace('Block_', '');
-          world.setBlock(placeX, placeY, placeZ, blockNameKey);
+          // Ensure blockNameKey is correctly derived from the prototype
+          const blockMeshName = blockToPlace.mesh.name; // e.g., "Block_grassBlock"
+          const blockNameKey = blockMeshName.startsWith('Block_') ? blockMeshName.substring(6) : blockMeshName;
+          
+          if(blockNameKey && blockNameKey !== 'air') {
+            world.setBlock(placeX, placeY, placeZ, blockNameKey);
+          } else {
+            console.warn("Attempted to place an invalid or air block prototype:", blockToPlace);
+          }
+        } else {
+            console.warn("No block prototype found to place.");
         }
       }
     }
@@ -331,49 +388,67 @@ export class Player {
     const playerMaxZ = this.z + this.depth / 2;
 
     const checkRadius = 1; 
-    for (let dx = -checkRadius; dx <= checkRadius; dx++) {
-        for (let dz = -checkRadius; dz <= checkRadius; dz++) {
-            for (let dy = 0; dy < world.layers ; dy++) { 
-                const blockWorldX = Math.floor(this.x) + dx;
-                const blockWorldY = dy; 
-                const blockWorldZ = Math.floor(this.z) + dz;
+    const startBlockY = Math.max(0, Math.floor(this.y) - checkRadius -1);
+    const endBlockY = Math.min(world.layers, Math.floor(this.y + this.height) + checkRadius + 1);
 
-                const blockType = world.getBlock(blockWorldX, blockWorldY, blockWorldZ);
+
+    for (let checkWorldX = Math.floor(playerMinX) - checkRadius; checkWorldX <= Math.floor(playerMaxX) + checkRadius; checkWorldX++) {
+        for (let checkWorldZ = Math.floor(playerMinZ) - checkRadius; checkWorldZ <= Math.floor(playerMaxZ) + checkRadius; checkWorldZ++) {
+            for (let checkWorldY = startBlockY; checkWorldY < endBlockY; checkWorldY++) {
+                
+                const blockType = world.getBlock(checkWorldX, checkWorldY, checkWorldZ);
+
                 if (blockType && blockType !== 'air') {
-                    const blockMinX = blockWorldX;
-                    const blockMaxX = blockWorldX + 1;
-                    const blockMinY = blockWorldY;
-                    const blockMaxY = blockWorldY + 1;
-                    const blockMinZ = blockWorldZ;
-                    const blockMaxZ = blockWorldZ + 1;
+                    const blockMinX = checkWorldX;
+                    const blockMaxX = checkWorldX + 1;
+                    const blockMinY = checkWorldY;
+                    const blockMaxY = checkWorldY + 1;
+                    const blockMinZ = checkWorldZ;
+                    const blockMaxZ = checkWorldZ + 1;
 
+                    // AABB collision check
                     if (playerMaxX > blockMinX && playerMinX < blockMaxX &&
                         playerMaxY > blockMinY && playerMinY < blockMaxY &&
                         playerMaxZ > blockMinZ && playerMinZ < blockMaxZ) {
                         
-                        const overlapX = Math.min(playerMaxX - blockMinX, blockMaxX - playerMinX);
-                        const overlapY = Math.min(playerMaxY - blockMinY, blockMaxY - playerMinY);
-                        const overlapZ = Math.min(playerMaxZ - blockMinZ, blockMaxZ - playerMinZ);
+                        // Resolve collision
+                        const overlapXRight = playerMaxX - blockMinX;
+                        const overlapXLeft = blockMaxX - playerMinX;
+                        const overlapYTop = playerMaxY - blockMinY; // Player's top colliding with block's bottom
+                        const overlapYBottom = blockMaxY - playerMinY; // Player's bottom colliding with block's top
+                        const overlapZFront = playerMaxZ - blockMinZ;
+                        const overlapZBack = blockMaxZ - playerMinZ;
 
-                        if (overlapY < overlapX && overlapY < overlapZ) {
-                            if (this.jumpVelocity <= 0 && playerMinY < blockMaxY && playerMaxY > blockMaxY) { 
-                                this.y = blockMaxY;
-                                this.jumpVelocity = 0;
-                                this.onGround = true;
-                            } else if (this.jumpVelocity > 0 && playerMaxY > blockMinY && playerMinY < blockMinY) { 
-                                this.y = blockMinY - this.height;
-                                this.jumpVelocity = -0.01; 
+                        const minOverlapX = Math.min(overlapXRight, overlapXLeft);
+                        const minOverlapY = Math.min(overlapYTop, overlapYBottom);
+                        const minOverlapZ = Math.min(overlapZFront, overlapZBack);
+                        
+                        if (minOverlapY < minOverlapX && minOverlapY < minOverlapZ) {
+                            // Vertical collision
+                            if (overlapYBottom < overlapYTop) { // Player landed on top of block
+                                if (this.jumpVelocity <= 0) {
+                                    this.y = blockMaxY;
+                                    this.jumpVelocity = 0;
+                                    this.onGround = true;
+                                }
+                            } else { // Player hit block from below
+                                if (this.jumpVelocity > 0) {
+                                    this.y = blockMinY - this.height;
+                                    this.jumpVelocity = -0.001; // Stop upward movement
+                                }
                             }
-                        } else if (overlapX < overlapY && overlapX < overlapZ) {
-                            if (playerMaxX > blockMinX && this.x < blockMinX + this.width / 2) { 
+                        } else if (minOverlapX < minOverlapY && minOverlapX < minOverlapZ) {
+                            // Horizontal X collision
+                            if (overlapXRight < overlapXLeft) { // Player hit block from the left
                                 this.x = blockMinX - this.width / 2;
-                            } else if (playerMinX < blockMaxX && this.x > blockMaxX - this.width / 2) { 
+                            } else { // Player hit block from the right
                                 this.x = blockMaxX + this.width / 2;
                             }
                         } else {
-                            if (playerMaxZ > blockMinZ && this.z < blockMinZ + this.depth / 2) { 
+                            // Horizontal Z collision
+                            if (overlapZFront < overlapZBack) { // Player hit block from the back
                                 this.z = blockMinZ - this.depth / 2;
-                            } else if (playerMinZ < blockMaxZ && this.z > blockMaxZ - this.depth / 2) { 
+                            } else { // Player hit block from the front
                                 this.z = blockMaxZ + this.depth / 2;
                             }
                         }
@@ -388,3 +463,4 @@ export class Player {
     camera.position.set(this.x, this.y + this.height * 0.9, this.z); 
   }
 }
+

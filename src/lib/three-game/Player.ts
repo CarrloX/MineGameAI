@@ -39,9 +39,9 @@ export class Player {
   public isFlyingDescending: boolean = false;
   
   public isRunning: boolean = false;
-  public isBoosting: boolean = false; // This is for flying boost
-  public boostSpeedMultiplier: number = 3.0; // For flying
-  public runSpeedMultiplier: number = 1.4; // For running on ground
+  public runSpeedMultiplier: number = 1.4; 
+  public isBoosting: boolean = false; 
+  public boostSpeedMultiplier: number = 3.0; 
 
 
   constructor(name: string, gameRefs: GameRefs, x: number = 0, y: number = 0, z: number = 0, preserveCam: boolean = false) {
@@ -248,7 +248,6 @@ export class Player {
       case controlConfig.jump:
         const now = performance.now();
         if (now - this.lastSpacePressTime < this.flyToggleDelay && this.lastSpacePressTime !== 0) {
-            // Double tap
             this.flying = !this.flying;
             this.isFlyingAscending = false;
             this.isFlyingDescending = false;
@@ -257,13 +256,12 @@ export class Player {
                 this.jumping = false;
                 this.jumpVelocity = 0;
                 this.onGround = false;
-                 this.isRunning = false; // Stop running if starting to fly
+                this.isRunning = false; 
             } else {
-                this.isBoosting = false; // Turn off flying boost if flight is disabled
-                this.onGround = false; // Force re-evaluation
+                this.isBoosting = false; 
+                this.onGround = false; 
             }
         } else {
-            // Single tap
             if (this.flying) {
                 this.isFlyingAscending = true;
             } else {
@@ -281,7 +279,7 @@ export class Player {
         if (this.flying) {
           this.isBoosting = !this.isBoosting; 
         } else {
-          this.isRunning = !this.isRunning; 
+          this.isRunning = !this.isRunning;
         }
         break;
     }
@@ -442,12 +440,18 @@ export class Player {
                                 }
                             }
                         } else if (overlapX < overlapY && overlapX < overlapZ) { 
+                            if (!this.flying && this.isRunning) {
+                                this.isRunning = false; // Cancel sprint on horizontal collision
+                            }
                             if ((pMaxX - bMinX) < (bMaxX - pMinX)) { 
                                 correctedX = bMinX - this.width / 2 - 0.001;
                             } else { 
                                 correctedX = bMaxX + this.width / 2 + 0.001;
                             }
                         } else { 
+                             if (!this.flying && this.isRunning) {
+                                this.isRunning = false; // Cancel sprint on horizontal collision
+                            }
                              if ((pMaxZ - bMinZ) < (bMaxZ - pMinZ)) { 
                                 correctedZ = bMinZ - this.depth / 2 - 0.001;
                             } else { 
@@ -483,6 +487,18 @@ export class Player {
             if (this.jumpVelocity > 0) this.jumpVelocity = -0.001; 
         }
         this.onGround = landedOnGroundThisFrame;
+    }
+
+    // Check if player is in water and cancel sprint if so
+    if (!this.flying && this.isRunning) {
+        const playerFeetBlockX = Math.floor(this.x);
+        const playerFeetBlockY = Math.floor(this.y); // Check at the player's very bottom
+        const playerFeetBlockZ = Math.floor(this.z);
+        const blockAtFeet = world.getBlock(playerFeetBlockX, playerFeetBlockY, playerFeetBlockZ);
+
+        if (blockAtFeet === 'waterBlock') {
+            this.isRunning = false;
+        }
     }
 
     if (this.y < -world.voidHeight && !this.dead) this.die();

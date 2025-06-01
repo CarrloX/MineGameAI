@@ -4,7 +4,8 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import * as THREE from 'three';
 import { World } from '@/lib/three-game/World';
-import { Player } from '@/lib/three-game/Player';
+// Player is now instantiated by GameLogic
+// import { Player } from '@/lib/three-game/Player';
 import { InputController } from '@/lib/three-game/InputController';
 import { RendererManager } from '@/lib/three-game/RendererManager';
 import { GameLogic } from '@/lib/three-game/GameLogic';
@@ -23,7 +24,7 @@ const BlockifyGame: React.FC = () => {
     textureLoader: null,
     world: null,
     blocks: null,
-    player: null,
+    player: null, // Player will be created by GameLogic
     inputController: null,
     rendererManager: null,
     gameLogic: null,
@@ -54,12 +55,10 @@ const BlockifyGame: React.FC = () => {
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
 
   const gameLoop = useCallback(() => {
-    if (!gameRefs.current.gameLogic) {
-        // If gameLogic is not yet ready, request the next frame and try again.
-        // This guards against race conditions if gameLoop starts before initGame fully completes gameLogic setup.
-        // However, initGame itself starts the loop, so gameLogic should be set. This is more a safety.
-        if (gameRefs.current.gameLoopId !== null) { // Only re-queue if not already stopped
-          gameRefs.current.gameLoopId = requestAnimationFrame(gameLoop);
+    const refs = gameRefs.current;
+    if (!refs.gameLogic) {
+        if (refs.gameLoopId !== null) {
+          refs.gameLoopId = requestAnimationFrame(gameLoop);
         }
         return;
     }
@@ -75,24 +74,23 @@ const BlockifyGame: React.FC = () => {
     }
 
     try {
-      gameRefs.current.gameLogic.update(newFpsValue);
+      refs.gameLogic.update(newFpsValue); // GameLogic's update now drives the game
     } catch (error: any) {
       console.error("Error in game loop:", error);
       setErrorInfo({
         title: "Game Loop Error!",
         message: `Message: ${error.message}\n\nStack:\n${error.stack}`
       });
-      if (gameRefs.current.gameLoopId !== null) {
-        cancelAnimationFrame(gameRefs.current.gameLoopId);
-        gameRefs.current.gameLoopId = null;
+      if (refs.gameLoopId !== null) {
+        cancelAnimationFrame(refs.gameLoopId);
+        refs.gameLoopId = null;
       }
-      return; // Stop the loop on error
+      return;
     }
-    // Re-queue the next frame if not stopped by an error
-    if (gameRefs.current.gameLoopId !== null) {
-        gameRefs.current.gameLoopId = requestAnimationFrame(gameLoop);
+    if (refs.gameLoopId !== null) {
+        refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
-  }, []);
+  }, []); // Dependencies for gameLoop can be kept minimal if it calls stable refs
 
 
   const initGame = useCallback(() => {
@@ -101,77 +99,60 @@ const BlockifyGame: React.FC = () => {
     if (!mountRef.current) return;
     refs.canvasRef = mountRef.current;
 
-    setErrorInfo(null);
+    setErrorInfo(null); // Clear previous errors
 
+    // 1. Initialize Three.js core components
     refs.threeSetup = new ThreeSetup();
-    refs.threeSetup.initialize(refs.canvasRef, refs);
+    refs.threeSetup.initialize(refs.canvasRef, refs); // Populates scene, camera, renderer, blocks, lighting etc. in refs
 
-    if (!refs.scene || !refs.camera || !refs.renderer || !refs.textureLoader || !refs.blocks || !refs.lighting) {
+    if (!refs.scene || !refs.camera || !refs.renderer || !refs.textureLoader || !refs.blocks || !refs.lighting || !refs.raycaster) {
         console.error("ThreeSetup did not initialize all required gameRefs properties.");
         setErrorInfo({ title: "Initialization Error", message: "ThreeSetup failed to initialize essential Three.js components." });
         return;
     }
     
-    refs.rendererManager = new RendererManager(refs.canvasRef, refs); 
+    // 2. Initialize RendererManager (primarily for resize handling and the render call)
+    refs.rendererManager = new RendererManager(refs.canvasRef, refs);
+    if (refs.renderer && refs.world) { // world is not yet initialized here, so this might need adjustment
+       refs.renderer.setClearColor(new THREE.Color(0xf1f1f1)); // Default sky color, world might override
+    } else if (refs.renderer) {
+       refs.renderer.setClearColor(new THREE.Color(0xf1f1f1));
+    }
+
+
+    // 3. Initialize World (depends on blocks from ThreeSetup)
     refs.world = new World(refs);
-    if (refs.renderer && refs.world) {
+     if (refs.renderer && refs.world) { // Now world is initialized
        refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
     }
 
-    const initialPlayerX = 0.5;
-    const initialPlayerZ = 0.5;
 
-    refs.world.updateChunks(new THREE.Vector3(initialPlayerX, 0, initialPlayerZ));
-    while(refs.world.getRemeshQueueSize() > 0) {
-        refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
-    }
+    // Player is now created inside GameLogic's constructor
+    // Initial camera setup is also handled by GameLogic or Player constructor
 
-    let spawnY = refs.world.getSpawnHeight(initialPlayerX, initialPlayerZ);
-    let attempts = 0;
-    const maxAttempts = 15;
-    while(attempts < maxAttempts) {
-        const blockAtFeet = refs.world.getBlock(Math.floor(initialPlayerX), Math.floor(spawnY), Math.floor(initialPlayerZ));
-        const blockAtHead = refs.world.getBlock(Math.floor(initialPlayerX), Math.floor(spawnY + 1), Math.floor(initialPlayerZ));
-
-        if (blockAtFeet === 'air' && blockAtHead === 'air') {
-          break;
-        }
-        spawnY++;
-        attempts++;
-        if (spawnY >= refs.world.layers - 2) {
-            console.warn("Spawn safety check reached near world top. Defaulting Y.");
-            spawnY = Math.floor(refs.world.layers / 2);
-            break;
-        }
-    }
-     if (attempts >= maxAttempts) {
-        console.warn("Could not find a perfectly safe respawn Y after " + maxAttempts + " attempts. Player collision logic should resolve.");
-    }
-
-    refs.player = new Player("Player", refs, initialPlayerX, spawnY, initialPlayerZ); 
-    refs.inputController = new InputController(refs.player, refs); 
+    // 4. Initialize InputController (Player instance is now created by GameLogic, so pass undefined or handle later)
+    refs.inputController = new InputController(refs); // Player will be set by GameLogic
     refs.inputController.setupEventListeners();
 
+    // 5. Initialize GameLogic (creates Player, connects pieces)
     refs.gameLogic = new GameLogic(refs, setDebugInfo, setIsCameraSubmerged);
+    // GameLogic's constructor now calls initializePlayer which sets up the player and camera
 
-    if (refs.camera && refs.player) {
-      refs.camera.position.set(refs.player.x, refs.player.y + refs.player.height * 0.9, refs.player.z);
-    }
-
-    console.log("Game initialized.");
+    console.log("Game initialized by BlockifyGame.");
     if (refs.gameLoopId === null) {
       console.log("Starting game loop from initGame");
       refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
-  }, [gameLoop, setDebugInfo, setIsCameraSubmerged]);
+  }, [gameLoop, setDebugInfo, setIsCameraSubmerged]); // initGame dependencies
 
 
   useEffect(() => {
     initGame();
 
-    const refs = gameRefs.current;
+    const refs = gameRefs.current; // For cleanup
 
     const updateCrosshairColor = () => {
+        // Access player through gameRefs, which is set by GameLogic
         if (refs.player?.lookingAt) {
             setCrosshairBgColor('rgba(255, 255, 255, 0.75)');
         } else {
@@ -180,7 +161,7 @@ const BlockifyGame: React.FC = () => {
     };
 
     const intervalId = setInterval(() => {
-      if (refs.player) {
+      if (refs.player) { // Check if player exists on gameRefs
         updateCrosshairColor();
       }
     }, 100);
@@ -199,20 +180,24 @@ const BlockifyGame: React.FC = () => {
       document.removeEventListener("contextmenu", handleContextMenu);
 
       gameRefs.current.inputController?.removeEventListeners();
-      gameRefs.current.rendererManager?.dispose();
+      gameRefs.current.rendererManager?.dispose(); // Disposes renderer, removes resize listener
       
+      // Dispose world resources (chunks)
       gameRefs.current.world?.activeChunks.forEach((chunk) => {
         if (chunk && typeof chunk.dispose === 'function') {
           chunk.dispose();
         }
       });
 
+      // Dispose scene objects (geometries, materials)
+      // This is crucial and might need to be more thorough if ThreeSetup doesn't handle it.
+      // For now, RendererManager.dispose only handles the renderer itself.
       gameRefs.current.scene?.traverse(object => {
         if (object instanceof THREE.Mesh) {
           object.geometry?.dispose();
           if (Array.isArray(object.material)) {
             object.material.forEach(material => {
-                material.map?.dispose();
+                material.map?.dispose(); // Dispose textures
                 material.dispose();
             });
           } else if ((object.material as THREE.Material)?.map) {
@@ -223,36 +208,45 @@ const BlockifyGame: React.FC = () => {
           }
         }
       });
+       // Clear lighting from scene if added by ThreeSetup
+      if (gameRefs.current.lighting?.ambient) gameRefs.current.scene?.remove(gameRefs.current.lighting.ambient);
+      if (gameRefs.current.lighting?.directional) gameRefs.current.scene?.remove(gameRefs.current.lighting.directional);
 
+
+      // Nullify refs to help with GC and prevent stale references
       Object.keys(gameRefs.current).forEach(key => {
-        if (key !== 'controlConfig' && key !== 'cursor') { 
+        // Keep controlConfig and cursor as they are simple objects, not holding complex resources
+        if (key !== 'controlConfig' && key !== 'cursor' && key !== 'canvasRef') {
             (gameRefs.current as any)[key] = null;
         }
       });
       
-      console.log("Cleanup complete.");
+      console.log("Cleanup complete for BlockifyGame.");
     };
-  }, [initGame]); 
+  }, [initGame]); // useEffect for init and cleanup
 
 
+  // Effect for handling camera submerged visual changes
   useEffect(() => {
-    const { renderer, scene, world } = gameRefs.current; // Removed lighting as it's not directly used here
-    if (!renderer || !scene || !world ) return;
+    const { renderer, scene, world } = gameRefs.current;
+    if (!renderer || !scene ) return; // World might not be needed if skyColor comes from a different source or is static for water
 
     if (isCameraSubmerged) {
-        renderer.setClearColor(new THREE.Color(0x3A5F83)); 
-        if (!scene.fog || !(scene.fog instanceof THREE.Fog)) {
+        renderer.setClearColor(new THREE.Color(0x3A5F83)); // Water color
+        if (!scene.fog || !(scene.fog instanceof THREE.Fog)) { // Create fog if none
             scene.fog = new THREE.Fog(0x3A5F83, 0.1, CHUNK_SIZE * 1.5);
-        } else {
+        } else { // Update existing fog
             scene.fog.color.setHex(0x3A5F83);
             scene.fog.near = 0.1;
             scene.fog.far = CHUNK_SIZE * 1.5;
         }
     } else {
-        renderer.setClearColor(new THREE.Color(world.skyColor));
-        scene.fog = null; 
+        // Revert to sky color and remove/adjust fog
+        const skyColorToUse = gameRefs.current.world ? gameRefs.current.world.skyColor : 0xf1f1f1; // Fallback sky color
+        renderer.setClearColor(new THREE.Color(skyColorToUse));
+        scene.fog = null; // Or set to a distant sky fog if desired
     }
-  }, [isCameraSubmerged]);
+  }, [isCameraSubmerged]); // Only re-run when isCameraSubmerged changes
 
 
   return (
@@ -263,6 +257,7 @@ const BlockifyGame: React.FC = () => {
           message={errorInfo.message}
           onClose={() => {
             setErrorInfo(null);
+            // Potentially re-initialize or offer a refresh option here
           }}
         />
       )}
@@ -294,5 +289,3 @@ const BlockifyGame: React.FC = () => {
 };
 
 export default BlockifyGame;
-
-    

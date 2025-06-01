@@ -1,10 +1,12 @@
 
-import type { GameRefs } from './types';
+import type { GameRefs, PlayerCameraService } from './types';
 import type { Player } from './Player';
 
-export class InputController { // Renamed from InputHandler
-  private player: Player;
-  private gameRefs: GameRefs;
+export class InputController {
+  private player: Player | null = null; // Player can be null initially or after destruction
+  private gameRefs: GameRefs; // Keep for controlConfig, cursor
+  // No direct cameraService needed here if Player.lookAround handles camera internally
+
   private boundHandleKeyDown: (e: KeyboardEvent) => void;
   private boundHandleKeyUp: (e: KeyboardEvent) => void;
   private boundHandleMouseMove: (e: MouseEvent) => void;
@@ -16,9 +18,9 @@ export class InputController { // Renamed from InputHandler
   private boundHandleTouchEnd: (e: TouchEvent) => void;
 
 
-  constructor(player: Player, gameRefs: GameRefs) {
-    this.player = player;
+  constructor(gameRefs: GameRefs, initialPlayer?: Player) { // Player is now optional
     this.gameRefs = gameRefs;
+    if (initialPlayer) this.player = initialPlayer;
 
     this.boundHandleKeyDown = this.handleKeyDown.bind(this);
     this.boundHandleKeyUp = this.handleKeyUp.bind(this);
@@ -31,18 +33,21 @@ export class InputController { // Renamed from InputHandler
     this.boundHandleTouchEnd = this.handleTouchEnd.bind(this);
   }
 
+  public setPlayer(player: Player | null) { // Allow setting player to null
+    this.player = player;
+  }
+
   public setupEventListeners(): void {
     if (!this.gameRefs.canvasRef) return;
 
     window.addEventListener("keydown", this.boundHandleKeyDown);
     window.addEventListener("keyup", this.boundHandleKeyUp);
-    window.addEventListener("mousemove", this.boundHandleMouseMove);
+    document.addEventListener('pointerlockchange', this.boundHandlePointerLockChange, false);
     this.gameRefs.canvasRef.addEventListener("mousedown", this.boundHandleMouseDown);
     this.gameRefs.canvasRef.addEventListener("click", this.boundHandleCanvasClick);
-    document.addEventListener('pointerlockchange', this.boundHandlePointerLockChange, false);
 
-    this.gameRefs.canvasRef.addEventListener("touchstart", this.boundHandleTouchStart, { passive: true });
-    this.gameRefs.canvasRef.addEventListener("touchmove", this.boundHandleTouchMove, { passive: true });
+    this.gameRefs.canvasRef.addEventListener("touchstart", this.boundHandleTouchStart, { passive: false });
+    this.gameRefs.canvasRef.addEventListener("touchmove", this.boundHandleTouchMove, { passive: false });
     this.gameRefs.canvasRef.addEventListener("touchend", this.boundHandleTouchEnd);
   }
 
@@ -51,10 +56,10 @@ export class InputController { // Renamed from InputHandler
 
     window.removeEventListener("keydown", this.boundHandleKeyDown);
     window.removeEventListener("keyup", this.boundHandleKeyUp);
-    window.removeEventListener("mousemove", this.boundHandleMouseMove);
+    // mousemove is added/removed in handlePointerLockChange
+    document.removeEventListener('pointerlockchange', this.boundHandlePointerLockChange, false);
     this.gameRefs.canvasRef.removeEventListener("mousedown", this.boundHandleMouseDown);
     this.gameRefs.canvasRef.removeEventListener("click", this.boundHandleCanvasClick);
-    document.removeEventListener('pointerlockchange', this.boundHandlePointerLockChange, false);
 
     this.gameRefs.canvasRef.removeEventListener("touchstart", this.boundHandleTouchStart);
     this.gameRefs.canvasRef.removeEventListener("touchmove", this.boundHandleTouchMove);
@@ -64,23 +69,29 @@ export class InputController { // Renamed from InputHandler
   private handleCanvasClick(): void {
     if (!this.gameRefs.canvasRef) return;
     if (!document.pointerLockElement) {
-      this.gameRefs.canvasRef.requestPointerLock().catch(err => console.error("Pointer lock failed:", err));
+      this.gameRefs.canvasRef.requestPointerLock()
+        .catch(err => console.error("Pointer lock failed:", err));
     }
   }
 
   private handlePointerLockChange(): void {
     const { cursor, canvasRef } = this.gameRefs;
     if (!cursor || !canvasRef) return;
-    cursor.inWindow = document.pointerLockElement === canvasRef;
-    if (!cursor.inWindow) {
-      cursor.x = canvasRef.clientWidth / 2;
-      cursor.y = canvasRef.clientHeight / 2;
+
+    if (document.pointerLockElement === canvasRef) {
+        document.addEventListener("mousemove", this.boundHandleMouseMove, false);
+        cursor.inWindow = true;
+    } else {
+        document.removeEventListener("mousemove", this.boundHandleMouseMove, false);
+        cursor.inWindow = false;
+        cursor.x = canvasRef.clientWidth / 2;
+        cursor.y = canvasRef.clientHeight / 2;
     }
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
-    const { controlConfig, cursor } = this.gameRefs;
-    if (!controlConfig || !cursor || !cursor.inWindow) return;
+    const { controlConfig } = this.gameRefs;
+    if (!controlConfig || !this.player) return;
 
     switch (e.code) {
       case controlConfig.left: this.player.xdir = "left"; break;
@@ -131,7 +142,7 @@ export class InputController { // Renamed from InputHandler
 
   private handleKeyUp(e: KeyboardEvent): void {
     const { controlConfig } = this.gameRefs;
-    if (!controlConfig) return;
+    if (!controlConfig || !this.player) return;
 
     switch (e.code) {
       case controlConfig.left: if (this.player.xdir === "left") this.player.xdir = ""; break;
@@ -149,46 +160,72 @@ export class InputController { // Renamed from InputHandler
   }
 
   private handleMouseMove(e: MouseEvent): void {
-    if (this.gameRefs.cursor?.inWindow) {
-      this.player.lookAround(e);
+    if (this.gameRefs.cursor?.inWindow && this.player) {
+        const sensitivity = 0.002;
+        this.player.yaw -= e.movementX * sensitivity;
+        this.player.pitch -= e.movementY * sensitivity;
+        this.player.lookAround(); // Player applies its pitch/yaw to its cameraService
     }
   }
 
   private handleMouseDown(e: MouseEvent): void {
-    if (this.gameRefs.cursor?.inWindow) {
+    if (this.gameRefs.cursor?.inWindow && this.player) {
       if (e.button === 0) this.player.interactWithBlock(true); // Left click - destroy
       if (e.button === 2) this.player.interactWithBlock(false); // Right click - place
     }
   }
 
+  private lastTouchX: number | null = null;
+  private lastTouchY: number | null = null;
+
   private handleTouchStart(e: TouchEvent): void {
+    e.preventDefault();
     const { cursor } = this.gameRefs;
-    if (!cursor) return;
+    if (!cursor || !this.player) return;
+
     if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      this.lastTouchX = touch.clientX;
+      this.lastTouchY = touch.clientY;
       cursor.holding = true;
       cursor.holdTime = 0;
     }
   }
+
   private handleTouchMove(e: TouchEvent): void {
+    e.preventDefault();
     const { cursor } = this.gameRefs;
-    if (!cursor) return;
-    cursor.holdTime = 0; // Reset hold time if finger moves, to prevent accidental destruction
+    if (!cursor || !this.player) return;
+
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      if (this.lastTouchX !== null && this.lastTouchY !== null) {
+        const sensitivity = 0.005;
+        const deltaX = touch.clientX - this.lastTouchX;
+        const deltaY = touch.clientY - this.lastTouchY;
+
+        this.player.yaw -= deltaX * sensitivity;
+        this.player.pitch -= deltaY * sensitivity;
+        this.player.lookAround();
+      }
+      this.lastTouchX = touch.clientX;
+      this.lastTouchY = touch.clientY;
+      cursor.holdTime = 0;
+    }
   }
 
   private handleTouchEnd(e: TouchEvent): void {
+    e.preventDefault();
     const { cursor } = this.gameRefs;
-    if (!cursor) return;
+    if (!cursor || !this.player) return;
+
+    this.lastTouchX = null;
+    this.lastTouchY = null;
 
     if (cursor.holding) {
-      // Check if it was a quick tap (holdTime is short)
-      if (cursor.holdTime < cursor.triggerHoldTime && cursor.holdTime >= 0) { // holdTime can be 0
-        this.player.interactWithBlock(true); // Tap to destroy
+      if (cursor.holdTime < cursor.triggerHoldTime && cursor.holdTime >= 0) {
+        this.player.interactWithBlock(true);
       }
-      // If holdTime >= triggerHoldTime, it means it was a hold, and interactWithBlock(false) for placement
-      // should have already been triggered by the GameLogic/Manager on its update loop.
-      // Or, if you want tap-and-hold for placement on touch, you'd add that logic here or ensure
-      // the GameLogic/Manager handles it appropriately based on `cursor.holding` and `cursor.holdTime`.
-      // For now, a short tap destroys. A longer hold (handled by GameLogic) might place.
       cursor.holding = false;
       cursor.holdTime = 0;
     }

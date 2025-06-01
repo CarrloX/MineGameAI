@@ -1,6 +1,6 @@
 
 import * as THREE from 'three';
-import type { GameRefs, DebugInfoState } from './types';
+import type { GameRefs, DebugInfoState, PlayerWorldService, PlayerCameraService, PlayerSceneService, PlayerRaycasterService } from './types';
 import { CHUNK_SIZE } from './utils';
 import { Player } from './Player';
 
@@ -18,19 +18,57 @@ export class GameLogic {
     this.gameRefs = gameRefs;
     this.setDebugInfo = setDebugInfo;
     this.setIsCameraSubmerged = setIsCameraSubmerged;
+    this.initializePlayer(); // Initialize player here
   }
+
+  private initializePlayer(): void {
+    const refs = this.gameRefs;
+    if (!refs.world || !refs.camera || !refs.scene || !refs.raycaster) {
+      console.error("GameLogic: Core refs not available for player initialization.");
+      return;
+    }
+    const initialPlayerX = 0.5;
+    const initialPlayerZ = 0.5;
+    let spawnY = refs.world.getSpawnHeight(initialPlayerX, initialPlayerZ);
+    // Simplified spawn Y finding for brevity, assuming world is ready
+    // In a real scenario, ensure world chunks are loaded before getSpawnHeight
+
+    refs.player = new Player(
+      "Player",
+      refs.world as PlayerWorldService, // Cast to the service type
+      refs.camera as PlayerCameraService, // Cast to the service type
+      refs.scene as PlayerSceneService,   // Cast to the service type
+      refs.raycaster as PlayerRaycasterService, // Cast to the service type
+      initialPlayerX,
+      spawnY,
+      initialPlayerZ
+    );
+
+    if (refs.inputController) {
+      refs.inputController.setPlayer(refs.player);
+    } else {
+        console.warn("GameLogic: InputController not available to set player.");
+    }
+    
+    // Initial camera position update
+    refs.camera.position.set(refs.player.x, refs.player.y + refs.player.height * 0.9, refs.player.z);
+    refs.player.lookAround(); // Apply initial rotation
+  }
+
 
   public update(newFpsValue?: number): void {
     const refs = this.gameRefs;
-    if (!refs.player || !refs.rendererManager || !refs.scene || !refs.camera || !refs.world) {
+    // Player is now initialized in constructor, so should exist if GameLogic is constructed.
+    if (!refs.player || !refs.rendererManager || !refs.scene || !refs.camera || !refs.world || !refs.raycaster || !refs.inputController) {
       if (refs.gameLoopId !== null) cancelAnimationFrame(refs.gameLoopId);
       refs.gameLoopId = null;
+      console.warn("GameLogic.update: Critical refs missing, stopping loop.", refs);
       return;
     }
 
-    refs.player.updatePosition(); 
+    refs.player.updatePosition();
     refs.player.highlightBlock();
-    refs.world.updateChunks(refs.player.mesh.position);
+    refs.world.updateChunks(refs.player.mesh.position); // player.mesh.position is updated in player.updatePosition
     if (refs.camera) {
       refs.world.updateChunkVisibility(refs.camera);
     }
@@ -101,18 +139,18 @@ export class GameLogic {
 
       let safeRespawnY = refs.world.getSpawnHeight(respawnX, respawnZ);
       let attempts = 0;
-      const maxAttempts = 15;
+      const maxAttempts = 15; // Safety break
 
       while(attempts < maxAttempts) {
         const blockAtFeet = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY), Math.floor(respawnZ));
         const blockAtHead = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY + 1), Math.floor(respawnZ));
 
         if (blockAtFeet === 'air' && blockAtHead === 'air') {
-          break;
+          break; // Found a safe spot
         }
         safeRespawnY++;
         attempts++;
-        if (safeRespawnY >= refs.world.layers - 2) {
+        if (safeRespawnY >= refs.world.layers - 2) { // Prevent infinite loop near world top
             console.warn("Respawn safety check reached near world top. Defaulting Y.");
             safeRespawnY = Math.floor(refs.world.layers / 2);
             break;
@@ -124,22 +162,34 @@ export class GameLogic {
       const currentPitch = refs.camera!.rotation.x;
       const currentYaw = refs.camera!.rotation.y;
 
-      refs.player = new Player(refs.player!['name'], refs, respawnX, safeRespawnY, respawnZ, true);
-      if (refs.inputHandler) {
-        refs.inputHandler['player'] = refs.player;
+      // Create new Player, providing service interfaces
+      refs.player = new Player(
+        refs.player!['name'], // Keep old name
+        refs.world as PlayerWorldService,
+        refs.camera as PlayerCameraService,
+        refs.scene as PlayerSceneService,
+        refs.raycaster as PlayerRaycasterService,
+        respawnX, safeRespawnY, respawnZ,
+        true // preserveCam flag (its role is reduced now)
+      );
+
+      if (refs.inputController) {
+        refs.inputController.setPlayer(refs.player);
       }
 
-      if (refs.camera && refs.player) {
-        refs.player.pitch = currentPitch;
-        refs.player.yaw = currentYaw;
-        refs.player.lookAround(); 
-      }
+      // Restore camera orientation
+      refs.player.pitch = currentPitch;
+      refs.player.yaw = currentYaw;
+      refs.player.lookAround(); // Apply to cameraService
+
+      // Update camera position to new player position
+      refs.camera.position.set(refs.player.x, refs.player.y + refs.player.height * 0.9, refs.player.z);
     }
 
     if (refs.cursor.holding) {
       refs.cursor.holdTime++;
       if (refs.cursor.holdTime === refs.cursor.triggerHoldTime) {
-        if (refs.player) refs.player.interactWithBlock(false);
+        if (refs.player) refs.player.interactWithBlock(false); // Place block on hold
       }
     }
 

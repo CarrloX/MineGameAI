@@ -25,7 +25,7 @@ export class Block {
     if (nameKey === 'waterBlock') {
       materialOptions.transparent = true;
       materialOptions.opacity = 0.7;
-      // materialOptions.depthWrite = false; // Consider if sorting issues occur
+      materialOptions.depthWrite = false; // Key change for water rendering
     }
 
     if (this.multiTexture && Array.isArray(blockDefinition)) {
@@ -71,8 +71,9 @@ export class Block {
     } else {
         this.mesh.material.needsUpdate = true;
     }
-    this.mesh.castShadow = nameKey !== 'waterBlock'; // Water shouldn't cast shadows typically
+    this.mesh.castShadow = nameKey !== 'waterBlock'; // Water shouldn't cast shadows
     this.mesh.receiveShadow = true;
     this.mesh.name = `Block_${nameKey}`;
   }
 }
+

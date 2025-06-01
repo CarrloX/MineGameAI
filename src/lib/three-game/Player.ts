@@ -37,10 +37,10 @@ export class Player {
   public flyToggleDelay: number = 300;
   public isFlyingAscending: boolean = false;
   public isFlyingDescending: boolean = false;
-  
+
   public isRunning: boolean = false;
   public runSpeedMultiplier: number = 1.4;
-  public isBoosting: boolean = false; 
+  public isBoosting: boolean = false;
   public boostSpeedMultiplier: number = 3.0;
 
 
@@ -54,9 +54,11 @@ export class Player {
     this.height = 1.7;
     this.width = 0.6;
     this.depth = 0.6;
-    this.pitch = 0;
-    this.yaw = 0;
-    this.speed = 0.065; 
+
+    this.pitch = 0; // Initialize pitch
+    this.yaw = 0;   // Initialize yaw
+
+    this.speed = 0.065;
     this.velocity = 0;
     this.jumpSpeed = 0.11;
     this.jumpVelocity = 0;
@@ -67,6 +69,7 @@ export class Player {
     this.jumping = false;
     this.onGround = false;
     this.dead = false;
+    this.lastSpacePressTime = 0;
 
     const highlightBoxGeo = new THREE.BoxGeometry(1.002, 1.002, 1.002);
     const highlightEdgesGeo = new THREE.EdgesGeometry(highlightBoxGeo);
@@ -84,10 +87,11 @@ export class Player {
     this.mesh.position.set(this.x, this.y, this.z);
 
     if (preserveCam && this.gameRefs.camera) {
-        this.pitch = this.gameRefs.camera.rotation.x;
-        this.yaw = this.gameRefs.camera.rotation.y;
-    } else {
-        this.lookAround(); 
+        // Pitch and yaw will be restored by GameManager after full construction
+        // For now, they are 0,0
+    } else if (this.gameRefs.camera) {
+        // Apply initial 0,0 pitch/yaw to the camera
+        this.lookAround();
     }
   }
 
@@ -107,7 +111,7 @@ export class Player {
     const firstValidIntersect = intersects.find(
       intersect => intersect.object instanceof THREE.Mesh &&
                    intersect.object.name.startsWith("MergedChunkMesh_") &&
-                   intersect.distance > 0.1 && 
+                   intersect.distance > 0.1 &&
                    intersect.distance < this.attackRange &&
                    intersect.face
     );
@@ -153,7 +157,7 @@ export class Player {
         this.lookingAt.blockWorldCoords.y + 0.5,
         this.lookingAt.blockWorldCoords.z + 0.5
       );
-      this.blockFaceHL.mesh.rotation.set(0,0,0); 
+      this.blockFaceHL.mesh.rotation.set(0,0,0);
 
       const currentHitNormalWorld = this.lookingAt.worldFaceNormal;
       if (Math.abs(currentHitNormalWorld.x) > 0.5) this.blockFaceHL.dir = currentHitNormalWorld.x > 0 ? 'East (+X)' : 'West (-X)';
@@ -175,7 +179,7 @@ export class Player {
   public lookAround(e?: MouseEvent | Touch): void {
     const { camera, cursor } = this.gameRefs;
     if (!camera) return;
-    
+
     if (e && cursor && cursor.inWindow) {
       const sensitivity = 0.002;
       if (e instanceof MouseEvent) {
@@ -184,12 +188,12 @@ export class Player {
       } else if (e instanceof Touch) {
         // Touch look logic would go here
       }
-      
-      const maxPitch = Math.PI / 2 - 0.01; 
+
+      const maxPitch = Math.PI / 2 - 0.01;
       this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
-      this.yaw = ((this.yaw % (2 * Math.PI)) + (2 * Math.PI)) % (2 * Math.PI); 
+      this.yaw = ((this.yaw % (2 * Math.PI)) + (2 * Math.PI)) % (2 * Math.PI);
     }
-    
+
     camera.rotation.x = this.pitch;
     camera.rotation.y = this.yaw;
   }
@@ -203,7 +207,7 @@ export class Player {
       const { x, y, z } = this.lookingAt.blockWorldCoords;
       if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
           const currentBlock = world.getBlock(x,y,z);
-          if (currentBlock !== 'waterBlock') { 
+          if (currentBlock !== 'waterBlock') {
             world.setBlock(x, y, z, 'air');
           }
       } else {
@@ -216,8 +220,8 @@ export class Player {
           return;
       }
 
-      const playerHeadY = Math.floor(this.y + this.height - 0.1); 
-      const playerFeetY = Math.floor(this.y + 0.1); 
+      const playerHeadY = Math.floor(this.y + this.height - 0.1);
+      const playerFeetY = Math.floor(this.y + 0.1);
 
       if ( (Math.floor(placeX) === Math.floor(this.x) && Math.floor(placeZ) === Math.floor(this.z)) &&
            (Math.floor(placeY) === playerFeetY || Math.floor(placeY) === playerHeadY) ) {
@@ -225,7 +229,7 @@ export class Player {
       }
 
       if (placeY >= 0 && placeY < world.layers) {
-        const blockToPlaceNameKey = "stoneBlock"; 
+        const blockToPlaceNameKey = "stoneBlock";
 
         if(blockToPlaceNameKey && blockToPlaceNameKey !== 'air') {
           world.setBlock(placeX, placeY, placeZ, blockToPlaceNameKey);
@@ -255,8 +259,8 @@ export class Player {
     let dY = 0;
 
     if (this.flying) {
-      this.jumpVelocity = 0; 
-      this.onGround = false;   
+      this.jumpVelocity = 0;
+      this.onGround = false;
       if (this.isFlyingAscending) dY += this.flySpeed;
       if (this.isFlyingDescending) dY -= this.flySpeed;
     } else {
@@ -309,7 +313,7 @@ export class Player {
     let correctedX = nextPlayerX;
     let correctedY = this.y + dY;
     let correctedZ = nextPlayerZ;
-    let landedOnGroundThisFrame = false; 
+    let landedOnGroundThisFrame = false;
 
 
     const pMinProposedGlobalY = correctedY;
@@ -319,7 +323,7 @@ export class Player {
     const pMinProposedGlobalZ = correctedZ - this.depth / 2;
     const pMaxProposedGlobalZ = correctedZ + this.depth / 2;
 
-    const checkRadius = 1; 
+    const checkRadius = 1;
     const startBlockY = Math.max(0, Math.floor(pMinProposedGlobalY) - checkRadius);
     const endBlockY = Math.min(world.layers, Math.ceil(pMaxProposedGlobalY) + checkRadius);
 
@@ -328,7 +332,7 @@ export class Player {
             for (let checkWorldY = startBlockY; checkWorldY < endBlockY; checkWorldY++) {
                 const blockType = world.getBlock(checkWorldX, checkWorldY, checkWorldZ);
 
-                if (blockType && blockType !== 'air' && blockType !== 'waterBlock') { 
+                if (blockType && blockType !== 'air' && blockType !== 'waterBlock') {
                     const bMinX = checkWorldX;
                     const bMaxX = checkWorldX + 1;
                     const bMinY = checkWorldY;
@@ -344,50 +348,46 @@ export class Player {
                     let pMaxZ = correctedZ + this.depth / 2;
 
                     if (pMaxX > bMinX && pMinX < bMaxX &&
-                        pMaxY > bMinY && pMinY < bMaxY && 
+                        pMaxY > bMinY && pMinY < bMaxY &&
                         pMaxZ > bMinZ && pMinZ < bMaxZ) {
 
                         const overlapX = Math.min(pMaxX - bMinX, bMaxX - pMinX);
                         const overlapY = Math.min(pMaxY - bMinY, bMaxY - pMinY);
                         const overlapZ = Math.min(pMaxZ - bMinZ, bMaxZ - pMinZ);
 
-                        if (overlapY <= overlapX && overlapY <= overlapZ) { 
+                        if (overlapY <= overlapX && overlapY <= overlapZ) {
                             if (this.flying) {
-                                if (dY > 0 && pMinY < bMaxY) { 
+                                if (dY > 0 && pMinY < bMaxY) {
                                     correctedY = bMinY - this.height - 0.001;
-                                } else if (dY < 0 && pMaxY > bMinY) { 
+                                } else if (dY < 0 && pMaxY > bMinY) {
                                     correctedY = bMaxY + 0.001;
-                                } else if (dY === 0 && pMaxY > bMinY && pMinY < bMaxY) { 
+                                } else if (dY === 0 && pMaxY > bMinY && pMinY < bMaxY) {
                                      correctedY = (this.y > bMinY + this.height / 2) ? (bMaxY + 0.001) : (bMinY - this.height - 0.001);
                                 }
-                                this.jumpVelocity = 0; 
-                            } else { 
-                                if (dY <= 0 && pMinY < bMaxY - 0.0001 && this.y >= bMaxY - 0.01) { 
+                                this.jumpVelocity = 0;
+                            } else {
+                                if (dY <= 0 && pMinY < bMaxY - 0.0001 && this.y >= bMaxY - 0.01) {
                                     correctedY = bMaxY;
                                     this.jumpVelocity = 0;
                                     landedOnGroundThisFrame = true;
-                                } else if (dY > 0 && pMaxY > bMinY && this.y + this.height <= bMinY + 0.01) { 
+                                } else if (dY > 0 && pMaxY > bMinY && this.y + this.height <= bMinY + 0.01) {
                                     correctedY = bMinY - this.height;
-                                    this.jumpVelocity = -0.001; 
+                                    this.jumpVelocity = -0.001;
                                 }
                             }
-                        } else if (overlapX < overlapY && overlapX < overlapZ) { 
-                            if (!this.flying && this.isRunning) {
-                                this.isRunning = false; 
-                            }
-                            if ((pMaxX - bMinX) < (bMaxX - pMinX)) { 
+                        } else if (overlapX < overlapY && overlapX < overlapZ) {
+                            if (!this.flying && this.isRunning) this.isRunning = false;
+                            if ((pMaxX - bMinX) < (bMaxX - pMinX)) {
                                 correctedX = bMinX - this.width / 2 - 0.001;
-                            } else { 
+                            } else {
                                 correctedX = bMaxX + this.width / 2 + 0.001;
                             }
-                        } else { 
-                             if (!this.flying && this.isRunning) {
-                                this.isRunning = false; 
-                            }
-                             if ((pMaxZ - bMinZ) < (bMaxZ - pMinZ)) { 
+                        } else {
+                             if (!this.flying && this.isRunning) this.isRunning = false;
+                             if ((pMaxZ - bMinZ) < (bMaxZ - pMinZ)) {
                                 correctedZ = bMinZ - this.depth / 2 - 0.001;
-                            } else { 
-                                correctedZ = bMaxX + this.depth / 2 + 0.001;
+                            } else {
+                                correctedZ = bMaxZ + this.depth / 2 + 0.001;
                             }
                         }
                     }
@@ -402,27 +402,27 @@ export class Player {
 
     if (this.flying) {
         this.jumpVelocity = 0;
-        this.onGround = false; 
+        this.onGround = false;
         if (this.y < 0) this.y = 0;
         if (this.y + this.height > world.layers) {
             this.y = world.layers - this.height;
         }
     } else {
-        if (this.y < 0) { 
+        if (this.y < 0) {
             this.y = 0;
-            landedOnGroundThisFrame = true; 
+            landedOnGroundThisFrame = true;
             this.jumpVelocity = 0;
-            if (!this.dead) this.die(); 
+            if (!this.dead) this.die();
         }
-        if (this.y + this.height > world.layers) { 
+        if (this.y + this.height > world.layers) {
             this.y = world.layers - this.height;
-            if (this.jumpVelocity > 0) this.jumpVelocity = -0.001; 
+            if (this.jumpVelocity > 0) this.jumpVelocity = -0.001;
         }
         this.onGround = landedOnGroundThisFrame;
     }
 
     const playerFeetBlockX = Math.floor(this.x);
-    const playerFeetBlockY = Math.floor(this.y + 0.01); 
+    const playerFeetBlockY = Math.floor(this.y + 0.01);
     const playerFeetBlockZ = Math.floor(this.z);
     const blockAtFeet = world.getBlock(playerFeetBlockX, playerFeetBlockY, playerFeetBlockZ);
 
@@ -434,6 +434,6 @@ export class Player {
     if (this.y < -world.voidHeight && !this.dead) this.die();
 
     this.mesh.position.set(this.x, this.y, this.z);
-    camera.position.set(this.x, this.y + this.height * 0.9, this.z); 
+    camera.position.set(this.x, this.y + this.height * 0.9, this.z);
   }
 }

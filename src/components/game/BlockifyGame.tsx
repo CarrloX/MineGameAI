@@ -62,7 +62,7 @@ const BlockifyGame: React.FC = () => {
 
     setErrorInfo(null);
 
-    refs.rendererManager = new RendererManager(refs.canvasRef, refs);
+    refs.rendererManager = new RendererManager(refs.canvasRef, refs); // Camera rotation order set here
 
     const blockData = getBlockDefinitions();
     if (!refs.textureLoader) {
@@ -88,7 +88,7 @@ const BlockifyGame: React.FC = () => {
 
     const initialPlayerX = 0.5;
     const initialPlayerZ = 0.5;
-    
+
     refs.world.updateChunks(new THREE.Vector3(initialPlayerX, 0, initialPlayerZ));
     while(refs.world.getRemeshQueueSize() > 0) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
@@ -116,7 +116,7 @@ const BlockifyGame: React.FC = () => {
         console.warn("Could not find a perfectly safe respawn Y after " + maxAttempts + " attempts. Player collision logic should resolve.");
     }
 
-    refs.player = new Player("Player", refs, initialPlayerX, spawnY, initialPlayerZ);
+    refs.player = new Player("Player", refs, initialPlayerX, spawnY, initialPlayerZ); // Player constructor calls lookAround if needed
     refs.inputHandler = new InputHandler(refs.player, refs);
     refs.inputHandler.setupEventListeners();
 
@@ -124,9 +124,9 @@ const BlockifyGame: React.FC = () => {
 
 
     if (refs.camera && refs.player) {
-      refs.camera.position.set(refs.player.x, refs.player.y + (refs.player.height - 0.5), refs.player.z);
-      refs.camera.rotation.order = "YXZ";
-      refs.player.lookAround();
+      // Set initial camera position based on player's state
+      refs.camera.position.set(refs.player.x, refs.player.y + refs.player.height * 0.9, refs.player.z);
+      // Player constructor or subsequent lookAround calls will handle camera rotation
     }
 
     console.log("Game initialized.");
@@ -138,11 +138,10 @@ const BlockifyGame: React.FC = () => {
 
 
   useEffect(() => {
-    // Keep the ref to gameManager.update current
     if (gameRefs.current.gameManager) {
       renderSceneLogicRef.current = (fps?: number) => gameRefs.current.gameManager!.update(fps);
     }
-  }, [gameRefs.current.gameManager]); // This will run when gameManager is initialized
+  }, [gameRefs.current.gameManager]);
 
   const gameLoop = () => {
     let newFpsValue: number | undefined = undefined;
@@ -154,7 +153,7 @@ const BlockifyGame: React.FC = () => {
       frameCountRef.current = 0;
       lastFrameTimeRef.current = now;
     }
-    
+
     try {
       renderSceneLogicRef.current(newFpsValue);
     } catch (error: any) {
@@ -165,19 +164,19 @@ const BlockifyGame: React.FC = () => {
       });
       if (gameRefs.current.gameLoopId !== null) {
         cancelAnimationFrame(gameRefs.current.gameLoopId);
-        gameRefs.current.gameLoopId = null; 
+        gameRefs.current.gameLoopId = null;
       }
-      return; 
+      return;
     }
-    if (gameRefs.current.gameLoopId !== null) { // Check if it wasn't cancelled by an error
+    if (gameRefs.current.gameLoopId !== null) {
         gameRefs.current.gameLoopId = requestAnimationFrame(gameLoop);
     }
   };
 
   useEffect(() => {
-    initGame(); 
-    
-    const refs = gameRefs.current; 
+    initGame();
+
+    const refs = gameRefs.current;
 
     const updateCrosshairColor = () => {
         if (refs.player?.lookingAt) {
@@ -186,19 +185,19 @@ const BlockifyGame: React.FC = () => {
             setCrosshairBgColor('rgba(0, 0, 0, 0.75)');
         }
     };
-    
+
     const intervalId = setInterval(() => {
-      if (refs.player) { 
+      if (refs.player) {
         updateCrosshairColor();
       }
-    }, 100); 
+    }, 100);
 
 
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
     document.addEventListener("contextmenu", handleContextMenu);
-   
 
-    if (refs.gameLoopId === null && !errorInfo) { 
+
+    if (refs.gameLoopId === null && !errorInfo) {
         console.log("Starting game loop from useEffect setup");
         refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
@@ -212,7 +211,7 @@ const BlockifyGame: React.FC = () => {
         refs.gameLoopId = null;
       }
       document.removeEventListener("contextmenu", handleContextMenu);
-      
+
       refs.inputHandler?.removeEventListeners();
       refs.rendererManager?.dispose();
 
@@ -222,7 +221,7 @@ const BlockifyGame: React.FC = () => {
           chunk.dispose();
         }
       });
-      
+
       refs.scene?.traverse(object => {
         if (object instanceof THREE.Mesh) {
           object.geometry?.dispose();
@@ -241,7 +240,7 @@ const BlockifyGame: React.FC = () => {
       });
       console.log("Cleanup complete.");
     };
-  }, [initGame]); // initGame is stable due to useCallback([])
+  }, [initGame]);
 
 
   useEffect(() => {
@@ -249,7 +248,7 @@ const BlockifyGame: React.FC = () => {
     if (!renderer || !scene || !world) return;
 
     if (isCameraSubmerged) {
-        renderer.setClearColor(new THREE.Color(0x3A5F83)); 
+        renderer.setClearColor(new THREE.Color(0x3A5F83));
         if (!scene.fog || !(scene.fog instanceof THREE.Fog)) {
             scene.fog = new THREE.Fog(0x3A5F83, 0.1, CHUNK_SIZE * 1.5);
         } else {
@@ -259,7 +258,7 @@ const BlockifyGame: React.FC = () => {
         }
     } else {
         renderer.setClearColor(new THREE.Color(world.skyColor));
-        scene.fog = null; 
+        scene.fog = null;
     }
   }, [isCameraSubmerged]);
 
@@ -272,8 +271,6 @@ const BlockifyGame: React.FC = () => {
           message={errorInfo.message}
           onClose={() => {
             setErrorInfo(null);
-            // Consider if game re-initialization logic is needed here, or just a page refresh.
-            // For now, it keeps the game stopped.
           }}
         />
       )}

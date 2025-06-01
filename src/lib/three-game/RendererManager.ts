@@ -25,6 +25,8 @@ export class RendererManager {
       0.1,
       1000
     );
+    this.gameRefs.camera.rotation.order = "YXZ"; // Crucial for FPS controls
+
     this.gameRefs.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.gameRefs.renderer.setPixelRatio(window.devicePixelRatio);
     this.gameRefs.renderer.setSize(this.canvasRef.clientWidth, this.canvasRef.clientHeight);
@@ -68,8 +70,5 @@ export class RendererManager {
         }
       }
     }
-    // Note: scene and camera might be disposed elsewhere if they contain many objects,
-    // or if BlockifyGame is unmounted and initGame is called again.
-    // For now, RendererManager focuses on the renderer itself for disposal.
   }
 }

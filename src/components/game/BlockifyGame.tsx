@@ -4,8 +4,6 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import * as THREE from 'three';
 import { World } from '@/lib/three-game/World';
-// Player is now instantiated by GameLogic
-// import { Player } from '@/lib/three-game/Player';
 import { InputController } from '@/lib/three-game/InputController';
 import { RendererManager } from '@/lib/three-game/RendererManager';
 import { GameLogic } from '@/lib/three-game/GameLogic';
@@ -13,6 +11,7 @@ import { ThreeSetup } from '@/lib/three-game/ThreeSetup';
 import { CONTROL_CONFIG, CURSOR_STATE, CHUNK_SIZE } from '@/lib/three-game/utils';
 import type { GameRefs, DebugInfoState, ErrorInfo } from '@/lib/three-game/types';
 import ErrorBoundaryDisplay from './ErrorBoundaryDisplay';
+import { Player } from '@/lib/three-game/Player'; // Player needed for GameLogic init
 
 const BlockifyGame: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -24,7 +23,7 @@ const BlockifyGame: React.FC = () => {
     textureLoader: null,
     world: null,
     blocks: null,
-    player: null, // Player will be created by GameLogic
+    player: null,
     inputController: null,
     rendererManager: null,
     gameLogic: null,
@@ -34,6 +33,7 @@ const BlockifyGame: React.FC = () => {
     cursor: { ...CURSOR_STATE },
     gameLoopId: null,
     canvasRef: null,
+    worldSeed: null,
   });
 
   const [debugInfo, setDebugInfo] = useState<DebugInfoState>({
@@ -74,7 +74,7 @@ const BlockifyGame: React.FC = () => {
     }
 
     try {
-      refs.gameLogic.update(newFpsValue); // GameLogic's update now drives the game
+      refs.gameLogic.update(newFpsValue);
     } catch (error: any) {
       console.error("Error in game loop:", error);
       setErrorInfo({
@@ -90,7 +90,7 @@ const BlockifyGame: React.FC = () => {
     if (refs.gameLoopId !== null) {
         refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
-  }, []); // Dependencies for gameLoop can be kept minimal if it calls stable refs
+  }, []);
 
 
   const initGame = useCallback(() => {
@@ -99,11 +99,15 @@ const BlockifyGame: React.FC = () => {
     if (!mountRef.current) return;
     refs.canvasRef = mountRef.current;
 
-    setErrorInfo(null); // Clear previous errors
+    setErrorInfo(null);
+
+    // Generate world seed
+    refs.worldSeed = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+    console.log("Generated World Seed:", refs.worldSeed);
 
     // 1. Initialize Three.js core components
     refs.threeSetup = new ThreeSetup();
-    refs.threeSetup.initialize(refs.canvasRef, refs); // Populates scene, camera, renderer, blocks, lighting etc. in refs
+    refs.threeSetup.initialize(refs.canvasRef, refs);
 
     if (!refs.scene || !refs.camera || !refs.renderer || !refs.textureLoader || !refs.blocks || !refs.lighting || !refs.raycaster) {
         console.error("ThreeSetup did not initialize all required gameRefs properties.");
@@ -111,48 +115,46 @@ const BlockifyGame: React.FC = () => {
         return;
     }
     
-    // 2. Initialize RendererManager (primarily for resize handling and the render call)
+    // 2. Initialize RendererManager
     refs.rendererManager = new RendererManager(refs.canvasRef, refs);
-    if (refs.renderer && refs.world) { // world is not yet initialized here, so this might need adjustment
-       refs.renderer.setClearColor(new THREE.Color(0xf1f1f1)); // Default sky color, world might override
-    } else if (refs.renderer) {
+    if (refs.renderer) {
        refs.renderer.setClearColor(new THREE.Color(0xf1f1f1));
     }
 
-
-    // 3. Initialize World (depends on blocks from ThreeSetup)
-    refs.world = new World(refs);
-     if (refs.renderer && refs.world) { // Now world is initialized
+    // 3. Initialize World (depends on blocks from ThreeSetup and worldSeed)
+    if (refs.worldSeed === null) { // Should not happen if generated above
+        console.error("Initialization Error: World Seed is null before World creation.");
+        setErrorInfo({ title: "Initialization Error", message: "World Seed missing." });
+        return;
+    }
+    refs.world = new World(refs, refs.worldSeed);
+     if (refs.renderer && refs.world) {
        refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
     }
 
-
-    // Player is now created inside GameLogic's constructor
-    // Initial camera setup is also handled by GameLogic or Player constructor
-
-    // 4. Initialize InputController (Player instance is now created by GameLogic, so pass undefined or handle later)
-    refs.inputController = new InputController(refs); // Player will be set by GameLogic
+    // 4. Initialize InputController (Player instance will be set by GameLogic)
+    refs.inputController = new InputController(refs); 
     refs.inputController.setupEventListeners();
 
     // 5. Initialize GameLogic (creates Player, connects pieces)
     refs.gameLogic = new GameLogic(refs, setDebugInfo, setIsCameraSubmerged);
-    // GameLogic's constructor now calls initializePlayer which sets up the player and camera
+    // GameLogic's constructor calls initializePlayer, which creates and sets up Player and Camera.
+    // It also sets the player instance on the inputController.
 
     console.log("Game initialized by BlockifyGame.");
     if (refs.gameLoopId === null) {
       console.log("Starting game loop from initGame");
       refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
-  }, [gameLoop, setDebugInfo, setIsCameraSubmerged]); // initGame dependencies
+  }, [gameLoop, setDebugInfo, setIsCameraSubmerged]);
 
 
   useEffect(() => {
     initGame();
 
-    const refs = gameRefs.current; // For cleanup
+    const refs = gameRefs.current;
 
     const updateCrosshairColor = () => {
-        // Access player through gameRefs, which is set by GameLogic
         if (refs.player?.lookingAt) {
             setCrosshairBgColor('rgba(255, 255, 255, 0.75)');
         } else {
@@ -161,7 +163,7 @@ const BlockifyGame: React.FC = () => {
     };
 
     const intervalId = setInterval(() => {
-      if (refs.player) { // Check if player exists on gameRefs
+      if (refs.player) {
         updateCrosshairColor();
       }
     }, 100);
@@ -180,24 +182,20 @@ const BlockifyGame: React.FC = () => {
       document.removeEventListener("contextmenu", handleContextMenu);
 
       gameRefs.current.inputController?.removeEventListeners();
-      gameRefs.current.rendererManager?.dispose(); // Disposes renderer, removes resize listener
+      gameRefs.current.rendererManager?.dispose();
       
-      // Dispose world resources (chunks)
       gameRefs.current.world?.activeChunks.forEach((chunk) => {
         if (chunk && typeof chunk.dispose === 'function') {
           chunk.dispose();
         }
       });
 
-      // Dispose scene objects (geometries, materials)
-      // This is crucial and might need to be more thorough if ThreeSetup doesn't handle it.
-      // For now, RendererManager.dispose only handles the renderer itself.
       gameRefs.current.scene?.traverse(object => {
         if (object instanceof THREE.Mesh) {
           object.geometry?.dispose();
           if (Array.isArray(object.material)) {
             object.material.forEach(material => {
-                material.map?.dispose(); // Dispose textures
+                material.map?.dispose();
                 material.dispose();
             });
           } else if ((object.material as THREE.Material)?.map) {
@@ -208,45 +206,39 @@ const BlockifyGame: React.FC = () => {
           }
         }
       });
-       // Clear lighting from scene if added by ThreeSetup
       if (gameRefs.current.lighting?.ambient) gameRefs.current.scene?.remove(gameRefs.current.lighting.ambient);
       if (gameRefs.current.lighting?.directional) gameRefs.current.scene?.remove(gameRefs.current.lighting.directional);
 
-
-      // Nullify refs to help with GC and prevent stale references
       Object.keys(gameRefs.current).forEach(key => {
-        // Keep controlConfig and cursor as they are simple objects, not holding complex resources
-        if (key !== 'controlConfig' && key !== 'cursor' && key !== 'canvasRef') {
+        if (key !== 'controlConfig' && key !== 'cursor' && key !== 'canvasRef' && key !== 'worldSeed') { // Preserve worldSeed for potential restart? Or clear it too if full reset.
             (gameRefs.current as any)[key] = null;
         }
       });
       
       console.log("Cleanup complete for BlockifyGame.");
     };
-  }, [initGame]); // useEffect for init and cleanup
+  }, [initGame]);
 
 
-  // Effect for handling camera submerged visual changes
   useEffect(() => {
     const { renderer, scene, world } = gameRefs.current;
-    if (!renderer || !scene ) return; // World might not be needed if skyColor comes from a different source or is static for water
+    if (!renderer || !scene ) return;
 
     if (isCameraSubmerged) {
-        renderer.setClearColor(new THREE.Color(0x3A5F83)); // Water color
-        if (!scene.fog || !(scene.fog instanceof THREE.Fog)) { // Create fog if none
+        renderer.setClearColor(new THREE.Color(0x3A5F83));
+        if (!scene.fog || !(scene.fog instanceof THREE.Fog)) {
             scene.fog = new THREE.Fog(0x3A5F83, 0.1, CHUNK_SIZE * 1.5);
-        } else { // Update existing fog
+        } else {
             scene.fog.color.setHex(0x3A5F83);
             scene.fog.near = 0.1;
             scene.fog.far = CHUNK_SIZE * 1.5;
         }
     } else {
-        // Revert to sky color and remove/adjust fog
-        const skyColorToUse = gameRefs.current.world ? gameRefs.current.world.skyColor : 0xf1f1f1; // Fallback sky color
+        const skyColorToUse = gameRefs.current.world ? gameRefs.current.world.skyColor : 0xf1f1f1;
         renderer.setClearColor(new THREE.Color(skyColorToUse));
-        scene.fog = null; // Or set to a distant sky fog if desired
+        scene.fog = null;
     }
-  }, [isCameraSubmerged]); // Only re-run when isCameraSubmerged changes
+  }, [isCameraSubmerged]);
 
 
   return (
@@ -257,7 +249,6 @@ const BlockifyGame: React.FC = () => {
           message={errorInfo.message}
           onClose={() => {
             setErrorInfo(null);
-            // Potentially re-initialize or offer a refresh option here
           }}
         />
       )}

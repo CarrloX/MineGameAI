@@ -75,31 +75,14 @@ export interface GameRefs {
   gameLogic: GameLogic | null;
   threeSetup: ThreeSetup | null;
   lighting: { ambient: THREE.AmbientLight; directional: THREE.DirectionalLight; } | null;
+  worldSeed: number | null;
 }
 
 export type BlockDefinition = { side: string } | string[];
 
-// Service-like types for Player dependencies (towards DIP)
-export interface PlayerWorldService {
-  getBlock: (worldX: number, worldY: number, worldZ: number) => string | null;
-  setBlock: (worldX: number, worldY: number, worldZ: number, blockType: string) => void;
-  layers: number;
-  gravity: number;
-  voidHeight: number;
-  activeChunks: Map<string, any>; // Simplified for raycasting context (Chunk type can be used if Chunk.ts is stable)
-}
-
-// PlayerCameraService should be compatible with THREE.PerspectiveCamera's relevant properties/methods
-// We use 'extends THREE.Object3D' as a base for position/rotation, then add specific camera things if needed.
-// For now, direct use of THREE.PerspectiveCamera structurally matches what Player needs.
+// Service-like types for Player dependencies
+export type PlayerWorldService = Pick<World, 'getBlock' | 'setBlock' | 'layers' | 'gravity' | 'voidHeight' | 'activeChunks'>;
 export type PlayerCameraService = THREE.PerspectiveCamera;
+export type PlayerSceneService = Pick<THREE.Scene, 'add' | 'remove' | 'getObjectByName'>;
+export type PlayerRaycasterService = Pick<THREE.Raycaster, 'setFromCamera' | 'intersectObjects'>;
 
-
-export interface PlayerSceneService {
-  add: (object: THREE.Object3D) => void;
-  remove: (object: THREE.Object3D) => void;
-  getObjectByName: (name: string) => THREE.Object3D | undefined;
-}
-
-// PlayerRaycasterService should be compatible with THREE.Raycaster
-export type PlayerRaycasterService = THREE.Raycaster;

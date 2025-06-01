@@ -101,11 +101,9 @@ const BlockifyGame: React.FC = () => {
 
     setErrorInfo(null);
 
-    // Generate world seed
     refs.worldSeed = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
     console.log("Generated World Seed:", refs.worldSeed);
 
-    // 1. Initialize Three.js core components
     refs.threeSetup = new ThreeSetup();
     refs.threeSetup.initialize(refs.canvasRef, refs);
 
@@ -115,14 +113,16 @@ const BlockifyGame: React.FC = () => {
         return;
     }
     
-    // 2. Initialize RendererManager
     refs.rendererManager = new RendererManager(refs.canvasRef, refs);
-    if (refs.renderer) {
-       refs.renderer.setClearColor(new THREE.Color(0xf1f1f1));
+     // Initial clear color set in ThreeSetup or RendererManager. World might not be fully ready here.
+    if (refs.renderer && refs.world) { // World might be null initially if ThreeSetup doesn't create it
+       refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
+    } else if (refs.renderer) {
+       refs.renderer.setClearColor(new THREE.Color(0xf1f1f1)); // Default sky color
     }
 
-    // 3. Initialize World (depends on blocks from ThreeSetup and worldSeed)
-    if (refs.worldSeed === null) { // Should not happen if generated above
+
+    if (refs.worldSeed === null) {
         console.error("Initialization Error: World Seed is null before World creation.");
         setErrorInfo({ title: "Initialization Error", message: "World Seed missing." });
         return;
@@ -132,14 +132,17 @@ const BlockifyGame: React.FC = () => {
        refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
     }
 
-    // 4. Initialize InputController (Player instance will be set by GameLogic)
     refs.inputController = new InputController(refs); 
+    
+    refs.gameLogic = new GameLogic(refs, setDebugInfo, setIsCameraSubmerged);
+    
+    if (refs.inputController && refs.player) {
+      refs.inputController.setPlayer(refs.player);
+    } else {
+        console.warn("BlockifyGame init: InputController or Player not available to link after GameLogic init.");
+    }
     refs.inputController.setupEventListeners();
 
-    // 5. Initialize GameLogic (creates Player, connects pieces)
-    refs.gameLogic = new GameLogic(refs, setDebugInfo, setIsCameraSubmerged);
-    // GameLogic's constructor calls initializePlayer, which creates and sets up Player and Camera.
-    // It also sets the player instance on the inputController.
 
     console.log("Game initialized by BlockifyGame.");
     if (refs.gameLoopId === null) {
@@ -210,7 +213,7 @@ const BlockifyGame: React.FC = () => {
       if (gameRefs.current.lighting?.directional) gameRefs.current.scene?.remove(gameRefs.current.lighting.directional);
 
       Object.keys(gameRefs.current).forEach(key => {
-        if (key !== 'controlConfig' && key !== 'cursor' && key !== 'canvasRef' && key !== 'worldSeed') { // Preserve worldSeed for potential restart? Or clear it too if full reset.
+        if (key !== 'controlConfig' && key !== 'cursor' && key !== 'canvasRef' && key !== 'worldSeed') {
             (gameRefs.current as any)[key] = null;
         }
       });
@@ -222,21 +225,30 @@ const BlockifyGame: React.FC = () => {
 
   useEffect(() => {
     const { renderer, scene, world } = gameRefs.current;
-    if (!renderer || !scene ) return;
+    if (!renderer || !scene || !world) return;
 
     if (isCameraSubmerged) {
-        renderer.setClearColor(new THREE.Color(0x3A5F83));
-        if (!scene.fog || !(scene.fog instanceof THREE.Fog)) {
+        renderer.setClearColor(new THREE.Color(0x3A5F83)); // Dark blue for water
+        if (!scene.fog || !(scene.fog instanceof THREE.Fog) || scene.fog.color.getHex() !== 0x3A5F83) {
             scene.fog = new THREE.Fog(0x3A5F83, 0.1, CHUNK_SIZE * 1.5);
-        } else {
-            scene.fog.color.setHex(0x3A5F83);
+        } else { // Fog exists and is already water fog, just ensure parameters
             scene.fog.near = 0.1;
             scene.fog.far = CHUNK_SIZE * 1.5;
         }
     } else {
-        const skyColorToUse = gameRefs.current.world ? gameRefs.current.world.skyColor : 0xf1f1f1;
+        const skyColorToUse = world.skyColor;
         renderer.setClearColor(new THREE.Color(skyColorToUse));
-        scene.fog = null;
+
+        const fogNearDistance = world.renderDistanceInChunks * CHUNK_SIZE * 0.6;
+        const fogFarDistance = world.renderDistanceInChunks * CHUNK_SIZE * 1.1;
+        
+        if (!scene.fog || !(scene.fog instanceof THREE.Fog) || scene.fog.color.getHex() !== skyColorToUse) {
+            scene.fog = new THREE.Fog(skyColorToUse, fogNearDistance, fogFarDistance);
+        } else { // Fog exists and is already sky fog, ensure parameters
+            scene.fog.color.setHex(skyColorToUse); // Ensure color is up-to-date if it could change
+            scene.fog.near = fogNearDistance;
+            scene.fog.far = fogFarDistance;
+        }
     }
   }, [isCameraSubmerged]);
 
@@ -280,3 +292,5 @@ const BlockifyGame: React.FC = () => {
 };
 
 export default BlockifyGame;
+
+    

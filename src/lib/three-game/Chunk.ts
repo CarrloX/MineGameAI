@@ -107,16 +107,16 @@ export class Chunk {
     const waterLevel = baseHeight - 3; 
 
     // --- FBM Parameters ---
-    const OCTAVES = 4;
-    const PERSISTENCE = 0.5; // Amplitude multiplier per octave
-    const LACUNARITY = 2.0;  // Frequency multiplier per octave
-    const NOISE_SCALE_ADJUSTMENT = 1.5; // For 50% larger scale (lower frequency)
+    const OCTAVES = 5; // Adjusted from 4
+    const PERSISTENCE = 0.45; // Adjusted from 0.5
+    const LACUNARITY = 2.0; 
+    const NOISE_SCALE_ADJUSTMENT = 1.5; 
 
     // --- Base parameters (will be seeded) ---
     const mountainMainFreqBase_const = 0.05;
-    const mountainMainAmpBase_const = 15;
+    const mountainMainAmpBase_const = 12; // Adjusted from 15
     const plainsMainFreqBase_const = 0.04;
-    const plainsMainAmpBase_const = 3;
+    const plainsMainAmpBase_const = 2.5; // Adjusted from 3
 
     const mountainBasinFreqBase_const = 0.04;
     const mountainBasinAmpBase_const = 15; 
@@ -130,7 +130,6 @@ export class Chunk {
     const biomeBlendEndBase_const = 0.2;
     
     // Parameters influenced by world seed for global world 'style'
-    // Adjusted base frequencies for larger scale
     const mountainBaseFreqSeeded = (mountainMainFreqBase_const + this.seededRandom(0,0,0, this.worldSeed, "mtMainFreq") * 0.01 - 0.005) / NOISE_SCALE_ADJUSTMENT;
     const mountainBaseAmpSeeded = mountainMainAmpBase_const + this.seededRandom(0,0,0, this.worldSeed, "mtMainAmp") * 5 - 2.5;
     
@@ -160,13 +159,10 @@ export class Chunk {
         let amplitude = initialAmplitude;
 
         for (let i = 0; i < OCTAVES; i++) {
-            // Using slightly different fixed offsets for sin and cos components of each octave
-            // to ensure they are not perfectly correlated.
-            // The `i * some_small_constant` ensures each octave has a slightly different phase.
-            const noiseX = worldAbsX * frequency + (i + 1) * 0.37; // Add small fixed offset per octave
-            const noiseZ = worldAbsZ * frequency - (i + 1) * 0.61; // Different fixed offset
+            const noiseX = worldAbsX * frequency + (i + 1) * 0.37; 
+            const noiseZ = worldAbsZ * frequency - (i + 1) * 0.61; 
             
-            const noiseValue = Math.sin(noiseX) * Math.cos(noiseZ); // Range -1 to 1
+            const noiseValue = Math.sin(noiseX) * Math.cos(noiseZ); 
             totalHeightContribution += noiseValue * amplitude;
             
             amplitude *= PERSISTENCE;
@@ -191,16 +187,13 @@ export class Chunk {
         let blendFactor = (biomeNoiseVal - biomeBlendStart) / (biomeBlendEnd - biomeBlendStart);
         blendFactor = Math.max(0, Math.min(1, blendFactor));
 
-        // Calculate FBM for mountains and plains
         const mountainFbmContribution = calculateFbmHeight(absoluteWorldX, absoluteWorldZ, mountainBaseFreqSeeded, mountainBaseAmpSeeded);
         const plainsFbmContribution = calculateFbmHeight(absoluteWorldX, absoluteWorldZ, plainsBaseFreqSeeded, plainsBaseAmpSeeded);
 
-        // Blend FBM contributions
         const blendedFbmHeight = this.lerp(plainsFbmContribution, mountainFbmContribution, blendFactor);
         
         let height = baseHeight + blendedFbmHeight;
 
-        // Apply basin logic (interpolated basin parameters)
         const currentBasinAmp = this.lerp(plainsBasinAmp, mountainBasinAmp, blendFactor);
         const currentBasinThreshold = this.lerp(plainsBasinThreshold, mountainBasinThreshold, blendFactor);
         const currentBasinFreq = this.lerp(plainsBasinFreq, mountainBasinFreq, blendFactor);
@@ -300,12 +293,20 @@ export class Chunk {
             left: this.world.getBlock(blockWorldX - 1, blockWorldY, blockWorldZ)
           };
           
-          const addFace = (material: THREE.Material, faceRotation: [number, number, number], faceTranslation: [number, number, number]) => {
+          const addFace = (material: THREE.Material, faceRotation: [number, number, number], faceTranslationFromBlockOrigin: [number, number, number]) => {
             const faceGeometry = new THREE.PlaneGeometry(1, 1);
+            
+            // Apply rotation first
             faceGeometry.rotateX(faceRotation[0]);
             faceGeometry.rotateY(faceRotation[1]);
             faceGeometry.rotateZ(faceRotation[2]);
-            faceGeometry.translate(x + faceTranslation[0], y + faceTranslation[1], z + faceTranslation[2]);
+            
+            // Then translate to the block's local position + face's offset from block origin
+            faceGeometry.translate(
+              x + faceTranslationFromBlockOrigin[0], 
+              y + faceTranslationFromBlockOrigin[1], 
+              z + faceTranslationFromBlockOrigin[2]
+            );
             
             const materialKey = material.uuid + (material.transparent ? '_transparent' : '_opaque');
             if (!geometriesByMaterial.has(materialKey)) {
@@ -314,41 +315,38 @@ export class Chunk {
             geometriesByMaterial.get(materialKey)!.geometries.push(faceGeometry);
           };
           
+          // X faces (+X: Right, -X: Left)
           if (shouldRenderFace(blockType, neighbors.right)) { 
             const materialIndex = blockProto.multiTexture ? 0 : 0; 
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-             addFace(material, [0, Math.PI / 2, 0], [0.5, 0.5, 0.5]); // Center of block + half width to the right
-             (geometriesByMaterial.get(material.uuid + (material.transparent ? '_transparent' : '_opaque'))!.geometries.at(-1) as THREE.PlaneGeometry).translate(0.5,0,0);
+            addFace(material, [0, Math.PI / 2, 0], [0.5 + 0.5, 0.5, 0.5]); // Centered at x+0.5, y+0.5, z+0.5, then shifted by 0.5 in +X for the face
           }
           if (shouldRenderFace(blockType, neighbors.left)) { 
             const materialIndex = blockProto.multiTexture ? 1 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, -Math.PI / 2, 0], [0.5, 0.5, 0.5]);
-            (geometriesByMaterial.get(material.uuid + (material.transparent ? '_transparent' : '_opaque'))!.geometries.at(-1) as THREE.PlaneGeometry).translate(-0.5,0,0);
+            addFace(material, [0, -Math.PI / 2, 0], [-0.5 + 0.5, 0.5, 0.5]); // Centered at x-0.5, y+0.5, z+0.5
           }
+          // Y faces (+Y: Top, -Y: Bottom)
           if (shouldRenderFace(blockType, neighbors.top)) { 
             const materialIndex = blockProto.multiTexture ? 2 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [-Math.PI / 2, 0, 0], [0.5, 0.5, 0.5]);
-            (geometriesByMaterial.get(material.uuid + (material.transparent ? '_transparent' : '_opaque'))!.geometries.at(-1) as THREE.PlaneGeometry).translate(0,0.5,0);
+            addFace(material, [-Math.PI / 2, 0, 0], [0.5, 0.5 + 0.5, 0.5]); // Centered at x+0.5, y+0.5, z+0.5, then +0.5 in Y
           }
           if (shouldRenderFace(blockType, neighbors.bottom)) { 
             const materialIndex = blockProto.multiTexture ? 3 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [Math.PI / 2, 0, 0], [0.5, 0.5, 0.5]);
-            (geometriesByMaterial.get(material.uuid + (material.transparent ? '_transparent' : '_opaque'))!.geometries.at(-1) as THREE.PlaneGeometry).translate(0,-0.5,0);
+            addFace(material, [Math.PI / 2, 0, 0], [0.5, -0.5 + 0.5, 0.5]); // Centered at x+0.5, y-0.5, z+0.5
           }
+          // Z faces (+Z: Front, -Z: Back)
           if (shouldRenderFace(blockType, neighbors.front)) { 
             const materialIndex = blockProto.multiTexture ? 4 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, 0, 0], [0.5, 0.5, 0.5]);
-            (geometriesByMaterial.get(material.uuid + (material.transparent ? '_transparent' : '_opaque'))!.geometries.at(-1) as THREE.PlaneGeometry).translate(0,0,0.5);
+            addFace(material, [0, 0, 0], [0.5, 0.5, 0.5 + 0.5]); // Centered at x+0.5, y+0.5, z+0.5, then +0.5 in Z
           }
           if (shouldRenderFace(blockType, neighbors.back)) { 
             const materialIndex = blockProto.multiTexture ? 5 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, Math.PI, 0], [0.5, 0.5, 0.5]);
-            (geometriesByMaterial.get(material.uuid + (material.transparent ? '_transparent' : '_opaque'))!.geometries.at(-1) as THREE.PlaneGeometry).translate(0,0,-0.5);
+            addFace(material, [0, Math.PI, 0], [0.5, 0.5, -0.5 + 0.5]); // Centered at x+0.5, y+0.5, z-0.5
           }
         }
       }
@@ -397,6 +395,3 @@ export class Chunk {
     }
   }
 }
-
-
-    

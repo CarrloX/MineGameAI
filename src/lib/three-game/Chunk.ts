@@ -22,7 +22,7 @@ export class Chunk {
     this.worldX = worldX;
     this.worldZ = worldZ;
     this.blockPrototypes = blockPrototypes;
-    this.worldSeed = worldSeed !== undefined ? worldSeed : Math.random() * 1000000; // Fallback if seed not provided
+    this.worldSeed = worldSeed !== undefined ? worldSeed : Math.random() * Number.MAX_SAFE_INTEGER; 
 
     this.chunkRoot = new THREE.Group();
     this.chunkRoot.name = `ChunkRoot_${worldX}_${worldZ}`;
@@ -31,7 +31,7 @@ export class Chunk {
     if (initialBlockData) {
       this.blocks = initialBlockData;
       this.needsMeshUpdate = true;
-      this.wasGenerated = false;
+      this.wasGenerated = false; 
     } else {
       this.blocks = [];
       for (let x = 0; x < CHUNK_SIZE; x++) {
@@ -86,7 +86,7 @@ export class Chunk {
     let featureHash = 0;
     for (let i = 0; i < feature.length; i++) {
         featureHash = (featureHash << 5) - featureHash + feature.charCodeAt(i);
-        featureHash |= 0;
+        featureHash |= 0; 
     }
     val = (val + featureHash) & 0x7fffffff;
     val = (val ^ (val >> 15)) * 1664525;
@@ -105,13 +105,34 @@ export class Chunk {
 
     const baseHeight = Math.floor(this.world.layers / 2.5);
     const waterLevel = baseHeight - 1;
+    
+    // --- TEMPORARILY HARDCODED PARAMETERS FOR DIAGNOSIS ---
+    const mountainMainFreq = 0.05;
+    const mountainMainAmp = 15;
+    const mountainDetailFreq = 0.15;
+    const mountainDetailAmp = 5;
+    const mountainRoughnessFreq = 0.3;
+    const mountainRoughnessAmp = 1.5;
+    const mountainBasinFreq = 0.04;
+    const mountainBasinAmp = 20;
+    const mountainBasinThreshold = 0.3;
 
-    // Use this.worldSeed for variations
-    const seedOffset1 = this.seededRandom(this.worldX, this.worldZ, 0, this.worldSeed, "offset1") * 1000;
-    const seedOffset2 = this.seededRandom(this.worldX, this.worldZ, 1, this.worldSeed, "offset2") * 1000;
-    const seedOffset3 = this.seededRandom(this.worldX, this.worldZ, 2, this.worldSeed, "offset3") * 1000;
-    const seedOffset4 = this.seededRandom(this.worldX, this.worldZ, 3, this.worldSeed, "offset4") * 1000;
+    const plainsMainFreq = 0.04;
+    const plainsMainAmp = 3;
+    const plainsDetailFreq = 0.1;
+    const plainsDetailAmp = 1;
+    const plainsRoughnessFreq = 0.25;
+    const plainsRoughnessAmp = 0.2;
+    const plainsBasinFreq = 0.05;
+    const plainsBasinAmp = 3;
+    const plainsBasinThreshold = 0.65;
 
+    const biomeScale = 0.008;
+    const biomeBlendStart = -0.1;
+    const biomeBlendEnd = 0.2;
+    // --- END OF TEMPORARILY HARDCODED PARAMETERS ---
+
+    /* Original seeded parameters (commented out for diagnosis)
     const mountainMainFreq = 0.05 + this.seededRandom(0,0,0, this.worldSeed, "mtMainFreq") * 0.01 - 0.005;
     const mountainMainAmp = 15 + this.seededRandom(0,0,0, this.worldSeed, "mtMainAmp") * 5 - 2.5;
     const mountainDetailFreq = 0.15 + this.seededRandom(0,0,0, this.worldSeed, "mtDetailFreq") * 0.02 - 0.01;
@@ -135,20 +156,20 @@ export class Chunk {
     const biomeScale = 0.008 + this.seededRandom(0,0,0, this.worldSeed, "biomeScale") * 0.002 - 0.001;
     const biomeBlendStart = -0.1 + this.seededRandom(0,0,0, this.worldSeed, "biomeBlendStart") * 0.05 - 0.025;
     const biomeBlendEnd = 0.2 + this.seededRandom(0,0,0, this.worldSeed, "biomeBlendEnd") * 0.05 - 0.025;
-
+    */
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const absoluteWorldX = this.worldX * CHUNK_SIZE + x;
         const absoluteWorldZ = this.worldZ * CHUNK_SIZE + z;
 
-        const offsetX = absoluteWorldX + seedOffset1;
-        const offsetZ = absoluteWorldZ + seedOffset2;
-        const offsetX2 = absoluteWorldX + seedOffset3;
-        const offsetZ2 = absoluteWorldZ + seedOffset4;
+        const noiseInputX1 = absoluteWorldX;
+        const noiseInputZ1 = absoluteWorldZ;
+        const noiseInputX2 = absoluteWorldX + 10000.5; 
+        const noiseInputZ2 = absoluteWorldZ - 10000.5;
 
-        const biomeNoiseVal = (Math.sin(offsetX * biomeScale) * Math.cos(offsetZ * biomeScale * 0.77) +
-                               Math.cos(offsetX2 * biomeScale * 1.23) * Math.sin(offsetZ2 * biomeScale * 0.89)) / 2;
+        const biomeNoiseVal = (Math.sin(noiseInputX1 * biomeScale) * Math.cos(noiseInputZ1 * biomeScale * 0.77) +
+                               Math.cos(noiseInputX2 * biomeScale * 1.23) * Math.sin(noiseInputZ2 * biomeScale * 0.89)) / 2;
 
         let blendFactor = (biomeNoiseVal - biomeBlendStart) / (biomeBlendEnd - biomeBlendStart);
         blendFactor = Math.max(0, Math.min(1, blendFactor));
@@ -165,12 +186,12 @@ export class Chunk {
         const currentBasinFreq = this.lerp(plainsBasinFreq, mountainBasinFreq, blendFactor);
 
         let height = baseHeight;
-        height += currentMainAmp * (Math.sin(offsetX * currentMainFreq) * Math.cos(offsetZ * currentMainFreq * 0.8));
-        height += currentDetailAmp * Math.cos(offsetX2 * currentDetailFreq + offsetZ2 * currentDetailFreq * 1.2);
-        height += currentRoughnessAmp * (Math.sin(offsetX * currentRoughnessFreq * 1.1 - offsetZ2 * currentRoughnessFreq * 0.9));
+        height += currentMainAmp * (Math.sin(noiseInputX1 * currentMainFreq) * Math.cos(noiseInputZ1 * currentMainFreq * 0.8));
+        height += currentDetailAmp * Math.cos(noiseInputX2 * currentDetailFreq + noiseInputZ2 * currentDetailFreq * 1.2);
+        height += currentRoughnessAmp * (Math.sin(noiseInputX1 * currentRoughnessFreq * 1.1 - noiseInputZ2 * currentRoughnessFreq * 0.9));
 
         if (currentBasinAmp > 0) {
-            const basinNoiseField = (Math.sin(offsetX * currentBasinFreq + 0.3) + Math.cos(offsetZ * currentBasinFreq - 0.2)) / 2;
+            const basinNoiseField = (Math.sin(noiseInputX1 * currentBasinFreq + 0.3) + Math.cos(noiseInputZ1 * currentBasinFreq - 0.2)) / 2;
             const normalizedBasinField = Math.pow(Math.abs(basinNoiseField), 2);
 
             if (normalizedBasinField < currentBasinThreshold) {
@@ -186,15 +207,18 @@ export class Chunk {
           if (y < surfaceY - 3) {
             this.blocks[x][y][z] = stoneBlockName;
           } else if (y < surfaceY) {
-            if (surfaceY < waterLevel && y >= surfaceY -1 && y < waterLevel) {
+            if (surfaceY <= waterLevel) { // Adjusted: if surface is at or below water level, it's sand under water
                  this.blocks[x][y][z] = sandBlockName;
             } else {
                  this.blocks[x][y][z] = dirtBlockName;
             }
           } else if (y === surfaceY) {
-            if (surfaceY < waterLevel -1) {
+            if (surfaceY < waterLevel ) { // Surface is below water level (but not water itself yet)
                 this.blocks[x][y][z] = sandBlockName;
-            } else {
+            } else if (surfaceY === waterLevel) { // Surface is exactly at water level
+                this.blocks[x][y][z] = sandBlockName; // Beach
+            }
+            else { // Surface is above water level
                 this.blocks[x][y][z] = grassBlockName;
             }
           } else if (y > surfaceY && y <= waterLevel) {
@@ -229,10 +253,11 @@ export class Chunk {
 
     const geometriesByMaterial = new Map<string, { material: THREE.Material, geometries: THREE.BufferGeometry[] }>();
     const shouldRenderFace = (currentBlockType: string, neighborBlockType: string | null): boolean => {
-      if (neighborBlockType === null) return true;
+      if (neighborBlockType === null) return true; // Edge of loaded world
       if (currentBlockType === 'waterBlock') {
-          return neighborBlockType === 'air';
+          return neighborBlockType === 'air'; // Water only renders against air
       }
+      // Solid blocks render against air or water
       return neighborBlockType === 'air' || neighborBlockType === 'waterBlock';
     };
 
@@ -260,47 +285,47 @@ export class Chunk {
             right: this.world.getBlock(blockWorldX + 1, blockWorldY, blockWorldZ),
             left: this.world.getBlock(blockWorldX - 1, blockWorldY, blockWorldZ)
           };
-
+          
           const addFace = (material: THREE.Material, faceRotation: [number, number, number], faceTranslation: [number, number, number]) => {
             const faceGeometry = new THREE.PlaneGeometry(1, 1);
             faceGeometry.rotateX(faceRotation[0]);
             faceGeometry.rotateY(faceRotation[1]);
             faceGeometry.rotateZ(faceRotation[2]);
-            faceGeometry.translate(x + 0.5 + faceTranslation[0] - 0.5, y + 0.5 + faceTranslation[1] -0.5, z + 0.5 + faceTranslation[2] -0.5);
+            faceGeometry.translate(x + faceTranslation[0], y + faceTranslation[1], z + faceTranslation[2]);
 
-            const materialKey = material.uuid;
+            const materialKey = material.uuid + (material.transparent ? '_transparent' : '_opaque');
             if (!geometriesByMaterial.has(materialKey)) {
               geometriesByMaterial.set(materialKey, { material: material, geometries: [] });
             }
             geometriesByMaterial.get(materialKey)!.geometries.push(faceGeometry);
           };
 
-          if (shouldRenderFace(blockType, neighbors.right)) {
+          if (shouldRenderFace(blockType, neighbors.right)) { // +X face
             const materialIndex = blockProto.multiTexture ? 0 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, Math.PI / 2, 0], [1, 0.5, 0.5]);
           }
-          if (shouldRenderFace(blockType, neighbors.left)) {
+          if (shouldRenderFace(blockType, neighbors.left)) { // -X face
             const materialIndex = blockProto.multiTexture ? 1 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, -Math.PI / 2, 0], [0, 0.5, 0.5]);
           }
-          if (shouldRenderFace(blockType, neighbors.top)) {
+          if (shouldRenderFace(blockType, neighbors.top)) { // +Y face
             const materialIndex = blockProto.multiTexture ? 2 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [-Math.PI / 2, 0, 0], [0.5, 1, 0.5]);
           }
-          if (shouldRenderFace(blockType, neighbors.bottom)) {
+          if (shouldRenderFace(blockType, neighbors.bottom)) { // -Y face
             const materialIndex = blockProto.multiTexture ? 3 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [Math.PI / 2, 0, 0], [0.5, 0, 0.5]);
           }
-          if (shouldRenderFace(blockType, neighbors.front)) {
+          if (shouldRenderFace(blockType, neighbors.front)) { // +Z face
             const materialIndex = blockProto.multiTexture ? 4 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, 0, 0], [0.5, 0.5, 1]);
           }
-          if (shouldRenderFace(blockType, neighbors.back)) {
+          if (shouldRenderFace(blockType, neighbors.back)) { // -Z face
             const materialIndex = blockProto.multiTexture ? 5 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, Math.PI, 0], [0.5, 0.5, 0]);
@@ -315,7 +340,7 @@ export class Chunk {
         if (mergedGeometry) {
           const chunkMesh = new THREE.Mesh(mergedGeometry, data.material);
           chunkMesh.name = `MergedChunkMesh_${this.worldX}_${this.worldZ}_${(data.material as any)?.map?.source?.src?.split('/').pop() || data.material.uuid.substring(0,6)}`;
-          chunkMesh.castShadow = data.material !== this.blockPrototypes.get('waterBlock')?.mesh.material;
+          chunkMesh.castShadow = !(data.material as THREE.Material).transparent; // Water shouldn't cast shadows generally
           chunkMesh.receiveShadow = true;
           this.chunkRoot.add(chunkMesh);
         }
@@ -332,7 +357,7 @@ export class Chunk {
 
     this.needsMeshUpdate = false;
   }
-
+  
   dispose(): void {
     while (this.chunkRoot.children.length > 0) {
       const child = this.chunkRoot.children[0];
@@ -352,3 +377,6 @@ export class Chunk {
     }
   }
 }
+
+
+    

@@ -64,6 +64,7 @@ export class Chunk {
       this.needsMeshUpdate = true;
 
       this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
+      this.world.queueChunkRemesh(this.worldX, this.worldZ); // Queue self for remesh
 
       if (localX === 0) this.world.queueChunkRemesh(this.worldX - 1, this.worldZ);
       if (localX === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX + 1, this.worldZ);
@@ -77,11 +78,11 @@ export class Chunk {
     const dirtBlockName = 'dirtBlock';
     const stoneBlockName = 'stoneBlock';
     const sandBlockName = 'sandBlock';
+    // const waterBlockName = 'waterBlock'; // Water will be placed based on height later
 
     const baseHeight = Math.floor(this.world.layers / 2.5);
-    const waterLevel = baseHeight - 5;
+    const waterLevel = baseHeight - 5; 
 
-    // Parameters for Mountainous/Lake Biome
     const mountainMainFreq = 0.05;
     const mountainMainAmp = 15;
     const mountainDetailFreq = 0.15;
@@ -92,33 +93,31 @@ export class Chunk {
     const mountainBasinAmp = 20;
     const mountainBasinThreshold = 0.3;
 
-    // Parameters for Plains Biome
-    const plainsMainFreq = 0.04; // Slightly different frequency for variation
-    const plainsMainAmp = 4;     // Flatter
+    const plainsMainFreq = 0.04; 
+    const plainsMainAmp = 4;     
     const plainsDetailFreq = 0.1;
     const plainsDetailAmp = 1.5;
     const plainsRoughnessFreq = 0.25;
     const plainsRoughnessAmp = 0.4;
-    const plainsBasinFreq = 0.05; // Can be same or make less frequent
-    const plainsBasinAmp = 3;      // Very shallow depressions, or 0 for no basins
-    const plainsBasinThreshold = 0.65; // Makes basins rarer/shallower in plains
+    const plainsBasinFreq = 0.05; 
+    const plainsBasinAmp = 3;      
+    const plainsBasinThreshold = 0.65; 
 
-    const biomeScale = 0.015; // Controls the size of biomes
+    const biomeScale = 0.015; 
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const absoluteWorldX = this.worldX * CHUNK_SIZE + x;
         const absoluteWorldZ = this.worldZ * CHUNK_SIZE + z;
 
-        // Biome determination
         const biomeNoiseVal = (Math.sin(absoluteWorldX * biomeScale) * Math.cos(absoluteWorldZ * biomeScale * 0.77) +
-                               Math.cos(absoluteWorldX * biomeScale * 1.23) * Math.sin(absoluteWorldZ * biomeScale * 0.89)) / 2; // Range ~-1 to 1
+                               Math.cos(absoluteWorldX * biomeScale * 1.23) * Math.sin(absoluteWorldZ * biomeScale * 0.89)) / 2;
 
         let currentMainFreq, currentMainAmp, currentDetailFreq, currentDetailAmp,
             currentRoughnessFreq, currentRoughnessAmp, currentBasinFreq,
             currentBasinAmp, currentBasinThreshold;
 
-        if (biomeNoiseVal > 0.05) { // Mountainous/Lake Biome (Threshold can be tuned)
+        if (biomeNoiseVal > 0.05) { 
             currentMainFreq = mountainMainFreq;
             currentMainAmp = mountainMainAmp;
             currentDetailFreq = mountainDetailFreq;
@@ -128,7 +127,7 @@ export class Chunk {
             currentBasinFreq = mountainBasinFreq;
             currentBasinAmp = mountainBasinAmp;
             currentBasinThreshold = mountainBasinThreshold;
-        } else { // Plains Biome
+        } else { 
             currentMainFreq = plainsMainFreq;
             currentMainAmp = plainsMainAmp;
             currentDetailFreq = plainsDetailFreq;
@@ -141,14 +140,10 @@ export class Chunk {
         }
 
         let height = baseHeight;
-        // Apply main terrain shape
         height += currentMainAmp * (Math.sin(absoluteWorldX * currentMainFreq) * Math.cos(absoluteWorldZ * currentMainFreq * 0.8));
-        // Apply detail
         height += currentDetailAmp * Math.cos(absoluteWorldX * currentDetailFreq + absoluteWorldZ * currentDetailFreq * 1.2);
-        // Apply roughness
         height += currentRoughnessAmp * (Math.sin(absoluteWorldX * currentRoughnessFreq * 1.1 - absoluteWorldZ * currentRoughnessFreq * 0.9));
 
-        // Apply basin/depression logic (for potential lakes)
         if (currentBasinAmp > 0) {
             const basinNoiseField = (Math.sin(absoluteWorldX * currentBasinFreq + 0.3) + Math.cos(absoluteWorldZ * currentBasinFreq - 0.2)) / 2;
             const normalizedBasinField = Math.pow(Math.abs(basinNoiseField), 2);
@@ -166,18 +161,21 @@ export class Chunk {
           if (y < surfaceY - 3) {
             this.blocks[x][y][z] = stoneBlockName;
           } else if (y < surfaceY) {
-            if (surfaceY < waterLevel && y >= surfaceY - 1) { // Near water level and below, use sand
+            if (surfaceY < waterLevel && y >= surfaceY -1) { 
                  this.blocks[x][y][z] = sandBlockName;
             } else {
                  this.blocks[x][y][z] = dirtBlockName;
             }
           } else if (y === surfaceY) {
-            if (surfaceY < waterLevel -1) { // Surface is below water level (potential lake bed)
-                this.blocks[x][y][z] = sandBlockName;
+            if (surfaceY < waterLevel -1) { 
+                this.blocks[x][y][z] = sandBlockName; // Lake bed material
             } else {
                 this.blocks[x][y][z] = grassBlockName;
             }
-          } else {
+          } else if (y > surfaceY && y <= waterLevel) { // Fill with 'air' first, water placement would be a separate step or consideration
+             this.blocks[x][y][z] = 'air'; // Placeholder for potential water
+          }
+          else {
             this.blocks[x][y][z] = 'air';
           }
         }
@@ -206,6 +204,17 @@ export class Chunk {
 
     const geometriesByMaterial = new Map<string, { material: THREE.Material, geometries: THREE.BufferGeometry[] }>();
 
+    const shouldRenderFace = (currentBlockType: string, neighborBlockType: string | null): boolean => {
+      if (neighborBlockType === null) return true; // Edge of loaded world, always render face
+
+      if (currentBlockType === 'waterBlock') {
+          return neighborBlockType === 'air'; // Water face only visible next to air
+      }
+      // Solid blocks (or any non-water block considered 'solid' for culling purposes)
+      return neighborBlockType === 'air' || neighborBlockType === 'waterBlock';
+    };
+
+
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let y = 0; y < this.world.layers; y++) {
         for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -228,8 +237,6 @@ export class Chunk {
             left: this.world.getBlock(blockWorldX - 1, blockWorldY, blockWorldZ)
           };
 
-          const isNeighborSolid = (type: string | null) => type !== null && type !== 'air';
-
           const addFace = (material: THREE.Material, faceRotation: [number, number, number], faceTranslation: [number, number, number]) => {
             const faceGeometry = new THREE.PlaneGeometry(1, 1);
             faceGeometry.rotateX(faceRotation[0]);
@@ -237,39 +244,45 @@ export class Chunk {
             faceGeometry.rotateZ(faceRotation[2]);
             faceGeometry.translate(x + 0.5 + faceTranslation[0] - 0.5, y + 0.5 + faceTranslation[1] -0.5, z + 0.5 + faceTranslation[2] -0.5);
 
-            const materialKey = material.uuid;
+            const materialKey = material.uuid; // Group by exact material instance
             if (!geometriesByMaterial.has(materialKey)) {
               geometriesByMaterial.set(materialKey, { material: material, geometries: [] });
             }
             geometriesByMaterial.get(materialKey)!.geometries.push(faceGeometry);
           };
 
-          if (!isNeighborSolid(neighbors.right)) {
+          // Right face (+X)
+          if (shouldRenderFace(blockType, neighbors.right)) {
             const materialIndex = blockProto.multiTexture ? 0 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, Math.PI / 2, 0], [1, 0.5, 0.5]);
           }
-          if (!isNeighborSolid(neighbors.left)) {
+          // Left face (-X)
+          if (shouldRenderFace(blockType, neighbors.left)) {
             const materialIndex = blockProto.multiTexture ? 1 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, -Math.PI / 2, 0], [0, 0.5, 0.5]);
           }
-          if (!isNeighborSolid(neighbors.top)) {
+          // Top face (+Y)
+          if (shouldRenderFace(blockType, neighbors.top)) {
             const materialIndex = blockProto.multiTexture ? 2 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [-Math.PI / 2, 0, 0], [0.5, 1, 0.5]);
           }
-          if (!isNeighborSolid(neighbors.bottom)) {
+          // Bottom face (-Y)
+          if (shouldRenderFace(blockType, neighbors.bottom)) {
             const materialIndex = blockProto.multiTexture ? 3 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [Math.PI / 2, 0, 0], [0.5, 0, 0.5]);
           }
-          if (!isNeighborSolid(neighbors.front)) {
+          // Front face (+Z)
+          if (shouldRenderFace(blockType, neighbors.front)) {
             const materialIndex = blockProto.multiTexture ? 4 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, 0, 0], [0.5, 0.5, 1]);
           }
-          if (!isNeighborSolid(neighbors.back)) {
+          // Back face (-Z)
+          if (shouldRenderFace(blockType, neighbors.back)) {
             const materialIndex = blockProto.multiTexture ? 5 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, Math.PI, 0], [0.5, 0.5, 0]);
@@ -284,13 +297,21 @@ export class Chunk {
         if (mergedGeometry) {
           const chunkMesh = new THREE.Mesh(mergedGeometry, data.material);
           chunkMesh.name = `MergedChunkMesh_${this.worldX}_${this.worldZ}_${data.material.uuid.substring(0,6)}`;
-          chunkMesh.castShadow = true;
+          chunkMesh.castShadow = data.material !== this.blockPrototypes.get('waterBlock')?.mesh.material; // Water meshes don't cast shadows
           chunkMesh.receiveShadow = true;
           this.chunkRoot.add(chunkMesh);
         }
         data.geometries.forEach(g => g.dispose());
       }
     });
+    this.chunkRoot.children.sort((a, b) => { // Attempt to sort transparent objects last
+        const matAIsTransparent = (a as THREE.Mesh).material && ((a as THREE.Mesh).material as THREE.Material).transparent;
+        const matBIsTransparent = (b as THREE.Mesh).material && ((b as THREE.Mesh).material as THREE.Material).transparent;
+        if (matAIsTransparent && !matBIsTransparent) return 1;
+        if (!matAIsTransparent && matBIsTransparent) return -1;
+        return 0;
+    });
+
 
     this.needsMeshUpdate = false;
   }

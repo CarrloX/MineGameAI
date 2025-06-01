@@ -13,7 +13,7 @@ export const CONTROL_CONFIG: ControlConfig = {
   jump: "Space",
   respawn: "KeyR",
   flyDown: "ShiftLeft",
-  boost: "ControlLeft", // Added for boosting/sprinting
+  boost: "ControlLeft",
 };
 
 export const CURSOR_STATE: CursorState = {
@@ -35,16 +35,17 @@ const WOOD_LOG_END_URL = "https://placehold.co/16x16/DEB887/000000.png";
 const REDSTONE_BLOCK_URL = "https://placehold.co/16x16/8B0000/FFFFFF.png";
 const ORANGE_WOOL_URL = "https://placehold.co/16x16/FFA500/FFFFFF.png";
 const COBBLESTONE_URL = "https://placehold.co/16x16/696969/FFFFFF.png";
+const WATER_URL = "https://placehold.co/16x16/1E90FF/FFFFFF.png"; // DodgerBlue placeholder
 
 export const TEXTURE_PATHS = {
   GRASS_BLOCK: {
     paths: [
-      GRASS_SIDE_URL,      // Right face (+X) data-ai-hint="grass side"
-      GRASS_SIDE_URL,      // Left face (-X) data-ai-hint="grass side"
-      GRASS_TOP_URL,       // Top face (+Y) data-ai-hint="grass top"
-      DIRT_URL,            // Bottom face (-Y) data-ai-hint="dirt soil"
-      GRASS_SIDE_URL,      // Front face (+Z) data-ai-hint="grass side"
-      GRASS_SIDE_URL,      // Back face (-Z) data-ai-hint="grass side"
+      GRASS_SIDE_URL,      // Right face (+X)
+      GRASS_SIDE_URL,      // Left face (-X)
+      GRASS_TOP_URL,       // Top face (+Y)
+      DIRT_URL,            // Bottom face (-Y)
+      GRASS_SIDE_URL,      // Front face (+Z)
+      GRASS_SIDE_URL,      // Back face (-Z)
     ],
     hint: "grass dirt block"
   },
@@ -53,18 +54,19 @@ export const TEXTURE_PATHS = {
   SAND_BLOCK: { side: SAND_URL, hint: "sand desert" },
   WOOD_LOG_BLOCK: {
     paths: [
-      WOOD_LOG_SIDE_URL,   // Right face (+X) data-ai-hint="wood bark"
-      WOOD_LOG_SIDE_URL,   // Left face (-X) data-ai-hint="wood bark"
-      WOOD_LOG_END_URL,    // Top face (+Y) data-ai-hint="wood end"
-      WOOD_LOG_END_URL,    // Bottom face (-Y) data-ai-hint="wood end"
-      WOOD_LOG_SIDE_URL,   // Front face (+Z) data-ai-hint="wood bark"
-      WOOD_LOG_SIDE_URL,   // Back face (-Z) data-ai-hint="wood bark"
+      WOOD_LOG_SIDE_URL,   // Right face (+X)
+      WOOD_LOG_SIDE_URL,   // Left face (-X)
+      WOOD_LOG_END_URL,    // Top face (+Y)
+      WOOD_LOG_END_URL,    // Bottom face (-Y)
+      WOOD_LOG_SIDE_URL,   // Front face (+Z)
+      WOOD_LOG_SIDE_URL,   // Back face (-Z)
     ],
     hint: "wood log tree"
   },
   REDSTONE_BLOCK: { side: REDSTONE_BLOCK_URL, hint: "redstone circuit" },
   ORANGE_WOOL_BLOCK: { side: ORANGE_WOOL_URL, hint: "orange wool" },
   COBBLESTONE_BLOCK: { side: COBBLESTONE_URL, hint: "cobblestone stone" },
+  WATER_BLOCK: { side: WATER_URL, hint: "water liquid" },
 };
 
 export const getBlockDefinitions = (): Record<string, { side: string } | string[]> => ({
@@ -76,6 +78,7 @@ export const getBlockDefinitions = (): Record<string, { side: string } | string[
   redstoneBlock: { side: TEXTURE_PATHS.REDSTONE_BLOCK.side },
   orangeWoolBlock: { side: TEXTURE_PATHS.ORANGE_WOOL_BLOCK.side },
   cobblestoneBlock: { side: TEXTURE_PATHS.COBBLESTONE_BLOCK.side },
+  waterBlock: { side: TEXTURE_PATHS.WATER_BLOCK.side },
 });
 
 export const getTextureHint = (nameKey: string): string => {
@@ -87,5 +90,6 @@ export const getTextureHint = (nameKey: string): string => {
     if (nameKey === "redstoneBlock") return TEXTURE_PATHS.REDSTONE_BLOCK.hint;
     if (nameKey === "orangeWoolBlock") return TEXTURE_PATHS.ORANGE_WOOL_BLOCK.hint;
     if (nameKey === "cobblestoneBlock") return TEXTURE_PATHS.COBBLESTONE_BLOCK.hint;
+    if (nameKey === "waterBlock") return TEXTURE_PATHS.WATER_BLOCK.hint;
     return "block pattern";
 }

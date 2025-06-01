@@ -73,6 +73,7 @@ const BlockifyGame: React.FC = () => {
       new Block("redstoneBlock", {side: blockData.redstoneBlock }, refs.textureLoader, false),
       new Block("orangeWoolBlock", {side: blockData.orangeWoolBlock }, refs.textureLoader, false),
       new Block("cobblestoneBlock", {side: blockData.cobblestoneBlock }, refs.textureLoader, false),
+      new Block("waterBlock", {side: blockData.waterBlock}, refs.textureLoader, false),
     ];
 
     refs.world = new World(refs);
@@ -90,16 +91,15 @@ const BlockifyGame: React.FC = () => {
     }
 
     let spawnY = refs.world.getSpawnHeight(initialPlayerX, initialPlayerZ);
-    // Safety check for spawn height
-    for (let i = 0; i < 5; i++) { // Try up to 5 blocks higher
+    for (let i = 0; i < 5; i++) { 
         const blockAtFeet = refs.world.getBlock(Math.floor(initialPlayerX), Math.floor(spawnY), Math.floor(initialPlayerZ));
         const blockAtHead = refs.world.getBlock(Math.floor(initialPlayerX), Math.floor(spawnY + 1), Math.floor(initialPlayerZ));
         if (blockAtFeet === 'air' && blockAtHead === 'air') {
             break;
         }
         spawnY++;
-        if (spawnY >= refs.world.layers -1) { // Prevent going out of bounds
-            spawnY = refs.world.layers / 2; // Fallback
+        if (spawnY >= refs.world.layers -1) { 
+            spawnY = Math.floor(refs.world.layers / 2); 
             break;
         }
     }
@@ -210,7 +210,6 @@ const BlockifyGame: React.FC = () => {
     if (refs.player.dead) {
       const respawnX = 0.5;
       const respawnZ = 0.5;
-      // Ensure chunks around spawn are loaded and meshed BEFORE getting spawn height
       refs.world.updateChunks(new THREE.Vector3(respawnX, refs.player.y, respawnZ));
       while(refs.world.getRemeshQueueSize() > 0) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
@@ -218,27 +217,25 @@ const BlockifyGame: React.FC = () => {
 
       let safeRespawnY = refs.world.getSpawnHeight(respawnX, respawnZ);
       let attempts = 0;
-      const maxAttempts = 10; // Increased attempts for safety check
+      const maxAttempts = 10; 
 
       while(attempts < maxAttempts) {
         const blockAtFeet = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY), Math.floor(respawnZ));
         const blockAtHead = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY + 1), Math.floor(respawnZ));
 
         if (blockAtFeet === 'air' && blockAtHead === 'air') {
-          break; // Safe spot found
+          break; 
         }
-        safeRespawnY++; // Try one block higher
+        safeRespawnY++; 
         attempts++;
-        if (safeRespawnY >= refs.world.layers -2) { // Avoid going too high
+        if (safeRespawnY >= refs.world.layers -2) { 
             console.warn("Respawn safety check reached near world top. Defaulting Y.");
-            safeRespawnY = Math.floor(refs.world.layers / 2); // Fallback to a mid-world height
+            safeRespawnY = Math.floor(refs.world.layers / 2); 
             break;
         }
       }
        if (attempts >= maxAttempts) {
           console.warn("Could not find a perfectly safe respawn Y after " + maxAttempts + " attempts. Player collision logic should resolve.");
-          // If still stuck, use the last attempted safeRespawnY or a default.
-          // The player's own collision logic should hopefully push them out.
       }
       refs.player = new Player(refs.player['name'], refs, respawnX, safeRespawnY, respawnZ, true);
     }
@@ -265,8 +262,10 @@ const BlockifyGame: React.FC = () => {
     const handleKeyUp = (e: KeyboardEvent) => refs.player?.handleKeyUp(e);
     const handleMouseMove = (e: MouseEvent) => refs.player?.lookAround(e);
     const handleMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) refs.player?.interactWithBlock(true);
-      if (e.button === 2) refs.player?.interactWithBlock(false);
+      if (refs.cursor.inWindow) { // Only interact if pointer is locked
+        if (e.button === 0) refs.player?.interactWithBlock(true); // Left click: Destroy
+        if (e.button === 2) refs.player?.interactWithBlock(false); // Right click: Place
+      }
     };
 
     const handleTouchStart = (e: TouchEvent) => {
@@ -281,7 +280,7 @@ const BlockifyGame: React.FC = () => {
     const handleTouchEnd = (e: TouchEvent) => {
       if (refs.cursor.holding) {
         if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) {
-          refs.player?.interactWithBlock(true);
+          refs.player?.interactWithBlock(true); // Tap: Place (equivalent to right click for simplicity here)
         }
         refs.cursor.holding = false;
       }
@@ -355,7 +354,7 @@ const BlockifyGame: React.FC = () => {
 
   return (
     <div ref={mountRef} className="relative w-full h-screen overflow-hidden cursor-crosshair">
-      {crosshairBgColor && (
+      {crosshairBgColor !== undefined && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none w-5 h-5 z-10">
           <div
             className="w-full h-[2px] absolute top-1/2 left-0 transform -translate-y-1/2 rounded-sm"

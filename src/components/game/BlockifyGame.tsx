@@ -8,7 +8,7 @@ import { Block } from '@/lib/three-game/Block';
 import { Player } from '@/lib/three-game/Player';
 import { InputHandler } from '@/lib/three-game/InputHandler';
 import { RendererManager } from '@/lib/three-game/RendererManager';
-import { GameManager } from '@/lib/three-game/GameManager';
+import { GameLogic } from '@/lib/three-game/GameLogic';
 import { getBlockDefinitions, CONTROL_CONFIG, CURSOR_STATE, CHUNK_SIZE } from '@/lib/three-game/utils';
 import type { GameRefs, DebugInfoState, ErrorInfo } from '@/lib/three-game/types';
 import ErrorBoundaryDisplay from './ErrorBoundaryDisplay';
@@ -26,7 +26,7 @@ const BlockifyGame: React.FC = () => {
     player: null,
     inputHandler: null,
     rendererManager: null,
-    gameManager: null,
+    gameLogic: null,
     controlConfig: { ...CONTROL_CONFIG },
     cursor: { ...CURSOR_STATE },
     gameLoopId: null,
@@ -51,7 +51,7 @@ const BlockifyGame: React.FC = () => {
   const [isCameraSubmerged, setIsCameraSubmerged] = useState(false);
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
 
-  const renderSceneLogicRef = useRef<(fps?: number) => void>(() => {});
+  const gameLogicUpdateRef = useRef<(fps?: number) => void>(() => {});
 
 
   const initGame = useCallback(() => {
@@ -62,7 +62,7 @@ const BlockifyGame: React.FC = () => {
 
     setErrorInfo(null);
 
-    refs.rendererManager = new RendererManager(refs.canvasRef, refs); // Camera rotation order set here
+    refs.rendererManager = new RendererManager(refs.canvasRef, refs); 
 
     const blockData = getBlockDefinitions();
     if (!refs.textureLoader) {
@@ -116,17 +116,15 @@ const BlockifyGame: React.FC = () => {
         console.warn("Could not find a perfectly safe respawn Y after " + maxAttempts + " attempts. Player collision logic should resolve.");
     }
 
-    refs.player = new Player("Player", refs, initialPlayerX, spawnY, initialPlayerZ); // Player constructor calls lookAround if needed
+    refs.player = new Player("Player", refs, initialPlayerX, spawnY, initialPlayerZ); 
     refs.inputHandler = new InputHandler(refs.player, refs);
     refs.inputHandler.setupEventListeners();
 
-    refs.gameManager = new GameManager(refs, setDebugInfo, setIsCameraSubmerged);
+    refs.gameLogic = new GameLogic(refs, setDebugInfo, setIsCameraSubmerged);
 
 
     if (refs.camera && refs.player) {
-      // Set initial camera position based on player's state
       refs.camera.position.set(refs.player.x, refs.player.y + refs.player.height * 0.9, refs.player.z);
-      // Player constructor or subsequent lookAround calls will handle camera rotation
     }
 
     console.log("Game initialized.");
@@ -138,10 +136,10 @@ const BlockifyGame: React.FC = () => {
 
 
   useEffect(() => {
-    if (gameRefs.current.gameManager) {
-      renderSceneLogicRef.current = (fps?: number) => gameRefs.current.gameManager!.update(fps);
+    if (gameRefs.current.gameLogic) {
+      gameLogicUpdateRef.current = (fps?: number) => gameRefs.current.gameLogic!.update(fps);
     }
-  }, [gameRefs.current.gameManager]);
+  }, [gameRefs.current.gameLogic]); // Corrected dependency based on previous logic
 
   const gameLoop = () => {
     let newFpsValue: number | undefined = undefined;
@@ -155,7 +153,7 @@ const BlockifyGame: React.FC = () => {
     }
 
     try {
-      renderSceneLogicRef.current(newFpsValue);
+      gameLogicUpdateRef.current(newFpsValue);
     } catch (error: any) {
       console.error("Error in game loop:", error);
       setErrorInfo({

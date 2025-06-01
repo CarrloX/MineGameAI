@@ -56,7 +56,7 @@ export class Player {
     this.depth = 0.6;
     this.pitch = 0;
     this.yaw = 0;
-    this.speed = 0.07;
+    this.speed = 0.065; // Reduced walking speed
     this.velocity = 0;
     this.jumpSpeed = 0.11;
     this.jumpVelocity = 0;
@@ -277,9 +277,9 @@ export class Player {
         break;
       case controlConfig.boost: 
         if (this.flying) {
-          this.isBoosting = !this.isBoosting; 
+            this.isBoosting = !this.isBoosting;
         } else {
-          this.isRunning = !this.isRunning;
+            this.isRunning = !this.isRunning;
         }
         break;
     }
@@ -441,7 +441,7 @@ export class Player {
                             }
                         } else if (overlapX < overlapY && overlapX < overlapZ) { 
                             if (!this.flying && this.isRunning) {
-                                this.isRunning = false; // Cancel sprint on horizontal collision
+                                this.isRunning = false; 
                             }
                             if ((pMaxX - bMinX) < (bMaxX - pMinX)) { 
                                 correctedX = bMinX - this.width / 2 - 0.001;
@@ -450,7 +450,7 @@ export class Player {
                             }
                         } else { 
                              if (!this.flying && this.isRunning) {
-                                this.isRunning = false; // Cancel sprint on horizontal collision
+                                this.isRunning = false; 
                             }
                              if ((pMaxZ - bMinZ) < (bMaxZ - pMinZ)) { 
                                 correctedZ = bMinZ - this.depth / 2 - 0.001;
@@ -492,7 +492,7 @@ export class Player {
     // Check if player is in water and cancel sprint if so
     if (!this.flying && this.isRunning) {
         const playerFeetBlockX = Math.floor(this.x);
-        const playerFeetBlockY = Math.floor(this.y); // Check at the player's very bottom
+        const playerFeetBlockY = Math.floor(this.y + 0.01); // Check slightly above the player's very bottom
         const playerFeetBlockZ = Math.floor(this.z);
         const blockAtFeet = world.getBlock(playerFeetBlockX, playerFeetBlockY, playerFeetBlockZ);
 

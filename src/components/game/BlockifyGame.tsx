@@ -17,6 +17,9 @@ interface DebugInfoState {
   highlightStatus: string;
   visibleChunks: number;
   totalChunks: number;
+  isFlying: string;
+  isRunning: string;
+  isBoosting: string;
 }
 
 const BlockifyGame: React.FC = () => {
@@ -44,10 +47,15 @@ const BlockifyGame: React.FC = () => {
     highlightStatus: 'HL: Inactive',
     visibleChunks: 0,
     totalChunks: 0,
+    isFlying: 'Flying: No',
+    isRunning: 'Running: No',
+    isBoosting: 'Boosting: No',
   });
   const [crosshairBgColor, setCrosshairBgColor] = useState<string | undefined>(undefined);
   const lastFrameTimeRef = useRef(performance.now());
   const frameCountRef = useRef(0);
+  const [isCameraSubmerged, setIsCameraSubmerged] = useState(false);
+
 
   const initGame = useCallback(() => {
     const refs = gameRefs.current;
@@ -85,7 +93,7 @@ const BlockifyGame: React.FC = () => {
 
     const initialPlayerX = 0.5;
     const initialPlayerZ = 0.5;
-    // Ensure chunks around spawn are loaded and meshed before determining spawn height
+    
     refs.world.updateChunks(new THREE.Vector3(initialPlayerX, 0, initialPlayerZ));
     while(refs.world.getRemeshQueueSize() > 0) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
@@ -93,16 +101,16 @@ const BlockifyGame: React.FC = () => {
 
 
     let spawnY = refs.world.getSpawnHeight(initialPlayerX, initialPlayerZ);
-    // Safety check loop for spawn position
-    for (let i = 0; i < 10; i++) { // Try up to 10 times to find a safe spot
+    
+    for (let i = 0; i < 10; i++) { 
         const blockAtFeet = refs.world.getBlock(Math.floor(initialPlayerX), Math.floor(spawnY), Math.floor(initialPlayerZ));
         const blockAtHead = refs.world.getBlock(Math.floor(initialPlayerX), Math.floor(spawnY + 1), Math.floor(initialPlayerZ));
         if (blockAtFeet === 'air' && blockAtHead === 'air') {
-            break; // Found a safe spot
+            break; 
         }
-        spawnY++; // Move up one block and try again
-        if (spawnY >= refs.world.layers - 2) { // Avoid getting too close to world top
-            spawnY = Math.floor(refs.world.layers / 2); // Fallback
+        spawnY++; 
+        if (spawnY >= refs.world.layers - 2) { 
+            spawnY = Math.floor(refs.world.layers / 2); 
             console.warn("Spawn safety check reached near world top, using fallback Y.");
             break;
         }
@@ -182,8 +190,7 @@ const BlockifyGame: React.FC = () => {
       const { object, distance, blockWorldCoords, worldFaceNormal } = player.lookingAt;
       const objName = object.name.length > 20 ? object.name.substring(0, 20) + "..." : object.name;
       rayTargetStr = `Ray: ${objName} D:${distance.toFixed(1)} B:[${blockWorldCoords.x.toFixed(0)},${blockWorldCoords.y.toFixed(0)},${blockWorldCoords.z.toFixed(0)}]`;
-      // setCrosshairBgColor('rgba(255, 255, 255, 0.75)'); // Client-side only part handled by useEffect
-
+      
       if (worldFaceNormal) {
         const normal = worldFaceNormal;
         if (Math.abs(normal.x) > 0.5) highlightFaceDir = normal.x > 0 ? 'East (+X)' : 'West (-X)';
@@ -191,8 +198,6 @@ const BlockifyGame: React.FC = () => {
         else if (Math.abs(normal.z) > 0.5) highlightFaceDir = normal.z > 0 ? 'South (+Z)' : 'North (-Z)';
         else highlightFaceDir = 'Unknown Face';
       }
-    } else {
-      // setCrosshairBgColor('rgba(0, 0, 0, 0.75)'); // Client-side only part handled by useEffect
     }
     const highlightStr = `HL: ${highlightFaceDir}`;
 
@@ -200,6 +205,19 @@ const BlockifyGame: React.FC = () => {
     refs.world.activeChunks.forEach(chunk => {
       if(chunk.chunkRoot.visible) visibleChunksCount++;
     });
+
+    // Underwater check
+    if (refs.player && refs.world) {
+      const camWorldX = Math.floor(player.x);
+      const camWorldY = Math.floor(player.y + player.height * 0.9); // Camera height
+      const camWorldZ = Math.floor(player.z);
+      const blockAtCamera = refs.world.getBlock(camWorldX, camWorldY, camWorldZ);
+      const newIsSubmerged = blockAtCamera === 'waterBlock';
+      if (newIsSubmerged !== isCameraSubmerged) {
+          setIsCameraSubmerged(newIsSubmerged);
+      }
+    }
+
 
     setDebugInfo(prev => ({
       fps: newFpsValue !== undefined ? newFpsValue : prev.fps,
@@ -209,13 +227,16 @@ const BlockifyGame: React.FC = () => {
       highlightStatus: highlightStr,
       visibleChunks: visibleChunksCount,
       totalChunks: refs.world!.activeChunks.size,
+      isFlying: `Flying: ${player.flying ? 'Yes' : 'No'}`,
+      isRunning: `Running: ${player.isRunning ? 'Yes' : 'No'}`,
+      isBoosting: `Boosting: ${player.isBoosting ? 'Yes' : 'No'}`,
     }));
 
 
     if (refs.player.dead) {
       const respawnX = 0.5;
       const respawnZ = 0.5;
-      // Ensure chunks around respawn are loaded and meshed before determining spawn height
+      
       refs.world.updateChunks(new THREE.Vector3(respawnX, refs.player.y, respawnZ));
       while(refs.world.getRemeshQueueSize() > 0) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
@@ -223,15 +244,13 @@ const BlockifyGame: React.FC = () => {
 
       let safeRespawnY = refs.world.getSpawnHeight(respawnX, respawnZ);
       let attempts = 0;
-      const maxAttempts = 15; // Increased attempts for safety
+      const maxAttempts = 15; 
 
       while(attempts < maxAttempts) {
         const blockAtFeet = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY), Math.floor(respawnZ));
         const blockAtHead = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY + 1), Math.floor(respawnZ));
 
         if (blockAtFeet === 'air' && blockAtHead === 'air') {
-          // Additional check for blocks at player's wider bounding box corners could be added here if needed
-          // For now, assume the 1x1 column check is primary, and player collision will resolve minor overlaps.
           break;
         }
         safeRespawnY++;
@@ -257,14 +276,13 @@ const BlockifyGame: React.FC = () => {
 
     refs.renderer.render(refs.scene, refs.camera);
     refs.gameLoopId = requestAnimationFrame(renderScene);
-  }, []);
+  }, [isCameraSubmerged]); // Added isCameraSubmerged to dependencies
 
 
   useEffect(() => {
     initGame();
     const refs = gameRefs.current;
 
-    // Effect for client-side only state update (crosshair)
     const updateCrosshairColor = () => {
         if (refs.player?.lookingAt) {
             setCrosshairBgColor('rgba(255, 255, 255, 0.75)');
@@ -272,17 +290,12 @@ const BlockifyGame: React.FC = () => {
             setCrosshairBgColor('rgba(0, 0, 0, 0.75)');
         }
     };
-    // Run it once on mount and then it will be updated by renderScene's logic indirectly
-    // by setting debugInfo which will trigger re-render of the component and thus this effect if player.lookingAt changes.
-    // More directly, we can call it in renderScene or tie it to a state that player.lookingAt directly influences.
-    // For now, relying on the natural re-render from setDebugInfo. A more direct update can be done if needed.
-    // A better approach is to have player.lookingAt directly influence a state variable that this effect depends on.
-
+    
     const intervalId = setInterval(() => {
-      if (refs.player) { // Check if player exists
+      if (refs.player) { 
         updateCrosshairColor();
       }
-    }, 100); // Update crosshair color periodically, or find a more event-driven way
+    }, 100); 
 
 
     const handleResize = () => adjustWindow();
@@ -291,7 +304,7 @@ const BlockifyGame: React.FC = () => {
     const handleKeyUp = (e: KeyboardEvent) => refs.player?.handleKeyUp(e);
     const handleMouseMove = (e: MouseEvent) => refs.player?.lookAround(e);
     const handleMouseDown = (e: MouseEvent) => {
-      if (refs.cursor.inWindow && refs.player) { // Check if player exists
+      if (refs.cursor.inWindow && refs.player) { 
         if (e.button === 0) refs.player.interactWithBlock(true);
         if (e.button === 2) refs.player.interactWithBlock(false);
       }
@@ -304,12 +317,12 @@ const BlockifyGame: React.FC = () => {
       }
     };
     const handleTouchMove = (e: TouchEvent) => {
-      refs.cursor.holdTime = 0; // Reset hold time if finger moves, to prevent accidental placement
+      refs.cursor.holdTime = 0; 
     };
     const handleTouchEnd = (e: TouchEvent) => {
-      if (refs.cursor.holding && refs.player) { // Check if player exists
-        if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) { // Quick tap
-          refs.player.interactWithBlock(true); // Destroy block
+      if (refs.cursor.holding && refs.player) { 
+        if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) { 
+          refs.player.interactWithBlock(true); 
         }
         refs.cursor.holding = false;
       }
@@ -382,6 +395,27 @@ const BlockifyGame: React.FC = () => {
     };
   }, [initGame, adjustWindow, renderScene]);
 
+
+  useEffect(() => {
+    const { renderer, scene, world } = gameRefs.current;
+    if (!renderer || !scene || !world) return;
+
+    if (isCameraSubmerged) {
+        renderer.setClearColor(new THREE.Color(0x3A5F83)); 
+        if (!scene.fog || !(scene.fog instanceof THREE.Fog)) {
+            scene.fog = new THREE.Fog(0x3A5F83, 0.1, CHUNK_SIZE * 1.5);
+        } else {
+            scene.fog.color.setHex(0x3A5F83);
+            scene.fog.near = 0.1;
+            scene.fog.far = CHUNK_SIZE * 1.5;
+        }
+    } else {
+        renderer.setClearColor(new THREE.Color(world.skyColor));
+        scene.fog = null; 
+    }
+  }, [isCameraSubmerged]);
+
+
   return (
     <div ref={mountRef} className="relative w-full h-screen overflow-hidden cursor-crosshair">
       {crosshairBgColor !== undefined && (
@@ -403,9 +437,13 @@ const BlockifyGame: React.FC = () => {
         <div>{debugInfo.raycastTarget}</div>
         <div>{debugInfo.highlightStatus}</div>
         <div>Chunks: {debugInfo.visibleChunks} / {debugInfo.totalChunks}</div>
+        <div>{debugInfo.isFlying}</div>
+        <div>{debugInfo.isRunning}</div>
+        <div>{debugInfo.isBoosting}</div>
       </div>
     </div>
   );
 };
 
 export default BlockifyGame;
+

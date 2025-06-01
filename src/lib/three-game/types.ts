@@ -4,6 +4,7 @@ import type { Player } from './Player';
 import type { World } from './World';
 import type { Block } from './Block';
 import type { InputHandler } from './InputHandler';
+import type { RendererManager } from './RendererManager';
 
 export interface ControlConfig {
   backwards: string;
@@ -50,6 +51,7 @@ export interface GameRefs {
   gameLoopId: number | null;
   canvasRef: HTMLDivElement | null;
   inputHandler: InputHandler | null;
+  rendererManager: RendererManager | null;
 }
 
 export type BlockDefinition = { side: string } | string[];

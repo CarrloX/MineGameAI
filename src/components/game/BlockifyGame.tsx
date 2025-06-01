@@ -7,6 +7,7 @@ import { World } from '@/lib/three-game/World';
 import { Block } from '@/lib/three-game/Block';
 import { Player } from '@/lib/three-game/Player';
 import { InputHandler } from '@/lib/three-game/InputHandler';
+import { RendererManager } from '@/lib/three-game/RendererManager';
 import { getBlockDefinitions, CONTROL_CONFIG, CURSOR_STATE, CHUNK_SIZE } from '@/lib/three-game/utils';
 import type { GameRefs } from '@/lib/three-game/types';
 import ErrorBoundaryDisplay from './ErrorBoundaryDisplay';
@@ -42,6 +43,7 @@ const BlockifyGame: React.FC = () => {
     blocks: null,
     player: null,
     inputHandler: null,
+    rendererManager: null,
     controlConfig: { ...CONTROL_CONFIG },
     cursor: { ...CURSOR_STATE },
     gameLoopId: null,
@@ -77,16 +79,13 @@ const BlockifyGame: React.FC = () => {
 
     setErrorInfo(null);
 
-    refs.scene = new THREE.Scene();
-    refs.camera = new THREE.PerspectiveCamera(75, refs.canvasRef.clientWidth / refs.canvasRef.clientHeight, 0.1, 1000);
-    refs.renderer = new THREE.WebGLRenderer({ antialias: true });
-    refs.renderer.setPixelRatio(window.devicePixelRatio);
-    refs.renderer.setSize(refs.canvasRef.clientWidth, refs.canvasRef.clientHeight);
-    refs.renderer.shadowMap.enabled = true;
-    refs.raycaster = new THREE.Raycaster();
-    refs.textureLoader = new THREE.TextureLoader();
+    refs.rendererManager = new RendererManager(refs.canvasRef, refs);
 
     const blockData = getBlockDefinitions();
+    if (!refs.textureLoader) {
+        console.error("TextureLoader not initialized by RendererManager!");
+        return;
+    }
      refs.blocks = [
       new Block("grassBlock", blockData.grassBlock, refs.textureLoader, true),
       new Block("dirtBlock", blockData.dirtBlock, refs.textureLoader, false),
@@ -104,7 +103,6 @@ const BlockifyGame: React.FC = () => {
     if (refs.renderer && refs.world) {
        refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
     }
-    refs.canvasRef.appendChild(refs.renderer.domElement);
 
     const initialPlayerX = 0.5;
     const initialPlayerZ = 0.5;
@@ -144,9 +142,7 @@ const BlockifyGame: React.FC = () => {
     if (refs.camera && refs.player) {
       refs.camera.position.set(refs.player.x, refs.player.y + (refs.player.height - 0.5), refs.player.z);
       refs.camera.rotation.order = "YXZ";
-      refs.camera.rotation.x = refs.player.pitch;
-      refs.camera.rotation.y = refs.player.yaw;
-      refs.camera.updateProjectionMatrix();
+      refs.player.lookAround(); // Ensure initial camera rotation matches player's
     }
 
     console.log("Game initialized.");
@@ -157,18 +153,10 @@ const BlockifyGame: React.FC = () => {
 
   }, []);
 
-  const adjustWindow = useCallback(() => {
-    const refs = gameRefs.current;
-    if (refs.camera && refs.renderer && refs.canvasRef) {
-      refs.camera.aspect = refs.canvasRef.clientWidth / refs.canvasRef.clientHeight;
-      refs.camera.updateProjectionMatrix();
-      refs.renderer.setSize(refs.canvasRef.clientWidth, refs.canvasRef.clientHeight);
-    }
-  }, []);
 
   const renderSceneLogic = () => {
     const refs = gameRefs.current;
-    if (!refs.player || !refs.renderer || !refs.scene || !refs.camera || !refs.world) {
+    if (!refs.player || !refs.rendererManager || !refs.scene || !refs.camera || !refs.world) {
       if (refs.gameLoopId !== null) cancelAnimationFrame(refs.gameLoopId);
       refs.gameLoopId = null; 
       return;
@@ -281,7 +269,7 @@ const BlockifyGame: React.FC = () => {
       const currentYaw = refs.camera.rotation.y;
       
       refs.player = new Player(refs.player['name'], refs, respawnX, safeRespawnY, respawnZ, true);
-      if (refs.inputHandler) { // Re-assign player to existing input handler
+      if (refs.inputHandler) { 
         refs.inputHandler['player'] = refs.player;
       }
       
@@ -296,11 +284,11 @@ const BlockifyGame: React.FC = () => {
     if (refs.cursor.holding) {
       refs.cursor.holdTime++;
       if (refs.cursor.holdTime === refs.cursor.triggerHoldTime) {
-        if (refs.player) refs.player.interactWithBlock(false); // Place block on hold
+        if (refs.player) refs.player.interactWithBlock(false); 
       }
     }
 
-    refs.renderer.render(refs.scene, refs.camera);
+    refs.rendererManager.render();
   };
 
   useEffect(() => {
@@ -347,10 +335,7 @@ const BlockifyGame: React.FC = () => {
     }, 100); 
 
 
-    const handleResize = () => adjustWindow();
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
-    
-    window.addEventListener("resize", handleResize);
     document.addEventListener("contextmenu", handleContextMenu);
    
 
@@ -367,17 +352,18 @@ const BlockifyGame: React.FC = () => {
         cancelAnimationFrame(refs.gameLoopId);
         refs.gameLoopId = null;
       }
-      window.removeEventListener("resize", handleResize);
       document.removeEventListener("contextmenu", handleContextMenu);
       
       refs.inputHandler?.removeEventListeners();
+      refs.rendererManager?.dispose();
+
 
       refs.world?.activeChunks.forEach((chunk) => {
         if (chunk && typeof chunk.dispose === 'function') {
           chunk.dispose();
         }
       });
-      refs.renderer?.dispose();
+      
       refs.scene?.traverse(object => {
         if (object instanceof THREE.Mesh) {
           object.geometry?.dispose();
@@ -394,14 +380,9 @@ const BlockifyGame: React.FC = () => {
           }
         }
       });
-      if (mountRef.current && refs.renderer?.domElement) {
-        if (mountRef.current.contains(refs.renderer.domElement)) {
-            mountRef.current.removeChild(refs.renderer.domElement);
-        }
-      }
       console.log("Cleanup complete.");
     };
-  }, [initGame, adjustWindow]); 
+  }, [initGame]); 
 
 
   useEffect(() => {

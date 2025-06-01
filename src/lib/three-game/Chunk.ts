@@ -104,67 +104,84 @@ export class Chunk {
     const waterBlockName = 'waterBlock';
 
     const baseHeight = Math.floor(this.world.layers / 2.5);
-    const waterLevel = baseHeight - 3; // Lowered water level
+    const waterLevel = baseHeight - 3; 
+
+    // --- FBM Parameters ---
+    const OCTAVES = 4;
+    const PERSISTENCE = 0.5; // Amplitude multiplier per octave
+    const LACUNARITY = 2.0;  // Frequency multiplier per octave
+    const NOISE_SCALE_ADJUSTMENT = 1.5; // For 50% larger scale (lower frequency)
+
+    // --- Base parameters (will be seeded) ---
+    const mountainMainFreqBase_const = 0.05;
+    const mountainMainAmpBase_const = 15;
+    const plainsMainFreqBase_const = 0.04;
+    const plainsMainAmpBase_const = 3;
+
+    const mountainBasinFreqBase_const = 0.04;
+    const mountainBasinAmpBase_const = 15; 
+    const mountainBasinThresholdBase_const = 0.28; 
+    const plainsBasinFreqBase_const = 0.05;
+    const plainsBasinAmpBase_const = 2.0; 
+    const plainsBasinThresholdBase_const = 0.62; 
+
+    const biomeScaleBase_const = 0.008;
+    const biomeBlendStartBase_const = -0.1;
+    const biomeBlendEndBase_const = 0.2;
     
-    const mountainMainFreqBase = 0.05;
-    const mountainMainAmpBase = 15;
-    const mountainDetailFreqBase = 0.15;
-    const mountainDetailAmpBase = 5;
-    const mountainRoughnessFreqBase = 0.3;
-    const mountainRoughnessAmpBase = 1.5;
-    const mountainBasinFreqBase = 0.04;
-    const mountainBasinAmpBase = 15; // Reduced basin amplitude
-    const mountainBasinThresholdBase = 0.28; // Adjusted basin threshold
-
-    const plainsMainFreqBase = 0.04;
-    const plainsMainAmpBase = 3;
-    const plainsDetailFreqBase = 0.1;
-    const plainsDetailAmpBase = 1;
-    const plainsRoughnessFreqBase = 0.25;
-    const plainsRoughnessAmpBase = 0.2;
-    const plainsBasinFreqBase = 0.05;
-    const plainsBasinAmpBase = 2.0; // Reduced basin amplitude
-    const plainsBasinThresholdBase = 0.62; // Adjusted basin threshold
-
-    const biomeScaleBase = 0.008;
-    const biomeBlendStartBase = -0.1;
-    const biomeBlendEndBase = 0.2;
-
     // Parameters influenced by world seed for global world 'style'
-    const mountainMainFreq = mountainMainFreqBase + this.seededRandom(0,0,0, this.worldSeed, "mtMainFreq") * 0.01 - 0.005;
-    const mountainMainAmp = mountainMainAmpBase + this.seededRandom(0,0,0, this.worldSeed, "mtMainAmp") * 5 - 2.5;
-    const mountainDetailFreq = mountainDetailFreqBase + this.seededRandom(0,0,0, this.worldSeed, "mtDetailFreq") * 0.02 - 0.01;
-    const mountainDetailAmp = mountainDetailAmpBase + this.seededRandom(0,0,0, this.worldSeed, "mtDetailAmp") * 2 - 1;
-    const mountainRoughnessFreq = mountainRoughnessFreqBase + this.seededRandom(0,0,0, this.worldSeed, "mtRoughFreq") * 0.05 - 0.025;
-    const mountainRoughnessAmp = mountainRoughnessAmpBase + this.seededRandom(0,0,0, this.worldSeed, "mtRoughAmp") * 1 - 0.5;
-    const mountainBasinFreq = mountainBasinFreqBase + this.seededRandom(0,0,0, this.worldSeed, "mtBasinFreq") * 0.01 - 0.005;
-    const mountainBasinAmp = mountainBasinAmpBase + this.seededRandom(0,0,0, this.worldSeed, "mtBasinAmp") * 5 - 2.5;
-    const mountainBasinThreshold = mountainBasinThresholdBase + this.seededRandom(0,0,0, this.worldSeed, "mtBasinThresh") * 0.1 - 0.05;
+    // Adjusted base frequencies for larger scale
+    const mountainBaseFreqSeeded = (mountainMainFreqBase_const + this.seededRandom(0,0,0, this.worldSeed, "mtMainFreq") * 0.01 - 0.005) / NOISE_SCALE_ADJUSTMENT;
+    const mountainBaseAmpSeeded = mountainMainAmpBase_const + this.seededRandom(0,0,0, this.worldSeed, "mtMainAmp") * 5 - 2.5;
+    
+    const plainsBaseFreqSeeded = (plainsMainFreqBase_const + this.seededRandom(0,0,0, this.worldSeed, "plMainFreq") * 0.01 - 0.005) / NOISE_SCALE_ADJUSTMENT;
+    const plainsBaseAmpSeeded = plainsMainAmpBase_const + this.seededRandom(0,0,0, this.worldSeed, "plMainAmp") * 1 - 0.5;
 
-    const plainsMainFreq = plainsMainFreqBase + this.seededRandom(0,0,0, this.worldSeed, "plMainFreq") * 0.01 - 0.005;
-    const plainsMainAmp = plainsMainAmpBase + this.seededRandom(0,0,0, this.worldSeed, "plMainAmp") * 1 - 0.5;
-    const plainsDetailFreq = plainsDetailFreqBase + this.seededRandom(0,0,0, this.worldSeed, "plDetailFreq") * 0.02 - 0.01;
-    const plainsDetailAmp = plainsDetailAmpBase + this.seededRandom(0,0,0, this.worldSeed, "plDetailAmp") * 0.5 - 0.25;
-    const plainsRoughnessFreq = plainsRoughnessFreqBase + this.seededRandom(0,0,0, this.worldSeed, "plRoughFreq") * 0.05 - 0.025;
-    const plainsRoughnessAmp = plainsRoughnessAmpBase + this.seededRandom(0,0,0, this.worldSeed, "plRoughAmp") * 0.1 - 0.05;
-    const plainsBasinFreq = plainsBasinFreqBase + this.seededRandom(0,0,0, this.worldSeed, "plBasinFreq") * 0.01 - 0.005;
-    const plainsBasinAmp = plainsBasinAmpBase + this.seededRandom(0,0,0, this.worldSeed, "plBasinAmp") * 1 - 0.5;
-    const plainsBasinThreshold = plainsBasinThresholdBase + this.seededRandom(0,0,0, this.worldSeed, "plBasinThresh") * 0.1 - 0.05;
+    const mountainBasinFreq = (mountainBasinFreqBase_const + this.seededRandom(0,0,0, this.worldSeed, "mtBasinFreq") * 0.01 - 0.005);
+    const mountainBasinAmp = mountainBasinAmpBase_const + this.seededRandom(0,0,0, this.worldSeed, "mtBasinAmp") * 5 - 2.5;
+    const mountainBasinThreshold = mountainBasinThresholdBase_const + this.seededRandom(0,0,0, this.worldSeed, "mtBasinThresh") * 0.1 - 0.05;
 
-    const biomeScale = biomeScaleBase + this.seededRandom(0,0,0, this.worldSeed, "biomeScale") * 0.002 - 0.001;
-    const biomeBlendStart = biomeBlendStartBase + this.seededRandom(0,0,0, this.worldSeed, "biomeBlendStart") * 0.05 - 0.025;
-    const biomeBlendEnd = biomeBlendEndBase + this.seededRandom(0,0,0, this.worldSeed, "biomeBlendEnd") * 0.05 - 0.025;
+    const plainsBasinFreq = (plainsBasinFreqBase_const + this.seededRandom(0,0,0, this.worldSeed, "plBasinFreq") * 0.01 - 0.005);
+    const plainsBasinAmp = plainsBasinAmpBase_const + this.seededRandom(0,0,0, this.worldSeed, "plBasinAmp") * 1 - 0.5;
+    const plainsBasinThreshold = plainsBasinThresholdBase_const + this.seededRandom(0,0,0, this.worldSeed, "plBasinThresh") * 0.1 - 0.05;
+    
+    const biomeScale = biomeScaleBase_const + this.seededRandom(0,0,0, this.worldSeed, "biomeScale") * 0.002 - 0.001;
+    const biomeBlendStart = biomeBlendStartBase_const + this.seededRandom(0,0,0, this.worldSeed, "biomeBlendStart") * 0.05 - 0.025;
+    const biomeBlendEnd = biomeBlendEndBase_const + this.seededRandom(0,0,0, this.worldSeed, "biomeBlendEnd") * 0.05 - 0.025;
 
+    const calculateFbmHeight = (
+        worldAbsX: number,
+        worldAbsZ: number,
+        initialFrequency: number,
+        initialAmplitude: number
+    ): number => {
+        let totalHeightContribution = 0;
+        let frequency = initialFrequency;
+        let amplitude = initialAmplitude;
+
+        for (let i = 0; i < OCTAVES; i++) {
+            // Using slightly different fixed offsets for sin and cos components of each octave
+            // to ensure they are not perfectly correlated.
+            // The `i * some_small_constant` ensures each octave has a slightly different phase.
+            const noiseX = worldAbsX * frequency + (i + 1) * 0.37; // Add small fixed offset per octave
+            const noiseZ = worldAbsZ * frequency - (i + 1) * 0.61; // Different fixed offset
+            
+            const noiseValue = Math.sin(noiseX) * Math.cos(noiseZ); // Range -1 to 1
+            totalHeightContribution += noiseValue * amplitude;
+            
+            amplitude *= PERSISTENCE;
+            frequency *= LACUNARITY;
+        }
+        return totalHeightContribution;
+    };
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const absoluteWorldX = this.worldX * CHUNK_SIZE + x;
         const absoluteWorldZ = this.worldZ * CHUNK_SIZE + z;
 
-        // Use direct world coordinates for noise input for continuity
         const noiseInputX1 = absoluteWorldX;
         const noiseInputZ1 = absoluteWorldZ;
-        // Use a large, fixed offset for a secondary noise layer to ensure it's different but still continuous
         const noiseInputX2 = absoluteWorldX + 10000.5; 
         const noiseInputZ2 = absoluteWorldZ - 10000.5;
 
@@ -174,22 +191,20 @@ export class Chunk {
         let blendFactor = (biomeNoiseVal - biomeBlendStart) / (biomeBlendEnd - biomeBlendStart);
         blendFactor = Math.max(0, Math.min(1, blendFactor));
 
-        const currentMainAmp = this.lerp(plainsMainAmp, mountainMainAmp, blendFactor);
-        const currentDetailAmp = this.lerp(plainsDetailAmp, mountainDetailAmp, blendFactor);
-        const currentRoughnessAmp = this.lerp(plainsRoughnessAmp, mountainRoughnessAmp, blendFactor);
+        // Calculate FBM for mountains and plains
+        const mountainFbmContribution = calculateFbmHeight(absoluteWorldX, absoluteWorldZ, mountainBaseFreqSeeded, mountainBaseAmpSeeded);
+        const plainsFbmContribution = calculateFbmHeight(absoluteWorldX, absoluteWorldZ, plainsBaseFreqSeeded, plainsBaseAmpSeeded);
+
+        // Blend FBM contributions
+        const blendedFbmHeight = this.lerp(plainsFbmContribution, mountainFbmContribution, blendFactor);
+        
+        let height = baseHeight + blendedFbmHeight;
+
+        // Apply basin logic (interpolated basin parameters)
         const currentBasinAmp = this.lerp(plainsBasinAmp, mountainBasinAmp, blendFactor);
         const currentBasinThreshold = this.lerp(plainsBasinThreshold, mountainBasinThreshold, blendFactor);
-
-        const currentMainFreq = this.lerp(plainsMainFreq, mountainMainFreq, blendFactor);
-        const currentDetailFreq = this.lerp(plainsDetailFreq, mountainDetailFreq, blendFactor);
-        const currentRoughnessFreq = this.lerp(plainsRoughnessFreq, mountainRoughnessFreq, blendFactor);
         const currentBasinFreq = this.lerp(plainsBasinFreq, mountainBasinFreq, blendFactor);
-
-        let height = baseHeight;
-        height += currentMainAmp * (Math.sin(noiseInputX1 * currentMainFreq) * Math.cos(noiseInputZ1 * currentMainFreq * 0.8));
-        height += currentDetailAmp * Math.cos(noiseInputX2 * currentDetailFreq + noiseInputZ2 * currentDetailFreq * 1.2);
-        height += currentRoughnessAmp * (Math.sin(noiseInputX1 * currentRoughnessFreq * 1.1 - noiseInputZ2 * currentRoughnessFreq * 0.9));
-
+        
         if (currentBasinAmp > 0) {
             const basinNoiseField = (Math.sin(noiseInputX1 * currentBasinFreq + 0.3) + Math.cos(noiseInputZ1 * currentBasinFreq - 0.2)) / 2;
             const normalizedBasinField = Math.pow(Math.abs(basinNoiseField), 2);
@@ -291,7 +306,7 @@ export class Chunk {
             faceGeometry.rotateY(faceRotation[1]);
             faceGeometry.rotateZ(faceRotation[2]);
             faceGeometry.translate(x + faceTranslation[0], y + faceTranslation[1], z + faceTranslation[2]);
-
+            
             const materialKey = material.uuid + (material.transparent ? '_transparent' : '_opaque');
             if (!geometriesByMaterial.has(materialKey)) {
               geometriesByMaterial.set(materialKey, { material: material, geometries: [] });
@@ -302,32 +317,38 @@ export class Chunk {
           if (shouldRenderFace(blockType, neighbors.right)) { 
             const materialIndex = blockProto.multiTexture ? 0 : 0; 
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-             addFace(material, [0, Math.PI / 2, 0], [1, 0.5, 0.5]);
+             addFace(material, [0, Math.PI / 2, 0], [0.5, 0.5, 0.5]); // Center of block + half width to the right
+             (geometriesByMaterial.get(material.uuid + (material.transparent ? '_transparent' : '_opaque'))!.geometries.at(-1) as THREE.PlaneGeometry).translate(0.5,0,0);
           }
           if (shouldRenderFace(blockType, neighbors.left)) { 
             const materialIndex = blockProto.multiTexture ? 1 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, -Math.PI / 2, 0], [0, 0.5, 0.5]);
+            addFace(material, [0, -Math.PI / 2, 0], [0.5, 0.5, 0.5]);
+            (geometriesByMaterial.get(material.uuid + (material.transparent ? '_transparent' : '_opaque'))!.geometries.at(-1) as THREE.PlaneGeometry).translate(-0.5,0,0);
           }
           if (shouldRenderFace(blockType, neighbors.top)) { 
             const materialIndex = blockProto.multiTexture ? 2 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [-Math.PI / 2, 0, 0], [0.5, 1, 0.5]);
+            addFace(material, [-Math.PI / 2, 0, 0], [0.5, 0.5, 0.5]);
+            (geometriesByMaterial.get(material.uuid + (material.transparent ? '_transparent' : '_opaque'))!.geometries.at(-1) as THREE.PlaneGeometry).translate(0,0.5,0);
           }
           if (shouldRenderFace(blockType, neighbors.bottom)) { 
             const materialIndex = blockProto.multiTexture ? 3 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [Math.PI / 2, 0, 0], [0.5, 0, 0.5]);
+            addFace(material, [Math.PI / 2, 0, 0], [0.5, 0.5, 0.5]);
+            (geometriesByMaterial.get(material.uuid + (material.transparent ? '_transparent' : '_opaque'))!.geometries.at(-1) as THREE.PlaneGeometry).translate(0,-0.5,0);
           }
           if (shouldRenderFace(blockType, neighbors.front)) { 
             const materialIndex = blockProto.multiTexture ? 4 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, 0, 0], [0.5, 0.5, 1]);
+            addFace(material, [0, 0, 0], [0.5, 0.5, 0.5]);
+            (geometriesByMaterial.get(material.uuid + (material.transparent ? '_transparent' : '_opaque'))!.geometries.at(-1) as THREE.PlaneGeometry).translate(0,0,0.5);
           }
           if (shouldRenderFace(blockType, neighbors.back)) { 
             const materialIndex = blockProto.multiTexture ? 5 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, Math.PI, 0], [0.5, 0.5, 0]);
+            addFace(material, [0, Math.PI, 0], [0.5, 0.5, 0.5]);
+            (geometriesByMaterial.get(material.uuid + (material.transparent ? '_transparent' : '_opaque'))!.geometries.at(-1) as THREE.PlaneGeometry).translate(0,0,-0.5);
           }
         }
       }
@@ -376,3 +397,6 @@ export class Chunk {
     }
   }
 }
+
+
+    

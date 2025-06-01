@@ -32,7 +32,7 @@ export class World {
     this.layers = 128;
     this.skyHeight = this.layers * 2;
     this.voidHeight = 64;
-    this.skyColor = 0xf1f1f1;
+    this.skyColor = 0xf1f1f1; // This should match globals.css background or be a distinct sky color
     this.lightColor = 0xffffff;
     this.gravity = 0.004;
     this.activeChunks = new Map();
@@ -116,7 +116,7 @@ export class World {
  public updateChunkVisibility(camera: THREE.PerspectiveCamera): void {
     if (!camera) return;
 
-    camera.updateMatrixWorld(true);
+    camera.updateMatrixWorld(true); 
     this.projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
 
@@ -124,13 +124,13 @@ export class World {
         if (!chunk.chunkRoot) return;
 
         const chunkCenterX = chunk.worldX * CHUNK_SIZE + CHUNK_SIZE / 2;
-        const chunkCenterY = chunk.worldY + this.layers / 2;
+        const chunkCenterY = chunk.worldY + this.layers / 2; // Assuming chunk.worldY is base, layers is height
         const chunkCenterZ = chunk.worldZ * CHUNK_SIZE + CHUNK_SIZE / 2;
-
+        
         const chunkCenterVec = new THREE.Vector3(chunkCenterX, chunkCenterY, chunkCenterZ);
         const chunkSizeVec = new THREE.Vector3(CHUNK_SIZE, this.layers, CHUNK_SIZE);
         const chunkBox = new THREE.Box3().setFromCenterAndSize(chunkCenterVec, chunkSizeVec);
-
+        
         if (!this.frustum.intersectsBox(chunkBox)) {
             chunk.chunkRoot.visible = false;
         } else {
@@ -161,7 +161,7 @@ export class World {
   private unloadChunkByKey(key: string): void {
     const chunk = this.activeChunks.get(key);
     if (chunk) {
-      this.chunkDataStore.set(key, chunk.blocks);
+      this.chunkDataStore.set(key, chunk.blocks); 
 
       if (this.gameRefs.scene) {
         this.gameRefs.scene.remove(chunk.chunkRoot);
@@ -174,9 +174,9 @@ export class World {
   public getBlock(worldX: number, worldY: number, worldZ: number): string | null {
     const chunkX = Math.floor(worldX / CHUNK_SIZE);
     const chunkZ = Math.floor(worldZ / CHUNK_SIZE);
-    const localY = worldY;
+    const localY = worldY; 
 
-    if (localY < 0 || localY >= this.layers) return 'air';
+    if (localY < 0 || localY >= this.layers) return 'air'; 
 
     const key = `${chunkX},${chunkZ}`;
     const chunk = this.activeChunks.get(key);
@@ -195,13 +195,13 @@ export class World {
         }
       }
     }
-    return 'air';
+    return 'air'; 
   }
 
   public setBlock(worldX: number, worldY: number, worldZ: number, blockType: string): void {
     const chunkX = Math.floor(worldX / CHUNK_SIZE);
     const chunkZ = Math.floor(worldZ / CHUNK_SIZE);
-    const localY = worldY;
+    const localY = worldY; 
 
     if (localY < 0 || localY >= this.layers) {
         console.warn(`Attempted to set block out of Y bounds: ${worldX},${worldY},${worldZ}`);
@@ -221,14 +221,15 @@ export class World {
       const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       if (blockData[localX] && blockData[localX][localY] && blockData[localX][localY][localZ] !== blockType) {
           blockData[localX][localY][localZ] = blockType;
-          this.chunkDataStore.set(key, blockData);
-
+          this.chunkDataStore.set(key, blockData); 
+          
+          // Queue remesh for adjacent chunks if this one isn't active
           if (localX === 0) this.queueChunkRemesh(chunkX - 1, chunkZ);
           if (localX === CHUNK_SIZE - 1) this.queueChunkRemesh(chunkX + 1, chunkZ);
           if (localZ === 0) this.queueChunkRemesh(chunkX, chunkZ - 1);
           if (localZ === CHUNK_SIZE - 1) this.queueChunkRemesh(chunkX, chunkZ + 1);
       }
-      return;
+      return; 
     }
 
     if (chunk) {
@@ -247,16 +248,16 @@ export class World {
 
   public queueChunkRemesh(chunkX: number, chunkZ: number): void {
     const key = `${chunkX},${chunkZ}`;
-    if (this.activeChunks.has(key)) {
+    if (this.activeChunks.has(key)) { // Only queue if chunk is active
       const chunk = this.activeChunks.get(key);
-      if(chunk) chunk.needsMeshUpdate = true;
+      if(chunk) chunk.needsMeshUpdate = true; // Mark for remesh
       this.remeshQueue.add(key);
     }
   }
 
   public processRemeshQueue(maxPerFrame: number = 1): void {
     let processedCount = 0;
-    const queueArray = Array.from(this.remeshQueue);
+    const queueArray = Array.from(this.remeshQueue); 
 
     for (const key of queueArray) {
       if (processedCount >= maxPerFrame) break;
@@ -265,7 +266,7 @@ export class World {
       if (chunk && chunk.needsMeshUpdate) {
         chunk.buildMesh();
       }
-      this.remeshQueue.delete(key);
+      this.remeshQueue.delete(key); 
       processedCount++;
     }
   }
@@ -274,3 +275,5 @@ export class World {
     return this.remeshQueue.size;
   }
 }
+
+    

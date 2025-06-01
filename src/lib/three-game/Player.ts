@@ -55,8 +55,8 @@ export class Player {
     this.width = 0.6;
     this.depth = 0.6;
 
-    this.pitch = 0; // Initialize pitch
-    this.yaw = 0;   // Initialize yaw
+    this.pitch = 0; 
+    this.yaw = 0;   
 
     this.speed = 0.065;
     this.velocity = 0;
@@ -86,11 +86,7 @@ export class Player {
     this.mesh.name = name;
     this.mesh.position.set(this.x, this.y, this.z);
 
-    if (preserveCam && this.gameRefs.camera) {
-        // Pitch and yaw will be restored by GameManager after full construction
-        // For now, they are 0,0
-    } else if (this.gameRefs.camera) {
-        // Apply initial 0,0 pitch/yaw to the camera
+    if (!preserveCam && this.gameRefs.camera) {
         this.lookAround();
     }
   }
@@ -376,14 +372,18 @@ export class Player {
                                 }
                             }
                         } else if (overlapX < overlapY && overlapX < overlapZ) {
-                            if (!this.flying && this.isRunning) this.isRunning = false;
+                            if (!this.flying && this.isRunning && blockType !== 'air' && blockType !== 'waterBlock') {
+                               this.isRunning = false;
+                            }
                             if ((pMaxX - bMinX) < (bMaxX - pMinX)) {
                                 correctedX = bMinX - this.width / 2 - 0.001;
                             } else {
                                 correctedX = bMaxX + this.width / 2 + 0.001;
                             }
                         } else {
-                             if (!this.flying && this.isRunning) this.isRunning = false;
+                             if (!this.flying && this.isRunning && blockType !== 'air' && blockType !== 'waterBlock') {
+                                this.isRunning = false;
+                             }
                              if ((pMaxZ - bMinZ) < (bMaxZ - pMinZ)) {
                                 correctedZ = bMinZ - this.depth / 2 - 0.001;
                             } else {
@@ -422,7 +422,7 @@ export class Player {
     }
 
     const playerFeetBlockX = Math.floor(this.x);
-    const playerFeetBlockY = Math.floor(this.y + 0.01);
+    const playerFeetBlockY = Math.floor(this.y + 0.01); 
     const playerFeetBlockZ = Math.floor(this.z);
     const blockAtFeet = world.getBlock(playerFeetBlockX, playerFeetBlockY, playerFeetBlockZ);
 
@@ -437,3 +437,5 @@ export class Player {
     camera.position.set(this.x, this.y + this.height * 0.9, this.z);
   }
 }
+
+    

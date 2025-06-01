@@ -106,17 +106,15 @@ export class Chunk {
     const baseHeight = Math.floor(this.world.layers / 2.5);
     const waterLevel = baseHeight - 3; 
 
-    // --- FBM Parameters ---
-    const OCTAVES = 5; // Adjusted from 4
-    const PERSISTENCE = 0.45; // Adjusted from 0.5
+    const OCTAVES = 5; 
+    const PERSISTENCE = 0.45; 
     const LACUNARITY = 2.0; 
     const NOISE_SCALE_ADJUSTMENT = 1.5; 
 
-    // --- Base parameters (will be seeded) ---
     const mountainMainFreqBase_const = 0.05;
-    const mountainMainAmpBase_const = 12; // Adjusted from 15
+    const mountainMainAmpBase_const = 12; 
     const plainsMainFreqBase_const = 0.04;
-    const plainsMainAmpBase_const = 2.5; // Adjusted from 3
+    const plainsMainAmpBase_const = 2.5; 
 
     const mountainBasinFreqBase_const = 0.04;
     const mountainBasinAmpBase_const = 15; 
@@ -129,7 +127,6 @@ export class Chunk {
     const biomeBlendStartBase_const = -0.1;
     const biomeBlendEndBase_const = 0.2;
     
-    // Parameters influenced by world seed for global world 'style'
     const mountainBaseFreqSeeded = (mountainMainFreqBase_const + this.seededRandom(0,0,0, this.worldSeed, "mtMainFreq") * 0.01 - 0.005) / NOISE_SCALE_ADJUSTMENT;
     const mountainBaseAmpSeeded = mountainMainAmpBase_const + this.seededRandom(0,0,0, this.worldSeed, "mtMainAmp") * 5 - 2.5;
     
@@ -159,8 +156,8 @@ export class Chunk {
         let amplitude = initialAmplitude;
 
         for (let i = 0; i < OCTAVES; i++) {
-            const noiseX = worldAbsX * frequency + (i + 1) * 0.37; 
-            const noiseZ = worldAbsZ * frequency - (i + 1) * 0.61; 
+            const noiseX = worldAbsX * frequency + (i + 1) * 0.3712; // Small fixed offsets per octave
+            const noiseZ = worldAbsZ * frequency - (i + 1) * 0.6193; 
             
             const noiseValue = Math.sin(noiseX) * Math.cos(noiseZ); 
             totalHeightContribution += noiseValue * amplitude;
@@ -238,6 +235,95 @@ export class Chunk {
         }
       }
     }
+
+    // --- Start of Pillar Reduction / Height Clamping Post-Processing ---
+    const MAX_HEIGHT_DIFF_THRESHOLD = 3;
+    const SMOOTHING_PASSES = 2;
+
+    let currentSurfaceHeightMap: number[][] = Array(CHUNK_SIZE).fill(null).map(() => Array(CHUNK_SIZE).fill(0));
+
+    // Initialize currentSurfaceHeightMap from this.blocks
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+      for (let z = 0; z < CHUNK_SIZE; z++) {
+        let surfaceY = 0;
+        for (let y = this.world.layers - 1; y >= 0; y--) {
+          if (this.blocks[x][y][z] !== 'air' && this.blocks[x][y][z] !== waterBlockName) {
+            surfaceY = y;
+            break;
+          }
+        }
+        currentSurfaceHeightMap[x][z] = surfaceY;
+      }
+    }
+
+    for (let pass = 0; pass < SMOOTHING_PASSES; pass++) {
+      const nextSurfaceHeightMap: number[][] = currentSurfaceHeightMap.map(arr => arr.slice()); // Deep copy for the next pass
+
+      for (let x = 1; x < CHUNK_SIZE - 1; x++) { // Iterate excluding borders
+        for (let z = 1; z < CHUNK_SIZE - 1; z++) {
+          const currentColumnHeight = currentSurfaceHeightMap[x][z];
+          let neighborHeightsSum = 0;
+          let validNeighbors = 0;
+
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dz = -1; dz <= 1; dz++) {
+              if (dx === 0 && dz === 0) continue; 
+
+              const nx = x + dx;
+              const nz = z + dz;
+              
+              neighborHeightsSum += currentSurfaceHeightMap[nx][nz];
+              validNeighbors++;
+            }
+          }
+
+          if (validNeighbors > 0) {
+            const averageNeighborHeight = neighborHeightsSum / validNeighbors;
+            
+            if (currentColumnHeight > averageNeighborHeight + MAX_HEIGHT_DIFF_THRESHOLD) {
+              const newHeight = Math.floor(averageNeighborHeight + MAX_HEIGHT_DIFF_THRESHOLD);
+              nextSurfaceHeightMap[x][z] = Math.max(0, Math.min(newHeight, this.world.layers - 1));
+            }
+          }
+        }
+      }
+      currentSurfaceHeightMap = nextSurfaceHeightMap; // Current map becomes the result of this pass
+    }
+
+    // Reconstruct this.blocks based on the final smoothed currentSurfaceHeightMap
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+      for (let z = 0; z < CHUNK_SIZE; z++) {
+        const finalSurfaceY = currentSurfaceHeightMap[x][z];
+        for (let y = 0; y < this.world.layers; y++) {
+          if (y > finalSurfaceY) {
+            // If above new surface Y AND below or at water level, it could be water
+            if (y <= waterLevel) {
+                 this.blocks[x][y][z] = waterBlockName;
+            } else {
+                 this.blocks[x][y][z] = 'air';
+            }
+          } else if (y === finalSurfaceY) {
+            if (finalSurfaceY < waterLevel) {
+              this.blocks[x][y][z] = sandBlockName;
+            } else if (finalSurfaceY === waterLevel) {
+              this.blocks[x][y][z] = sandBlockName;
+            } else {
+              this.blocks[x][y][z] = grassBlockName;
+            }
+          } else { // y < finalSurfaceY (sub-surface)
+            if (finalSurfaceY <= waterLevel && y > finalSurfaceY - 2) { 
+               this.blocks[x][y][z] = sandBlockName;
+            } else if (y < finalSurfaceY - 3) { 
+              this.blocks[x][y][z] = stoneBlockName;
+            } else { 
+              this.blocks[x][y][z] = dirtBlockName;
+            }
+          }
+        }
+      }
+    }
+    // --- End of Pillar Reduction / Height Clamping Post-Processing ---
+
     this.needsMeshUpdate = true;
   }
 
@@ -293,19 +379,17 @@ export class Chunk {
             left: this.world.getBlock(blockWorldX - 1, blockWorldY, blockWorldZ)
           };
           
-          const addFace = (material: THREE.Material, faceRotation: [number, number, number], faceTranslationFromBlockOrigin: [number, number, number]) => {
+          const addFace = (material: THREE.Material, faceRotation: [number, number, number], faceCenterInBlockLocal: [number, number, number]) => {
             const faceGeometry = new THREE.PlaneGeometry(1, 1);
             
-            // Apply rotation first
             faceGeometry.rotateX(faceRotation[0]);
             faceGeometry.rotateY(faceRotation[1]);
             faceGeometry.rotateZ(faceRotation[2]);
             
-            // Then translate to the block's local position + face's offset from block origin
             faceGeometry.translate(
-              x + faceTranslationFromBlockOrigin[0], 
-              y + faceTranslationFromBlockOrigin[1], 
-              z + faceTranslationFromBlockOrigin[2]
+              x + faceCenterInBlockLocal[0], 
+              y + faceCenterInBlockLocal[1], 
+              z + faceCenterInBlockLocal[2]
             );
             
             const materialKey = material.uuid + (material.transparent ? '_transparent' : '_opaque');
@@ -315,38 +399,35 @@ export class Chunk {
             geometriesByMaterial.get(materialKey)!.geometries.push(faceGeometry);
           };
           
-          // X faces (+X: Right, -X: Left)
           if (shouldRenderFace(blockType, neighbors.right)) { 
             const materialIndex = blockProto.multiTexture ? 0 : 0; 
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, Math.PI / 2, 0], [0.5 + 0.5, 0.5, 0.5]); // Centered at x+0.5, y+0.5, z+0.5, then shifted by 0.5 in +X for the face
+            addFace(material, [0, Math.PI / 2, 0], [0.5 + 0.5, 0.5, 0.5]); 
           }
           if (shouldRenderFace(blockType, neighbors.left)) { 
             const materialIndex = blockProto.multiTexture ? 1 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, -Math.PI / 2, 0], [-0.5 + 0.5, 0.5, 0.5]); // Centered at x-0.5, y+0.5, z+0.5
+            addFace(material, [0, -Math.PI / 2, 0], [-0.5 + 0.5, 0.5, 0.5]); 
           }
-          // Y faces (+Y: Top, -Y: Bottom)
           if (shouldRenderFace(blockType, neighbors.top)) { 
             const materialIndex = blockProto.multiTexture ? 2 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [-Math.PI / 2, 0, 0], [0.5, 0.5 + 0.5, 0.5]); // Centered at x+0.5, y+0.5, z+0.5, then +0.5 in Y
+            addFace(material, [-Math.PI / 2, 0, 0], [0.5, 0.5 + 0.5, 0.5]); 
           }
           if (shouldRenderFace(blockType, neighbors.bottom)) { 
             const materialIndex = blockProto.multiTexture ? 3 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [Math.PI / 2, 0, 0], [0.5, -0.5 + 0.5, 0.5]); // Centered at x+0.5, y-0.5, z+0.5
+            addFace(material, [Math.PI / 2, 0, 0], [0.5, -0.5 + 0.5, 0.5]); 
           }
-          // Z faces (+Z: Front, -Z: Back)
           if (shouldRenderFace(blockType, neighbors.front)) { 
             const materialIndex = blockProto.multiTexture ? 4 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, 0, 0], [0.5, 0.5, 0.5 + 0.5]); // Centered at x+0.5, y+0.5, z+0.5, then +0.5 in Z
+            addFace(material, [0, 0, 0], [0.5, 0.5, 0.5 + 0.5]); 
           }
           if (shouldRenderFace(blockType, neighbors.back)) { 
             const materialIndex = blockProto.multiTexture ? 5 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, Math.PI, 0], [0.5, 0.5, -0.5 + 0.5]); // Centered at x+0.5, y+0.5, z-0.5
+            addFace(material, [0, Math.PI, 0], [0.5, 0.5, -0.5 + 0.5]); 
           }
         }
       }

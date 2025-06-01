@@ -6,6 +6,7 @@ import type { Block } from './Block';
 import type { InputHandler } from './InputHandler';
 import type { RendererManager } from './RendererManager';
 import type { GameLogic } from './GameLogic';
+import type { ThreeSetup } from './ThreeSetup';
 
 export interface ControlConfig {
   backwards: string;
@@ -72,6 +73,8 @@ export interface GameRefs {
   inputHandler: InputHandler | null;
   rendererManager: RendererManager | null;
   gameLogic: GameLogic | null;
+  threeSetup: ThreeSetup | null;
+  lighting: { ambient: THREE.AmbientLight; directional: THREE.DirectionalLight; } | null;
 }
 
 export type BlockDefinition = { side: string } | string[];

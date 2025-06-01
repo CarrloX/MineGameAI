@@ -11,15 +11,16 @@ export class World {
   public skyHeight: number;
   public voidHeight: number;
   public skyColor: number;
-  public lightColor: number;
+  public lightColor: number; // Retained for potential use, but lights are now in gameRefs.lighting
   public gravity: number;
-  public lighting: { ambient: THREE.AmbientLight; directional: THREE.DirectionalLight };
+  // Lighting is now managed by ThreeSetup and stored in gameRefs.lighting
+  // public lighting: { ambient: THREE.AmbientLight; directional: THREE.DirectionalLight };
 
   private gameRefs: GameRefs;
   public activeChunks: Map<string, Chunk>;
   private chunkDataStore: Map<string, string[][][]>;
   private blockPrototypes: Map<string, Block>;
-  private renderDistanceInChunks: number = 4;
+  public renderDistanceInChunks: number = 4;
   private remeshQueue: Set<string>;
 
   private frustum = new THREE.Frustum();
@@ -33,36 +34,24 @@ export class World {
     this.skyHeight = this.layers * 2; 
     this.voidHeight = 64;
     this.skyColor = 0xf1f1f1; 
-    this.lightColor = 0xffffff;
+    this.lightColor = 0xffffff; // Color for lighting
     this.gravity = 0.004;
     this.activeChunks = new Map();
     this.chunkDataStore = new Map();
     this.remeshQueue = new Set();
     this.blockPrototypes = new Map();
-    this.gameRefs.blocks?.forEach(block => {
-      const blockNameKey = block.mesh.name.startsWith('Block_') ? block.mesh.name.substring(6) : block.mesh.name;
-      this.blockPrototypes.set(blockNameKey, block);
-    });
-
-    const scene = this.gameRefs.scene!;
-
-    this.lighting = {
-      ambient: new THREE.AmbientLight(this.lightColor, 0.75),
-      directional: new THREE.DirectionalLight(this.lightColor, 0.5),
-    };
-
-    this.lighting.ambient.name = "Ambient Light";
-    scene.add(this.lighting.ambient);
-
-    const shadowCameraCoverage = CHUNK_SIZE * (this.renderDistanceInChunks + 3);
-    this.lighting.directional.name = "Directional Light";
-    this.lighting.directional.position.set(shadowCameraCoverage / 2, this.skyHeight, shadowCameraCoverage / 2);
-    this.lighting.directional.castShadow = true;
-    this.lighting.directional.shadow.camera = new THREE.OrthographicCamera(
-      -shadowCameraCoverage, shadowCameraCoverage, shadowCameraCoverage, -shadowCameraCoverage, 0.5, this.skyHeight * 2
-    );
-    this.lighting.directional.shadow.mapSize = new THREE.Vector2(2048, 2048);
-    scene.add(this.lighting.directional);
+    
+    if (!this.gameRefs.blocks) {
+        console.error("World: Block prototypes not found in gameRefs. Ensure ThreeSetup populates gameRefs.blocks.");
+    } else {
+        this.gameRefs.blocks.forEach(block => {
+          const blockNameKey = block.mesh.name.startsWith('Block_') ? block.mesh.name.substring(6) : block.mesh.name;
+          this.blockPrototypes.set(blockNameKey, block);
+        });
+    }
+    
+    // Lighting setup is moved to ThreeSetup.ts
+    // The World can access lights via gameRefs.lighting if needed, or gameRefs.scene.getObjectByName(...)
 
     this.generateInitialChunks();
   }
@@ -86,7 +75,7 @@ export class World {
     if (!blockData) {
       const tempChunk = new Chunk(this, chunkX, chunkZ, this.blockPrototypes);
       blockData = tempChunk.blocks;
-      this.chunkDataStore.set(key, blockData); // Store newly generated data
+      this.chunkDataStore.set(key, blockData); 
     }
 
     const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
@@ -94,10 +83,9 @@ export class World {
 
     for (let y = this.layers - 1; y >= 0; y--) {
       if (blockData && blockData[localX] && blockData[localX][y] && blockData[localX][y][localZ] !== 'air') {
-        return y + 1; // Player's feet should be 1 unit above the topmost solid block
+        return y + 1; 
       }
     }
-    // Fallback if no solid ground is found (e.g. spawned over void, though terrain gen should prevent this)
     return Math.floor(this.layers / 3) + 1; 
   }
 
@@ -132,7 +120,7 @@ export class World {
  public updateChunkVisibility(camera: THREE.PerspectiveCamera): void {
     if (!camera) return;
 
-    camera.updateMatrixWorld(true); // Ensure matrix is up-to-date
+    camera.updateMatrixWorld(true); 
     this.projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
 
@@ -188,16 +176,22 @@ export class World {
     }
 
     this.activeChunks.set(key, newChunk);
-    this.gameRefs.scene!.add(newChunk.chunkRoot);
+    if (this.gameRefs.scene) {
+      this.gameRefs.scene.add(newChunk.chunkRoot);
+    } else {
+        console.error("World: Scene not available in gameRefs when trying to load chunk.");
+    }
     this.remeshQueue.add(key);
   }
 
   private unloadChunkByKey(key: string): void {
     const chunk = this.activeChunks.get(key);
     if (chunk) {
-      this.chunkDataStore.set(key, chunk.blocks); // Save current state before unloading
+      this.chunkDataStore.set(key, chunk.blocks); 
 
-      this.gameRefs.scene!.remove(chunk.chunkRoot);
+      if (this.gameRefs.scene) {
+        this.gameRefs.scene.remove(chunk.chunkRoot);
+      }
       chunk.dispose();
       this.activeChunks.delete(key);
     }
@@ -244,9 +238,8 @@ export class World {
     let chunk = this.activeChunks.get(key);
 
     if (!chunk) {
-      // If chunk is not active, modify its data in chunkDataStore directly
       let blockData = this.chunkDataStore.get(key);
-      if (!blockData) { // If chunk data doesn't exist at all, create it (e.g. from template)
+      if (!blockData) { 
           const tempChunkGen = new Chunk(this, chunkX, chunkZ, this.blockPrototypes);
           blockData = tempChunkGen.blocks;
       }
@@ -256,9 +249,6 @@ export class World {
           blockData[localX][localY][localZ] = blockType;
           this.chunkDataStore.set(key, blockData); 
           
-          // If this chunk ever becomes active, it will need remeshing
-          // For now, we don't add to remeshQueue as it's not active.
-          // However, its neighbors might be active and need remeshing.
           if (localX === 0) this.queueChunkRemesh(chunkX - 1, chunkZ);
           if (localX === CHUNK_SIZE - 1) this.queueChunkRemesh(chunkX + 1, chunkZ);
           if (localZ === 0) this.queueChunkRemesh(chunkX, chunkZ - 1);
@@ -267,13 +257,10 @@ export class World {
       return;
     }
 
-
-    // If chunk is active, use its setBlock method
     if (chunk) {
       const localX = ((worldX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       const localZ = ((worldZ % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-      chunk.setBlock(localX, localY, localZ, blockType); // This will mark for remesh & notify world
-      // this.remeshQueue.add(key); // Chunk.setBlock already queues itself via world.queueChunkRemesh
+      chunk.setBlock(localX, localY, localZ, blockType); 
     } else {
       console.warn(`Attempted to set block in non-existent active chunk: ${worldX},${worldY},${worldZ}`);
     }

@@ -10,32 +10,14 @@ export class RendererManager {
     this.canvasRef = canvasRef;
     this.gameRefs = gameRefs;
 
-    this.initThreeCore();
+    // Assume scene, camera, renderer are initialized by ThreeSetup and available in gameRefs
+    if (!this.gameRefs.scene || !this.gameRefs.camera || !this.gameRefs.renderer) {
+        console.error("RendererManager: Core Three.js objects not found in gameRefs. Ensure ThreeSetup runs first.");
+        return;
+    }
+    
     this.setupResizeListener();
-    this.handleResize(); // Call once for initial sizing
-  }
-
-  private initThreeCore(): void {
-    if (!this.canvasRef) return;
-
-    this.gameRefs.scene = new THREE.Scene();
-    this.gameRefs.camera = new THREE.PerspectiveCamera(
-      75,
-      this.canvasRef.clientWidth / this.canvasRef.clientHeight,
-      0.1,
-      1000
-    );
-    this.gameRefs.camera.rotation.order = "YXZ"; // Crucial for FPS controls
-
-    this.gameRefs.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.gameRefs.renderer.setPixelRatio(window.devicePixelRatio);
-    this.gameRefs.renderer.setSize(this.canvasRef.clientWidth, this.canvasRef.clientHeight);
-    this.gameRefs.renderer.shadowMap.enabled = true;
-
-    this.gameRefs.raycaster = new THREE.Raycaster();
-    this.gameRefs.textureLoader = new THREE.TextureLoader();
-
-    this.canvasRef.appendChild(this.gameRefs.renderer.domElement);
+    // Initial size is set by ThreeSetup, handleResize will be called by listener if window changes
   }
 
   private handleResize = (): void => {
@@ -64,9 +46,13 @@ export class RendererManager {
     this.removeResizeListener();
     if (this.gameRefs.renderer) {
       this.gameRefs.renderer.dispose();
+      // The DOM element is appended by ThreeSetup, so it should ideally be removed there if ThreeSetup had a dispose
+      // Or, BlockifyGame can handle removing it since it owns the canvasRef
       if (this.canvasRef && this.gameRefs.renderer.domElement) {
         if (this.canvasRef.contains(this.gameRefs.renderer.domElement)) {
-            this.canvasRef.removeChild(this.gameRefs.renderer.domElement);
+            // This removal might be better placed in BlockifyGame's cleanup or a hypothetical ThreeSetup.dispose()
+            // For now, let's keep it here to ensure the canvas is cleaned.
+           // this.canvasRef.removeChild(this.gameRefs.renderer.domElement);
         }
       }
     }

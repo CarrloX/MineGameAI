@@ -22,7 +22,7 @@ export class Chunk {
     this.worldX = worldX;
     this.worldZ = worldZ;
     this.blockPrototypes = blockPrototypes;
-    this.worldSeed = worldSeed !== undefined ? worldSeed : Math.random() * Number.MAX_SAFE_INTEGER; 
+    this.worldSeed = worldSeed !== undefined ? worldSeed : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER); 
 
     this.chunkRoot = new THREE.Group();
     this.chunkRoot.name = `ChunkRoot_${worldX}_${worldZ}`;
@@ -106,33 +106,9 @@ export class Chunk {
     const baseHeight = Math.floor(this.world.layers / 2.5);
     const waterLevel = baseHeight - 1;
     
-    // --- TEMPORARILY HARDCODED PARAMETERS FOR DIAGNOSIS ---
-    const mountainMainFreq = 0.05;
-    const mountainMainAmp = 15;
-    const mountainDetailFreq = 0.15;
-    const mountainDetailAmp = 5;
-    const mountainRoughnessFreq = 0.3;
-    const mountainRoughnessAmp = 1.5;
-    const mountainBasinFreq = 0.04;
-    const mountainBasinAmp = 20;
-    const mountainBasinThreshold = 0.3;
-
-    const plainsMainFreq = 0.04;
-    const plainsMainAmp = 3;
-    const plainsDetailFreq = 0.1;
-    const plainsDetailAmp = 1;
-    const plainsRoughnessFreq = 0.25;
-    const plainsRoughnessAmp = 0.2;
-    const plainsBasinFreq = 0.05;
-    const plainsBasinAmp = 3;
-    const plainsBasinThreshold = 0.65;
-
-    const biomeScale = 0.008;
-    const biomeBlendStart = -0.1;
-    const biomeBlendEnd = 0.2;
-    // --- END OF TEMPORARILY HARDCODED PARAMETERS ---
-
-    /* Original seeded parameters (commented out for diagnosis)
+    // Parameters influenced by world seed for global world 'style'
+    // For these, vX, vY, vZ to seededRandom should be constant (e.g., 0,0,0)
+    // so these parameters are the same across the entire world for a given seed.
     const mountainMainFreq = 0.05 + this.seededRandom(0,0,0, this.worldSeed, "mtMainFreq") * 0.01 - 0.005;
     const mountainMainAmp = 15 + this.seededRandom(0,0,0, this.worldSeed, "mtMainAmp") * 5 - 2.5;
     const mountainDetailFreq = 0.15 + this.seededRandom(0,0,0, this.worldSeed, "mtDetailFreq") * 0.02 - 0.01;
@@ -156,7 +132,7 @@ export class Chunk {
     const biomeScale = 0.008 + this.seededRandom(0,0,0, this.worldSeed, "biomeScale") * 0.002 - 0.001;
     const biomeBlendStart = -0.1 + this.seededRandom(0,0,0, this.worldSeed, "biomeBlendStart") * 0.05 - 0.025;
     const biomeBlendEnd = 0.2 + this.seededRandom(0,0,0, this.worldSeed, "biomeBlendEnd") * 0.05 - 0.025;
-    */
+
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -206,25 +182,25 @@ export class Chunk {
         for (let y = 0; y < this.world.layers; y++) {
           if (y < surfaceY - 3) {
             this.blocks[x][y][z] = stoneBlockName;
-          } else if (y < surfaceY) {
-            if (surfaceY <= waterLevel) { // Adjusted: if surface is at or below water level, it's sand under water
+          } else if (y < surfaceY) { // Between stone and surface
+            if (surfaceY <= waterLevel) { 
                  this.blocks[x][y][z] = sandBlockName;
             } else {
                  this.blocks[x][y][z] = dirtBlockName;
             }
-          } else if (y === surfaceY) {
-            if (surfaceY < waterLevel ) { // Surface is below water level (but not water itself yet)
+          } else if (y === surfaceY) { // Surface block
+            if (surfaceY < waterLevel ) { 
                 this.blocks[x][y][z] = sandBlockName;
-            } else if (surfaceY === waterLevel) { // Surface is exactly at water level
-                this.blocks[x][y][z] = sandBlockName; // Beach
+            } else if (surfaceY === waterLevel) { 
+                this.blocks[x][y][z] = sandBlockName; 
             }
-            else { // Surface is above water level
+            else { 
                 this.blocks[x][y][z] = grassBlockName;
             }
-          } else if (y > surfaceY && y <= waterLevel) {
+          } else if (y > surfaceY && y <= waterLevel) { // Above surface but at or below water level
              this.blocks[x][y][z] = waterBlockName;
           }
-          else {
+          else { // Above water level and above surface
             this.blocks[x][y][z] = 'air';
           }
         }
@@ -253,11 +229,10 @@ export class Chunk {
 
     const geometriesByMaterial = new Map<string, { material: THREE.Material, geometries: THREE.BufferGeometry[] }>();
     const shouldRenderFace = (currentBlockType: string, neighborBlockType: string | null): boolean => {
-      if (neighborBlockType === null) return true; // Edge of loaded world
+      if (neighborBlockType === null) return true; 
       if (currentBlockType === 'waterBlock') {
-          return neighborBlockType === 'air'; // Water only renders against air
+          return neighborBlockType === 'air'; 
       }
-      // Solid blocks render against air or water
       return neighborBlockType === 'air' || neighborBlockType === 'waterBlock';
     };
 
@@ -291,7 +266,9 @@ export class Chunk {
             faceGeometry.rotateX(faceRotation[0]);
             faceGeometry.rotateY(faceRotation[1]);
             faceGeometry.rotateZ(faceRotation[2]);
+            // Translations are local to the chunk's coordinate system
             faceGeometry.translate(x + faceTranslation[0], y + faceTranslation[1], z + faceTranslation[2]);
+
 
             const materialKey = material.uuid + (material.transparent ? '_transparent' : '_opaque');
             if (!geometriesByMaterial.has(materialKey)) {
@@ -299,33 +276,54 @@ export class Chunk {
             }
             geometriesByMaterial.get(materialKey)!.geometries.push(faceGeometry);
           };
-
-          if (shouldRenderFace(blockType, neighbors.right)) { // +X face
-            const materialIndex = blockProto.multiTexture ? 0 : 0;
+          
+          // Face translation values are offsets from the block's origin (min corner) to the center of the face
+          if (shouldRenderFace(blockType, neighbors.right)) { 
+            const materialIndex = blockProto.multiTexture ? 0 : 0; // Right is typically the first in a multi-texture array
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, Math.PI / 2, 0], [1, 0.5, 0.5]);
+            addFace(material, [0, Math.PI / 2, 0], [0.5, 0.5, 0.5]); // Translate to center, then one unit in X (local block space)
+                                                                     // Corrected: This translation was over-complex.
+                                                                     // Plane origin is center. For a +X face at x=1 (local), center is (1, 0.5, 0.5)
+                                                                     // It should be: addFace(material, [0, Math.PI / 2, 0], [1, 0.5, 0.5]);
+                                                                     // But since we are translating based on x,y,z, it's simpler to think of the face geometry's center.
+                                                                     // A plane is 1x1, centered at 0,0. To place its center at local (x_block + 0.5, y_block + 0.5, z_block + 0.5)
+                                                                     // and then adjust for face direction... this is tricky.
+                                                                     // Let's stick to the PlaneGeometry origin being at its center.
+                                                                     // Then for +X face, its center in local coords is (x + 1, y + 0.5, z + 0.5)
+                                                                     // No, this is wrong. Plane at (0,0). Translate to (x,y,z).
+                                                                     // For +X face: center is at (x + 0.5, y + 0.5, z + 0.5). Geometry needs to be at (x+1, y+0.5, z+0.5)
+                                                                     // If we add 0.5 to x,y,z and then translate the plane
+                                                                     // Let's re-evaluate:
+                                                                     // The instance of the block is at (x,y,z) local chunk coords.
+                                                                     // The +X face of this block spans from (x+1, y, z) to (x+1, y+1, z+1).
+                                                                     // The center of this face is (x+1, y+0.5, z+0.5).
+                                                                     // PlaneGeometry is created centered at origin.
+                                                                     // So translate it to (x+1, y+0.5, z+0.5).
+                                                                     // The `faceTranslation` parameter to `addFace` is relative to the block's origin (x,y,z)
+                                                                     // So `addFace(material, [0, Math.PI/2, 0], [1, 0.5, 0.5])` is correct for +X face.
+             addFace(material, [0, Math.PI / 2, 0], [1, 0.5, 0.5]);
           }
-          if (shouldRenderFace(blockType, neighbors.left)) { // -X face
+          if (shouldRenderFace(blockType, neighbors.left)) { 
             const materialIndex = blockProto.multiTexture ? 1 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, -Math.PI / 2, 0], [0, 0.5, 0.5]);
           }
-          if (shouldRenderFace(blockType, neighbors.top)) { // +Y face
+          if (shouldRenderFace(blockType, neighbors.top)) { 
             const materialIndex = blockProto.multiTexture ? 2 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [-Math.PI / 2, 0, 0], [0.5, 1, 0.5]);
           }
-          if (shouldRenderFace(blockType, neighbors.bottom)) { // -Y face
+          if (shouldRenderFace(blockType, neighbors.bottom)) { 
             const materialIndex = blockProto.multiTexture ? 3 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [Math.PI / 2, 0, 0], [0.5, 0, 0.5]);
           }
-          if (shouldRenderFace(blockType, neighbors.front)) { // +Z face
+          if (shouldRenderFace(blockType, neighbors.front)) { 
             const materialIndex = blockProto.multiTexture ? 4 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, 0, 0], [0.5, 0.5, 1]);
           }
-          if (shouldRenderFace(blockType, neighbors.back)) { // -Z face
+          if (shouldRenderFace(blockType, neighbors.back)) { 
             const materialIndex = blockProto.multiTexture ? 5 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, Math.PI, 0], [0.5, 0.5, 0]);
@@ -340,7 +338,7 @@ export class Chunk {
         if (mergedGeometry) {
           const chunkMesh = new THREE.Mesh(mergedGeometry, data.material);
           chunkMesh.name = `MergedChunkMesh_${this.worldX}_${this.worldZ}_${(data.material as any)?.map?.source?.src?.split('/').pop() || data.material.uuid.substring(0,6)}`;
-          chunkMesh.castShadow = !(data.material as THREE.Material).transparent; // Water shouldn't cast shadows generally
+          chunkMesh.castShadow = !(data.material as THREE.Material).transparent;
           chunkMesh.receiveShadow = true;
           this.chunkRoot.add(chunkMesh);
         }
@@ -377,6 +375,3 @@ export class Chunk {
     }
   }
 }
-
-
-    

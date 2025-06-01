@@ -18,7 +18,7 @@ export class GameLogic {
     this.gameRefs = gameRefs;
     this.setDebugInfo = setDebugInfo;
     this.setIsCameraSubmerged = setIsCameraSubmerged;
-    this.initializePlayer(); // Initialize player here
+    this.initializePlayer();
   }
 
   private initializePlayer(): void {
@@ -29,16 +29,28 @@ export class GameLogic {
     }
     const initialPlayerX = 0.5;
     const initialPlayerZ = 0.5;
+    
+    // Ensure the initial spawn chunk is loaded before getting height
+    const initialChunkX = Math.floor(initialPlayerX / CHUNK_SIZE);
+    const initialChunkZ = Math.floor(initialPlayerZ / CHUNK_SIZE);
+    if (refs.world && !refs.world.activeChunks.has(`${initialChunkX},${initialChunkZ}`)) {
+        refs.world.loadChunk(initialChunkX, initialChunkZ);
+        // Process remesh for the newly loaded chunk
+        let initialRemeshLoops = 0;
+        while(refs.world.getRemeshQueueSize() > 0 && initialRemeshLoops < 5) {
+            refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
+            initialRemeshLoops++;
+        }
+    }
+
     let spawnY = refs.world.getSpawnHeight(initialPlayerX, initialPlayerZ);
-    // Simplified spawn Y finding for brevity, assuming world is ready
-    // In a real scenario, ensure world chunks are loaded before getSpawnHeight
 
     refs.player = new Player(
       "Player",
-      refs.world as PlayerWorldService, // Cast to the service type
-      refs.camera as PlayerCameraService, // Cast to the service type
-      refs.scene as PlayerSceneService,   // Cast to the service type
-      refs.raycaster as PlayerRaycasterService, // Cast to the service type
+      refs.world as PlayerWorldService,
+      refs.camera as PlayerCameraService,
+      refs.scene as PlayerSceneService,
+      refs.raycaster as PlayerRaycasterService,
       initialPlayerX,
       spawnY,
       initialPlayerZ
@@ -50,15 +62,13 @@ export class GameLogic {
         console.warn("GameLogic: InputController not available to set player.");
     }
     
-    // Initial camera position update
     refs.camera.position.set(refs.player.x, refs.player.y + refs.player.height * 0.9, refs.player.z);
-    refs.player.lookAround(); // Apply initial rotation
+    refs.player.lookAround();
   }
 
 
   public update(newFpsValue?: number): void {
     const refs = this.gameRefs;
-    // Player is now initialized in constructor, so should exist if GameLogic is constructed.
     if (!refs.player || !refs.rendererManager || !refs.scene || !refs.camera || !refs.world || !refs.raycaster || !refs.inputController) {
       if (refs.gameLoopId !== null) cancelAnimationFrame(refs.gameLoopId);
       refs.gameLoopId = null;
@@ -68,7 +78,7 @@ export class GameLogic {
 
     refs.player.updatePosition();
     refs.player.highlightBlock();
-    refs.world.updateChunks(refs.player.mesh.position); // player.mesh.position is updated in player.updatePosition
+    refs.world.updateChunks(refs.player.mesh.position); 
     if (refs.camera) {
       refs.world.updateChunkVisibility(refs.camera);
     }
@@ -131,65 +141,83 @@ export class GameLogic {
     if (refs.player.dead) {
       const respawnX = 0.5;
       const respawnZ = 0.5;
+      const respawnChunkX = Math.floor(respawnX / CHUNK_SIZE);
+      const respawnChunkZ = Math.floor(respawnZ / CHUNK_SIZE);
 
-      refs.world.updateChunks(new THREE.Vector3(respawnX, refs.player.y, respawnZ));
-      while(refs.world.getRemeshQueueSize() > 0) {
-        refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
+      if (!refs.world.activeChunks.has(`${respawnChunkX},${respawnChunkZ}`)) {
+          refs.world.loadChunk(respawnChunkX, respawnChunkZ);
+      }
+      
+      let safetyRemeshLoops = 0;
+      const maxRemeshLoops = 5; // Prevent infinite loop
+      while(refs.world.getRemeshQueueSize() > 0 && safetyRemeshLoops < maxRemeshLoops) {
+        refs.world.processRemeshQueue(refs.world.getRemeshQueueSize()); 
+        safetyRemeshLoops++;
+      }
+      if (safetyRemeshLoops >= maxRemeshLoops && refs.world.getRemeshQueueSize() > 0) {
+        console.warn("Respawn: Remesh queue was not fully cleared after max attempts.");
       }
 
       let safeRespawnY = refs.world.getSpawnHeight(respawnX, respawnZ);
       let attempts = 0;
-      const maxAttempts = 15; // Safety break
+      const maxSafetyCheckAttempts = refs.world.layers; // Check up to world height
+      const playerHeightForCheck = refs.player.height - 0.01; // Check clearance up to nearly top of head
 
-      while(attempts < maxAttempts) {
+      while(attempts < maxSafetyCheckAttempts) {
         const blockAtFeet = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY), Math.floor(respawnZ));
-        const blockAtHead = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY + 1), Math.floor(respawnZ));
+        const blockAtHead = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY + playerHeightForCheck), Math.floor(respawnZ));
+        const blockSlightlyAboveHead = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY + playerHeightForCheck + 0.5), Math.floor(respawnZ));
 
-        if (blockAtFeet === 'air' && blockAtHead === 'air') {
-          break; // Found a safe spot
+
+        if (blockAtFeet === 'air' && blockAtHead === 'air' && blockSlightlyAboveHead === 'air') {
+          break; 
         }
         safeRespawnY++;
         attempts++;
-        if (safeRespawnY >= refs.world.layers - 2) { // Prevent infinite loop near world top
-            console.warn("Respawn safety check reached near world top. Defaulting Y.");
-            safeRespawnY = Math.floor(refs.world.layers / 2);
+        if (safeRespawnY + playerHeightForCheck + 1 >= refs.world.layers) {
+            console.warn("Respawn safety check reached world top. Choosing a default Y.");
+            safeRespawnY = Math.max(1, Math.min(Math.floor(refs.world.layers / 2), refs.world.layers - Math.ceil(playerHeightForCheck) - 2));
             break;
         }
       }
-       if (attempts >= maxAttempts) {
-          console.warn("Could not find a perfectly safe respawn Y after " + maxAttempts + " attempts. Player collision logic should resolve.");
+       if (attempts >= maxSafetyCheckAttempts) {
+          console.warn("Could not find a perfectly safe respawn Y after " + maxSafetyCheckAttempts + " attempts. Using last calculated or default.");
+          safeRespawnY = Math.max(1, Math.min(safeRespawnY, refs.world.layers - Math.ceil(playerHeightForCheck) - 2));
       }
+
+      // Final boundary checks for safeRespawnY
+      safeRespawnY = Math.max(1, safeRespawnY); // Ensure not spawning at or below Y=0 (void)
+      safeRespawnY = Math.min(safeRespawnY, refs.world.layers - Math.ceil(refs.player.height) -1); // Ensure enough space below world top
+
+
       const currentPitch = refs.camera!.rotation.x;
       const currentYaw = refs.camera!.rotation.y;
 
-      // Create new Player, providing service interfaces
       refs.player = new Player(
-        refs.player!['name'], // Keep old name
+        refs.player!['name'],
         refs.world as PlayerWorldService,
         refs.camera as PlayerCameraService,
         refs.scene as PlayerSceneService,
         refs.raycaster as PlayerRaycasterService,
         respawnX, safeRespawnY, respawnZ,
-        true // preserveCam flag (its role is reduced now)
+        true 
       );
 
       if (refs.inputController) {
         refs.inputController.setPlayer(refs.player);
       }
 
-      // Restore camera orientation
       refs.player.pitch = currentPitch;
       refs.player.yaw = currentYaw;
-      refs.player.lookAround(); // Apply to cameraService
+      refs.player.lookAround(); 
 
-      // Update camera position to new player position
       refs.camera.position.set(refs.player.x, refs.player.y + refs.player.height * 0.9, refs.player.z);
     }
 
     if (refs.cursor.holding) {
       refs.cursor.holdTime++;
       if (refs.cursor.holdTime === refs.cursor.triggerHoldTime) {
-        if (refs.player) refs.player.interactWithBlock(false); // Place block on hold
+        if (refs.player) refs.player.interactWithBlock(false); 
       }
     }
 

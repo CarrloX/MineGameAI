@@ -74,7 +74,7 @@ export class Player {
       dir: "",
     };
     this.blockFaceHL.mesh.name = "Block_Wireframe_Highlight_Mesh";
-    this.blockFaceHL.mesh.renderOrder = 1; // Ensure it renders on top
+    this.blockFaceHL.mesh.renderOrder = 1; 
 
     this.mesh = new THREE.Object3D();
     this.mesh.name = name;
@@ -119,7 +119,7 @@ export class Player {
       const hitNormalWorld = hitNormalLocal.clone().transformDirection(hitObject.matrixWorld).normalize();
 
       const calculatedBlockWorldCoords = new THREE.Vector3(
-        Math.floor(hitPointWorld.x - hitNormalWorld.x * 0.499), // Use 0.499 for safety
+        Math.floor(hitPointWorld.x - hitNormalWorld.x * 0.499), 
         Math.floor(hitPointWorld.y - hitNormalWorld.y * 0.499),
         Math.floor(hitPointWorld.z - hitNormalWorld.z * 0.499)
       );
@@ -191,20 +191,20 @@ export class Player {
   }
 
   interactWithBlock(destroy: boolean): void {
-    const { world, blocks: blockPrototypesArray } = this.gameRefs;
-    if (!world || !blockPrototypesArray || !this.lookingAt) return;
+    const { world } = this.gameRefs;
+    if (!world || !this.lookingAt) return;
 
-    if (destroy) { // Destroy block (Left Click)
+    if (destroy) { 
       const { x, y, z } = this.lookingAt.blockWorldCoords;
       if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
           const currentBlock = world.getBlock(x,y,z);
-          if (currentBlock !== 'waterBlock') { // Prevent destroying water for now, can be changed
+          if (currentBlock !== 'waterBlock') { 
             world.setBlock(x, y, z, 'air');
           }
       } else {
           console.warn("Invalid block coordinates for destruction:", this.lookingAt.blockWorldCoords);
       }
-    } else { // Place block (Right Click)
+    } else { 
       const { x: placeX, y: placeY, z: placeZ } = this.lookingAt.placeBlockWorldCoords;
        if (!Number.isFinite(placeX) || !Number.isFinite(placeY) || !Number.isFinite(placeZ)) {
           console.warn("Invalid block coordinates for placement:", this.lookingAt.placeBlockWorldCoords);
@@ -220,9 +220,7 @@ export class Player {
       }
 
       if (placeY >= 0 && placeY < world.layers) {
-        // For now, let's hardcode placing stone block as an example
-        // Later, this can be tied to a selected block in an inventory
-        const blockToPlaceNameKey = "stoneBlock"; // Example: player places stone
+        const blockToPlaceNameKey = "stoneBlock"; 
         
         if(blockToPlaceNameKey && blockToPlaceNameKey !== 'air') {
           world.setBlock(placeX, placeY, placeZ, blockToPlaceNameKey);
@@ -245,21 +243,30 @@ export class Player {
       case controlConfig.respawn: this.die(); break;
       case controlConfig.jump:
         const now = performance.now();
-        if (this.flying) { 
-            this.isFlyingAscending = true;
-            this.lastSpacePressTime = 0; 
-        } else { 
-            if (now - this.lastSpacePressTime < this.flyToggleDelay) {
-                this.flying = true;
-                this.isFlyingAscending = false; 
+        if (this.flying) {
+            if (now - this.lastSpacePressTime < this.flyToggleDelay && this.lastSpacePressTime !== 0) { 
+                this.flying = false;
+                this.isFlyingAscending = false;
                 this.isFlyingDescending = false;
-                this.jumping = false;
-                this.jumpVelocity = 0;
+                this.isBoosting = false;
                 this.onGround = false; 
                 this.lastSpacePressTime = 0; 
             } else {
-                this.jumping = true; 
-                this.lastSpacePressTime = now;
+                this.isFlyingAscending = true;
+                this.lastSpacePressTime = now; 
+            }
+        } else { 
+            if (now - this.lastSpacePressTime < this.flyToggleDelay && this.lastSpacePressTime !== 0) {
+                this.flying = true;
+                this.isFlyingAscending = false;
+                this.isFlyingDescending = false;
+                this.jumping = false;
+                this.jumpVelocity = 0;
+                this.onGround = false;
+                this.lastSpacePressTime = 0; 
+            } else {
+                this.jumping = true;
+                this.lastSpacePressTime = now; 
             }
         }
         break;
@@ -299,6 +306,7 @@ export class Player {
     this.dead = true;
     this.flying = false; 
     this.isBoosting = false;
+    this.lastSpacePressTime = 0; // Reset to prevent unintended flight toggle on respawn
   }
 
   updatePosition(): void {
@@ -361,12 +369,12 @@ export class Player {
     let correctedZ = nextPlayerZ;
     let landedOnGroundThisFrame = false;
 
-    const pMinProposedGlobalY = nextPlayerY;
-    const pMaxProposedGlobalY = nextPlayerY + this.height;
-    const pMinProposedGlobalX = nextPlayerX - this.width / 2;
-    const pMaxProposedGlobalX = nextPlayerX + this.width / 2;
-    const pMinProposedGlobalZ = nextPlayerZ - this.depth / 2;
-    const pMaxProposedGlobalZ = nextPlayerZ + this.depth / 2;
+    const pMinProposedGlobalY = correctedY; 
+    const pMaxProposedGlobalY = correctedY + this.height;
+    const pMinProposedGlobalX = correctedX - this.width / 2;
+    const pMaxProposedGlobalX = correctedX + this.width / 2;
+    const pMinProposedGlobalZ = correctedZ - this.depth / 2;
+    const pMaxProposedGlobalZ = correctedZ + this.depth / 2;
 
     const checkRadius = 1; 
     const startBlockY = Math.max(0, Math.floor(pMinProposedGlobalY) - checkRadius);
@@ -377,7 +385,7 @@ export class Player {
             for (let checkWorldY = startBlockY; checkWorldY < endBlockY; checkWorldY++) {
                 const blockType = world.getBlock(checkWorldX, checkWorldY, checkWorldZ);
                 
-                if (blockType && blockType !== 'air' && blockType !== 'waterBlock') { // Water is not solid
+                if (blockType && blockType !== 'air' && blockType !== 'waterBlock') { 
                     const bMinX = checkWorldX;
                     const bMaxX = checkWorldX + 1;
                     const bMinY = checkWorldY;
@@ -407,7 +415,7 @@ export class Player {
                                 } else if (dY < 0 && pMaxY > bMinY) { 
                                     correctedY = bMaxY + 0.001; 
                                 } else if (dY === 0 && pMinY < bMaxY && pMaxY > bMinY) { 
-                                    correctedY = (this.y > bMinY) ? (bMaxY + 0.001) : (bMinY - this.height - 0.001); 
+                                     correctedY = (this.y > bMinY) ? (bMaxY + 0.001) : (bMinY - this.height - 0.001);
                                 }
                             } else { 
                                 if (dY <= 0 && pMinY < bMaxY && this.y >= bMaxY - 0.01) { 
@@ -437,7 +445,7 @@ export class Player {
             }
         }
     }
-
+    
     if (this.flying) {
         this.jumpVelocity = 0;
         this.onGround = false;
@@ -448,7 +456,7 @@ export class Player {
             correctedY = 0;
             landedOnGroundThisFrame = true; 
             this.jumpVelocity = 0;
-            if (!this.dead) this.die(); // Die if falling through absolute bottom
+            if (!this.dead) this.die(); 
         }
         if (correctedY + this.height > world.layers) { 
             correctedY = world.layers - this.height;
@@ -456,6 +464,7 @@ export class Player {
         }
         this.onGround = landedOnGroundThisFrame;
     }
+
 
     this.x = correctedX;
     this.y = correctedY;

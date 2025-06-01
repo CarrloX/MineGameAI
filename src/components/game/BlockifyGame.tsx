@@ -66,14 +66,14 @@ const BlockifyGame: React.FC = () => {
     const blockData = getBlockDefinitions();
     refs.blocks = [
       new Block("grassBlock", blockData.grassBlock, refs.textureLoader, true),
-      new Block("dirtBlock", {side: blockData.dirtBlock }, refs.textureLoader, false),
-      new Block("stoneBlock", {side: blockData.stoneBlock }, refs.textureLoader, false),
-      new Block("sandBlock", {side: blockData.sandBlock }, refs.textureLoader, false),
+      new Block("dirtBlock", blockData.dirtBlock, refs.textureLoader, false),
+      new Block("stoneBlock", blockData.stoneBlock, refs.textureLoader, false),
+      new Block("sandBlock", blockData.sandBlock, refs.textureLoader, false),
       new Block("woodLogBlock", blockData.woodLogBlock, refs.textureLoader, true),
-      new Block("redstoneBlock", {side: blockData.redstoneBlock }, refs.textureLoader, false),
-      new Block("orangeWoolBlock", {side: blockData.orangeWoolBlock }, refs.textureLoader, false),
-      new Block("cobblestoneBlock", {side: blockData.cobblestoneBlock }, refs.textureLoader, false),
-      new Block("waterBlock", {side: blockData.waterBlock}, refs.textureLoader, false),
+      new Block("redstoneBlock", blockData.redstoneBlock, refs.textureLoader, false),
+      new Block("orangeWoolBlock", blockData.orangeWoolBlock, refs.textureLoader, false),
+      new Block("cobblestoneBlock", blockData.cobblestoneBlock, refs.textureLoader, false),
+      new Block("waterBlock", blockData.waterBlock, refs.textureLoader, false),
     ];
 
     refs.world = new World(refs);
@@ -262,9 +262,9 @@ const BlockifyGame: React.FC = () => {
     const handleKeyUp = (e: KeyboardEvent) => refs.player?.handleKeyUp(e);
     const handleMouseMove = (e: MouseEvent) => refs.player?.lookAround(e);
     const handleMouseDown = (e: MouseEvent) => {
-      if (refs.cursor.inWindow) { // Only interact if pointer is locked
-        if (e.button === 0) refs.player?.interactWithBlock(true); // Left click: Destroy
-        if (e.button === 2) refs.player?.interactWithBlock(false); // Right click: Place
+      if (refs.cursor.inWindow) { 
+        if (e.button === 0) refs.player?.interactWithBlock(true); 
+        if (e.button === 2) refs.player?.interactWithBlock(false); 
       }
     };
 
@@ -280,7 +280,7 @@ const BlockifyGame: React.FC = () => {
     const handleTouchEnd = (e: TouchEvent) => {
       if (refs.cursor.holding) {
         if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) {
-          refs.player?.interactWithBlock(true); // Tap: Place (equivalent to right click for simplicity here)
+          refs.player?.interactWithBlock(true); 
         }
         refs.cursor.holding = false;
       }

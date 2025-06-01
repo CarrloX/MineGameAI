@@ -64,7 +64,7 @@ export class Chunk {
       this.needsMeshUpdate = true;
 
       this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
-      this.world.queueChunkRemesh(this.worldX, this.worldZ); // Queue self for remesh
+      this.world.queueChunkRemesh(this.worldX, this.worldZ); 
 
       if (localX === 0) this.world.queueChunkRemesh(this.worldX - 1, this.worldZ);
       if (localX === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX + 1, this.worldZ);
@@ -78,10 +78,10 @@ export class Chunk {
     const dirtBlockName = 'dirtBlock';
     const stoneBlockName = 'stoneBlock';
     const sandBlockName = 'sandBlock';
-    // const waterBlockName = 'waterBlock'; // Water will be placed based on height later
+    const waterBlockName = 'waterBlock'; 
 
     const baseHeight = Math.floor(this.world.layers / 2.5);
-    const waterLevel = baseHeight - 5; 
+    const waterLevel = baseHeight - 2; // Adjusted water level to be slightly higher for more visible lakes
 
     const mountainMainFreq = 0.05;
     const mountainMainAmp = 15;
@@ -93,17 +93,17 @@ export class Chunk {
     const mountainBasinAmp = 20;
     const mountainBasinThreshold = 0.3;
 
-    const plainsMainFreq = 0.04; 
-    const plainsMainAmp = 4;     
+    const plainsMainFreq = 0.04;
+    const plainsMainAmp = 4;
     const plainsDetailFreq = 0.1;
     const plainsDetailAmp = 1.5;
     const plainsRoughnessFreq = 0.25;
     const plainsRoughnessAmp = 0.4;
-    const plainsBasinFreq = 0.05; 
-    const plainsBasinAmp = 3;      
-    const plainsBasinThreshold = 0.65; 
+    const plainsBasinFreq = 0.05;
+    const plainsBasinAmp = 6; // Slightly deeper basins in plains for potential ponds
+    const plainsBasinThreshold = 0.55; // Adjusted threshold for plains basins
 
-    const biomeScale = 0.015; 
+    const biomeScale = 0.015;
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -117,7 +117,7 @@ export class Chunk {
             currentRoughnessFreq, currentRoughnessAmp, currentBasinFreq,
             currentBasinAmp, currentBasinThreshold;
 
-        if (biomeNoiseVal > 0.05) { 
+        if (biomeNoiseVal > 0.05) {
             currentMainFreq = mountainMainFreq;
             currentMainAmp = mountainMainAmp;
             currentDetailFreq = mountainDetailFreq;
@@ -127,7 +127,7 @@ export class Chunk {
             currentBasinFreq = mountainBasinFreq;
             currentBasinAmp = mountainBasinAmp;
             currentBasinThreshold = mountainBasinThreshold;
-        } else { 
+        } else {
             currentMainFreq = plainsMainFreq;
             currentMainAmp = plainsMainAmp;
             currentDetailFreq = plainsDetailFreq;
@@ -161,19 +161,19 @@ export class Chunk {
           if (y < surfaceY - 3) {
             this.blocks[x][y][z] = stoneBlockName;
           } else if (y < surfaceY) {
-            if (surfaceY < waterLevel && y >= surfaceY -1) { 
+            if (surfaceY < waterLevel && y >= surfaceY -1 && y < waterLevel) { // Sand at edges of water bodies
                  this.blocks[x][y][z] = sandBlockName;
             } else {
                  this.blocks[x][y][z] = dirtBlockName;
             }
           } else if (y === surfaceY) {
-            if (surfaceY < waterLevel -1) { 
-                this.blocks[x][y][z] = sandBlockName; // Lake bed material
+            if (surfaceY < waterLevel -1) {
+                this.blocks[x][y][z] = sandBlockName; 
             } else {
                 this.blocks[x][y][z] = grassBlockName;
             }
-          } else if (y > surfaceY && y <= waterLevel) { // Fill with 'air' first, water placement would be a separate step or consideration
-             this.blocks[x][y][z] = 'air'; // Placeholder for potential water
+          } else if (y > surfaceY && y <= waterLevel) { 
+             this.blocks[x][y][z] = waterBlockName; // Actually place water
           }
           else {
             this.blocks[x][y][z] = 'air';
@@ -205,12 +205,11 @@ export class Chunk {
     const geometriesByMaterial = new Map<string, { material: THREE.Material, geometries: THREE.BufferGeometry[] }>();
 
     const shouldRenderFace = (currentBlockType: string, neighborBlockType: string | null): boolean => {
-      if (neighborBlockType === null) return true; // Edge of loaded world, always render face
+      if (neighborBlockType === null) return true; 
 
       if (currentBlockType === 'waterBlock') {
-          return neighborBlockType === 'air'; // Water face only visible next to air
+          return neighborBlockType === 'air'; 
       }
-      // Solid blocks (or any non-water block considered 'solid' for culling purposes)
       return neighborBlockType === 'air' || neighborBlockType === 'waterBlock';
     };
 
@@ -222,7 +221,11 @@ export class Chunk {
           if (blockType === 'air') continue;
 
           const blockProto = this.blockPrototypes.get(blockType);
-          if (!blockProto) continue;
+          if (!blockProto) {
+            console.warn(`No prototype found for block type: ${blockType} at ${this.worldX*CHUNK_SIZE+x},${y},${this.worldZ*CHUNK_SIZE+z}`);
+            continue;
+          }
+
 
           const blockWorldX = this.worldX * CHUNK_SIZE + x;
           const blockWorldY = this.worldY + y;
@@ -244,7 +247,7 @@ export class Chunk {
             faceGeometry.rotateZ(faceRotation[2]);
             faceGeometry.translate(x + 0.5 + faceTranslation[0] - 0.5, y + 0.5 + faceTranslation[1] -0.5, z + 0.5 + faceTranslation[2] -0.5);
 
-            const materialKey = material.uuid; // Group by exact material instance
+            const materialKey = material.uuid; 
             if (!geometriesByMaterial.has(materialKey)) {
               geometriesByMaterial.set(materialKey, { material: material, geometries: [] });
             }
@@ -296,15 +299,15 @@ export class Chunk {
         const mergedGeometry = BufferGeometryUtils.mergeGeometries(data.geometries, false);
         if (mergedGeometry) {
           const chunkMesh = new THREE.Mesh(mergedGeometry, data.material);
-          chunkMesh.name = `MergedChunkMesh_${this.worldX}_${this.worldZ}_${data.material.uuid.substring(0,6)}`;
-          chunkMesh.castShadow = data.material !== this.blockPrototypes.get('waterBlock')?.mesh.material; // Water meshes don't cast shadows
+          chunkMesh.name = `MergedChunkMesh_${this.worldX}_${this.worldZ}_${(data.material as any)?.map?.source?.src?.split('/').pop() || data.material.uuid.substring(0,6)}`;
+          chunkMesh.castShadow = data.material !== this.blockPrototypes.get('waterBlock')?.mesh.material;
           chunkMesh.receiveShadow = true;
           this.chunkRoot.add(chunkMesh);
         }
         data.geometries.forEach(g => g.dispose());
       }
     });
-    this.chunkRoot.children.sort((a, b) => { // Attempt to sort transparent objects last
+    this.chunkRoot.children.sort((a, b) => { 
         const matAIsTransparent = (a as THREE.Mesh).material && ((a as THREE.Mesh).material as THREE.Material).transparent;
         const matBIsTransparent = (b as THREE.Mesh).material && ((b as THREE.Mesh).material as THREE.Material).transparent;
         if (matAIsTransparent && !matBIsTransparent) return 1;

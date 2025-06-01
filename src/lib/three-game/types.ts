@@ -3,7 +3,7 @@ import type * as THREE from 'three';
 import type { Player } from './Player';
 import type { World } from './World';
 import type { Block } from './Block';
-import type { InputHandler } from './InputHandler';
+import type { InputController } from './InputController'; // Changed from InputHandler
 import type { RendererManager } from './RendererManager';
 import type { GameLogic } from './GameLogic';
 import type { ThreeSetup } from './ThreeSetup';
@@ -70,7 +70,7 @@ export interface GameRefs {
   cursor: CursorState;
   gameLoopId: number | null;
   canvasRef: HTMLDivElement | null;
-  inputHandler: InputHandler | null;
+  inputController: InputController | null; // Changed from inputHandler
   rendererManager: RendererManager | null;
   gameLogic: GameLogic | null;
   threeSetup: ThreeSetup | null;

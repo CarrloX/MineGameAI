@@ -5,12 +5,12 @@ import React, { useEffect, useRef, useCallback, useState } from 'react';
 import * as THREE from 'three';
 import { World } from '@/lib/three-game/World';
 import { Player } from '@/lib/three-game/Player';
-import { InputHandler } from '@/lib/three-game/InputHandler';
+import { InputController } from '@/lib/three-game/InputController'; // Changed from InputHandler
 import { RendererManager } from '@/lib/three-game/RendererManager';
 import { GameLogic } from '@/lib/three-game/GameLogic';
 import { ThreeSetup } from '@/lib/three-game/ThreeSetup';
 import { CONTROL_CONFIG, CURSOR_STATE, CHUNK_SIZE } from '@/lib/three-game/utils';
-import type { GameRefs, DebugInfoState, ErrorInfo } from '@/lib/three-game/types';
+import type { GameRefs, DebugInfoState, ErrorInfo } from '@/lib/three-game/types'; // Updated types import
 import ErrorBoundaryDisplay from './ErrorBoundaryDisplay';
 
 const BlockifyGame: React.FC = () => {
@@ -24,7 +24,7 @@ const BlockifyGame: React.FC = () => {
     world: null,
     blocks: null,
     player: null,
-    inputHandler: null,
+    inputController: null, // Changed from inputHandler
     rendererManager: null,
     gameLogic: null,
     threeSetup: null,
@@ -68,10 +68,9 @@ const BlockifyGame: React.FC = () => {
     refs.threeSetup = new ThreeSetup();
     refs.threeSetup.initialize(refs.canvasRef, refs);
 
-    // Ensure ThreeSetup populated necessary refs
     if (!refs.scene || !refs.camera || !refs.renderer || !refs.textureLoader || !refs.blocks || !refs.lighting) {
         console.error("ThreeSetup did not initialize all required gameRefs properties.");
-        setErrorInfo({ title: "Error de Inicialización", message: "ThreeSetup no pudo inicializar componentes esenciales de Three.js." });
+        setErrorInfo({ title: "Initialization Error", message: "ThreeSetup failed to initialize essential Three.js components." });
         return;
     }
     
@@ -84,7 +83,7 @@ const BlockifyGame: React.FC = () => {
        refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
     }
 
-    // 4. Player and InputHandler
+    // 4. Player and InputController
     const initialPlayerX = 0.5;
     const initialPlayerZ = 0.5;
 
@@ -116,15 +115,15 @@ const BlockifyGame: React.FC = () => {
     }
 
     refs.player = new Player("Player", refs, initialPlayerX, spawnY, initialPlayerZ); 
-    refs.inputHandler = new InputHandler(refs.player, refs);
-    refs.inputHandler.setupEventListeners();
+    refs.inputController = new InputController(refs.player, refs); // Changed from InputHandler
+    refs.inputController.setupEventListeners();
 
     // 5. GameLogic orchestrates updates
     refs.gameLogic = new GameLogic(refs, setDebugInfo, setIsCameraSubmerged);
 
     if (refs.camera && refs.player) {
       refs.camera.position.set(refs.player.x, refs.player.y + refs.player.height * 0.9, refs.player.z);
-      // Player constructor or GameLogic respawn handles lookAround now
+      // Player constructor or GameLogic respawn handles lookAround now for initial camera rotation
     }
 
     console.log("Game initialized.");
@@ -157,8 +156,8 @@ const BlockifyGame: React.FC = () => {
     } catch (error: any) {
       console.error("Error in game loop:", error);
       setErrorInfo({
-        title: "¡Error en el Juego!",
-        message: `Mensaje: ${error.message}\n\nPila de llamadas (Stack):\n${error.stack}`
+        title: "Game Loop Error!",
+        message: `Message: ${error.message}\n\nStack:\n${error.stack}`
       });
       if (gameRefs.current.gameLoopId !== null) {
         cancelAnimationFrame(gameRefs.current.gameLoopId);
@@ -194,14 +193,6 @@ const BlockifyGame: React.FC = () => {
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
     document.addEventListener("contextmenu", handleContextMenu);
 
-
-    // Game loop is started within initGame if not already running
-    // if (refs.gameLoopId === null && !errorInfo) {
-    //     console.log("Starting game loop from useEffect setup");
-    //     refs.gameLoopId = requestAnimationFrame(gameLoop);
-    // }
-
-
     return () => {
       console.log("Cleaning up BlockifyGame component...");
       clearInterval(intervalId);
@@ -211,19 +202,15 @@ const BlockifyGame: React.FC = () => {
       }
       document.removeEventListener("contextmenu", handleContextMenu);
 
-      gameRefs.current.inputHandler?.removeEventListeners();
+      gameRefs.current.inputController?.removeEventListeners(); // Changed from inputHandler
       gameRefs.current.rendererManager?.dispose();
-      // ThreeSetup might have its own dispose in the future for textures, geometries if not handled by meshes
-      // For now, individual components' dispose methods handle their resources.
       
-      // Dispose world and its chunks
       gameRefs.current.world?.activeChunks.forEach((chunk) => {
         if (chunk && typeof chunk.dispose === 'function') {
           chunk.dispose();
         }
       });
 
-      // Dispose scene contents more broadly
       gameRefs.current.scene?.traverse(object => {
         if (object instanceof THREE.Mesh) {
           object.geometry?.dispose();
@@ -241,16 +228,15 @@ const BlockifyGame: React.FC = () => {
         }
       });
 
-      // Clear gameRefs
       Object.keys(gameRefs.current).forEach(key => {
-        if (key !== 'controlConfig' && key !== 'cursor') { // Keep static config
+        if (key !== 'controlConfig' && key !== 'cursor') { 
             (gameRefs.current as any)[key] = null;
         }
       });
       
       console.log("Cleanup complete.");
     };
-  }, [initGame]); // initGame is stable due to useCallback([])
+  }, [initGame]); 
 
 
   useEffect(() => {
@@ -268,7 +254,6 @@ const BlockifyGame: React.FC = () => {
         }
     } else {
         renderer.setClearColor(new THREE.Color(world.skyColor));
-        // Potentially restore a default sky fog if you have one, or remove it
         scene.fog = null; 
     }
   }, [isCameraSubmerged]);
@@ -282,8 +267,6 @@ const BlockifyGame: React.FC = () => {
           message={errorInfo.message}
           onClose={() => {
             setErrorInfo(null);
-            // Consider if game should re-init or stay paused after error
-            // initGame(); // Potentially re-initialize, or offer a button to do so
           }}
         />
       )}

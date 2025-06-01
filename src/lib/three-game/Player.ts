@@ -38,7 +38,8 @@ export class Player {
   public isFlyingAscending: boolean = false;
   public isFlyingDescending: boolean = false;
   public isBoosting: boolean = false;
-  public boostSpeedMultiplier: number = 2.0;
+  public boostSpeedMultiplier: number = 3.0; // Increased boost
+  public isRunning: boolean = false;
 
 
   constructor(name: string, gameRefs: GameRefs, x: number = 0, y: number = 0, z: number = 0, preserveCam: boolean = false) {
@@ -74,7 +75,7 @@ export class Player {
       dir: "",
     };
     this.blockFaceHL.mesh.name = "Block_Wireframe_Highlight_Mesh";
-    this.blockFaceHL.mesh.renderOrder = 1; 
+    this.blockFaceHL.mesh.renderOrder = 1;
 
     this.mesh = new THREE.Object3D();
     this.mesh.name = name;
@@ -104,22 +105,22 @@ export class Player {
     const firstValidIntersect = intersects.find(
       intersect => intersect.object instanceof THREE.Mesh &&
                    intersect.object.name.startsWith("MergedChunkMesh_") &&
-                   intersect.distance > 0.1 && 
+                   intersect.distance > 0.1 &&
                    intersect.distance < this.attackRange &&
-                   intersect.face 
+                   intersect.face
     );
 
     if (firstValidIntersect && firstValidIntersect.face) {
       const intersection = firstValidIntersect;
       const hitObject = intersection.object as THREE.Mesh;
 
-      const hitPointWorld = intersection.point.clone(); 
-      const hitNormalLocal = intersection.face.normal.clone(); 
-      
+      const hitPointWorld = intersection.point.clone();
+      const hitNormalLocal = intersection.face.normal.clone();
+
       const hitNormalWorld = hitNormalLocal.clone().transformDirection(hitObject.matrixWorld).normalize();
 
       const calculatedBlockWorldCoords = new THREE.Vector3(
-        Math.floor(hitPointWorld.x - hitNormalWorld.x * 0.499), 
+        Math.floor(hitPointWorld.x - hitNormalWorld.x * 0.499),
         Math.floor(hitPointWorld.y - hitNormalWorld.y * 0.499),
         Math.floor(hitPointWorld.z - hitNormalWorld.z * 0.499)
       );
@@ -129,7 +130,7 @@ export class Player {
         Math.floor(hitPointWorld.y + hitNormalWorld.y * 0.499),
         Math.floor(hitPointWorld.z + hitNormalWorld.z * 0.499)
       );
-      
+
       this.lookingAt = {
         object: hitObject,
         point: intersection.point,
@@ -150,7 +151,7 @@ export class Player {
         this.lookingAt.blockWorldCoords.y + 0.5,
         this.lookingAt.blockWorldCoords.z + 0.5
       );
-      this.blockFaceHL.mesh.rotation.set(0,0,0); 
+      this.blockFaceHL.mesh.rotation.set(0,0,0);
 
       const currentHitNormalWorld = this.lookingAt.worldFaceNormal;
       if (Math.abs(currentHitNormalWorld.x) > 0.5) this.blockFaceHL.dir = currentHitNormalWorld.x > 0 ? 'East (+X)' : 'West (-X)';
@@ -159,12 +160,12 @@ export class Player {
       else this.blockFaceHL.dir = 'Unknown Face';
 
     } else {
-      if (this.lookingAt !== null) { 
+      if (this.lookingAt !== null) {
         if (scene.getObjectByName(this.blockFaceHL.mesh.name)) {
           scene.remove(this.blockFaceHL.mesh);
         }
         this.lookingAt = null;
-        this.blockFaceHL.dir = ""; 
+        this.blockFaceHL.dir = "";
       }
     }
   }
@@ -179,7 +180,7 @@ export class Player {
         this.yaw -= e.movementX * sensitivity;
         this.pitch -= e.movementY * sensitivity;
       }
-      const maxPitch = Math.PI / 2 - 0.01; 
+      const maxPitch = Math.PI / 2 - 0.01;
       this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
       this.yaw = ((this.yaw % (2 * Math.PI)) + (2 * Math.PI)) % (2 * Math.PI);
       camera.rotation.x = this.pitch;
@@ -191,20 +192,21 @@ export class Player {
   }
 
   interactWithBlock(destroy: boolean): void {
-    const { world } = this.gameRefs;
-    if (!world || !this.lookingAt) return;
+    const { world, cursor } = this.gameRefs;
+    if (!world || !this.lookingAt || !cursor || !cursor.inWindow) return;
 
-    if (destroy) { 
+
+    if (destroy) {
       const { x, y, z } = this.lookingAt.blockWorldCoords;
       if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
           const currentBlock = world.getBlock(x,y,z);
-          if (currentBlock !== 'waterBlock') { 
+          if (currentBlock !== 'waterBlock') { // Prevent destroying water for now
             world.setBlock(x, y, z, 'air');
           }
       } else {
           console.warn("Invalid block coordinates for destruction:", this.lookingAt.blockWorldCoords);
       }
-    } else { 
+    } else {
       const { x: placeX, y: placeY, z: placeZ } = this.lookingAt.placeBlockWorldCoords;
        if (!Number.isFinite(placeX) || !Number.isFinite(placeY) || !Number.isFinite(placeZ)) {
           console.warn("Invalid block coordinates for placement:", this.lookingAt.placeBlockWorldCoords);
@@ -220,8 +222,8 @@ export class Player {
       }
 
       if (placeY >= 0 && placeY < world.layers) {
-        const blockToPlaceNameKey = "stoneBlock"; 
-        
+        const blockToPlaceNameKey = "stoneBlock"; // TODO: Use selected block from inventory
+
         if(blockToPlaceNameKey && blockToPlaceNameKey !== 'air') {
           world.setBlock(placeX, placeY, placeZ, blockToPlaceNameKey);
         } else {
@@ -243,41 +245,41 @@ export class Player {
       case controlConfig.respawn: this.die(); break;
       case controlConfig.jump:
         const now = performance.now();
-        if (this.flying) {
-            if (now - this.lastSpacePressTime < this.flyToggleDelay && this.lastSpacePressTime !== 0) { 
-                this.flying = false;
-                this.isFlyingAscending = false;
-                this.isFlyingDescending = false;
-                this.isBoosting = false;
-                this.onGround = false; 
-                this.lastSpacePressTime = 0; 
-            } else {
-                this.isFlyingAscending = true;
-                this.lastSpacePressTime = now; 
-            }
-        } else { 
-            if (now - this.lastSpacePressTime < this.flyToggleDelay && this.lastSpacePressTime !== 0) {
-                this.flying = true;
-                this.isFlyingAscending = false;
-                this.isFlyingDescending = false;
+        if (now - this.lastSpacePressTime < this.flyToggleDelay && this.lastSpacePressTime !== 0) {
+            // Double tap detected
+            this.flying = !this.flying;
+            if (this.flying) {
                 this.jumping = false;
                 this.jumpVelocity = 0;
                 this.onGround = false;
-                this.lastSpacePressTime = 0; 
+                // isBoosting state remains as is unless flying is turned off
             } else {
-                this.jumping = true;
-                this.lastSpacePressTime = now; 
+                this.isFlyingAscending = false;
+                this.isFlyingDescending = false;
+                this.isBoosting = false; // Turn off boost when disabling fly
+                this.onGround = false; // Force re-evaluation of ground state
             }
+            this.lastSpacePressTime = 0; // Reset after toggle
+        } else {
+            // Single tap
+            if (this.flying) {
+                this.isFlyingAscending = true;
+            } else {
+                this.jumping = true; // For normal jump
+            }
+            this.lastSpacePressTime = now;
         }
         break;
-      case controlConfig.flyDown:
+      case controlConfig.flyDown: // Typically ShiftLeft
         if (this.flying) {
           this.isFlyingDescending = true;
         }
         break;
-      case controlConfig.boost:
+      case controlConfig.boost: // Typically ControlLeft
         if (this.flying) {
-          this.isBoosting = !this.isBoosting; 
+          this.isBoosting = !this.isBoosting;
+        } else {
+          this.isRunning = !this.isRunning; // Toggle run if not flying
         }
         break;
     }
@@ -293,20 +295,26 @@ export class Player {
       case controlConfig.forwards: if(this.zdir === "forwards") this.zdir = ""; break;
       case controlConfig.backwards: if(this.zdir === "backwards") this.zdir = ""; break;
       case controlConfig.jump:
-        this.jumping = false;
-        this.isFlyingAscending = false;
+        this.jumping = false; // For normal jump
+        this.isFlyingAscending = false; // For flying
         break;
       case controlConfig.flyDown:
         this.isFlyingDescending = false;
         break;
+      // No need to handle controlConfig.boost on keyUp for toggle behavior
     }
   }
 
   die(): void {
     this.dead = true;
-    this.flying = false; 
+    this.flying = false;
     this.isBoosting = false;
-    this.lastSpacePressTime = 0; // Reset to prevent unintended flight toggle on respawn
+    this.isRunning = false;
+    this.isFlyingAscending = false;
+    this.isFlyingDescending = false;
+    this.lastSpacePressTime = 0;
+    this.jumpVelocity = 0;
+    this.onGround = false;
   }
 
   updatePosition(): void {
@@ -314,9 +322,10 @@ export class Player {
     if (!world || !camera) return;
 
     let dY = 0;
+
     if (this.flying) {
-      this.jumpVelocity = 0; 
-      this.onGround = false;   
+      this.jumpVelocity = 0;
+      this.onGround = false;
       if (this.isFlyingAscending) dY += this.flySpeed;
       if (this.isFlyingDescending) dY -= this.flySpeed;
     } else {
@@ -325,12 +334,11 @@ export class Player {
         this.onGround = false;
       }
       this.jumpVelocity -= world.gravity;
-      if (this.jumpVelocity < -this.jumpSpeed * 2.5) { 
+      if (this.jumpVelocity < -this.jumpSpeed * 2.5) {
           this.jumpVelocity = -this.jumpSpeed * 2.5;
       }
       dY += this.jumpVelocity;
     }
-    let nextPlayerY = this.y + dY;
 
     let moveX = 0;
     let moveZ = 0;
@@ -349,10 +357,13 @@ export class Player {
       moveX -= Math.sin(this.yaw);
     }
 
-    let currentSpeed = this.speed;
+    let currentEffectiveSpeed = this.speed;
     if (this.flying && this.isBoosting) {
-      currentSpeed *= this.boostSpeedMultiplier;
+      currentEffectiveSpeed *= this.boostSpeedMultiplier;
+    } else if (!this.flying && this.isRunning) {
+      currentEffectiveSpeed *= this.boostSpeedMultiplier; // Use same multiplier for running, can be adjusted
     }
+
 
     let nextPlayerX = this.x;
     let nextPlayerZ = this.z;
@@ -360,23 +371,24 @@ export class Player {
     if (moveMagnitude > 0) {
         const normalizedMoveX = moveX / moveMagnitude;
         const normalizedMoveZ = moveZ / moveMagnitude;
-        nextPlayerX += normalizedMoveX * currentSpeed;
-        nextPlayerZ += normalizedMoveZ * currentSpeed;
+        nextPlayerX += normalizedMoveX * currentEffectiveSpeed;
+        nextPlayerZ += normalizedMoveZ * currentEffectiveSpeed;
     }
 
     let correctedX = nextPlayerX;
-    let correctedY = nextPlayerY;
+    let correctedY = this.y + dY;
     let correctedZ = nextPlayerZ;
     let landedOnGroundThisFrame = false;
 
-    const pMinProposedGlobalY = correctedY; 
+
+    const pMinProposedGlobalY = correctedY;
     const pMaxProposedGlobalY = correctedY + this.height;
     const pMinProposedGlobalX = correctedX - this.width / 2;
     const pMaxProposedGlobalX = correctedX + this.width / 2;
     const pMinProposedGlobalZ = correctedZ - this.depth / 2;
     const pMaxProposedGlobalZ = correctedZ + this.depth / 2;
 
-    const checkRadius = 1; 
+    const checkRadius = 1;
     const startBlockY = Math.max(0, Math.floor(pMinProposedGlobalY) - checkRadius);
     const endBlockY = Math.min(world.layers, Math.ceil(pMaxProposedGlobalY) + checkRadius);
 
@@ -384,8 +396,8 @@ export class Player {
         for (let checkWorldZ = Math.floor(pMinProposedGlobalZ) - checkRadius; checkWorldZ <= Math.ceil(pMaxProposedGlobalZ) + checkRadius; checkWorldZ++) {
             for (let checkWorldY = startBlockY; checkWorldY < endBlockY; checkWorldY++) {
                 const blockType = world.getBlock(checkWorldX, checkWorldY, checkWorldZ);
-                
-                if (blockType && blockType !== 'air' && blockType !== 'waterBlock') { 
+
+                if (blockType && blockType !== 'air' && blockType !== 'waterBlock') {
                     const bMinX = checkWorldX;
                     const bMaxX = checkWorldX + 1;
                     const bMinY = checkWorldY;
@@ -393,6 +405,7 @@ export class Player {
                     const bMinZ = checkWorldZ;
                     const bMaxZ = checkWorldZ + 1;
 
+                    // Use current corrected positions for collision checks within this frame
                     let pMinX = correctedX - this.width / 2;
                     let pMaxX = correctedX + this.width / 2;
                     let pMinY = correctedY;
@@ -401,66 +414,74 @@ export class Player {
                     let pMaxZ = correctedZ + this.depth / 2;
 
                     if (pMaxX > bMinX && pMinX < bMaxX &&
-                        pMaxY > bMinY && pMinY < bMaxY &&
+                        pMaxY > bMinY && pMinY < bMaxY - 0.0001 && // Adjusted for ground detection
                         pMaxZ > bMinZ && pMinZ < bMaxZ) {
 
                         const overlapX = Math.min(pMaxX - bMinX, bMaxX - pMinX);
                         const overlapY = Math.min(pMaxY - bMinY, bMaxY - pMinY);
                         const overlapZ = Math.min(pMaxZ - bMinZ, bMaxZ - pMinZ);
 
-                        if (overlapY <= overlapX && overlapY <= overlapZ) { 
+                        if (overlapY <= overlapX && overlapY <= overlapZ) {
                             if (this.flying) {
-                                if (dY > 0 && pMinY < bMaxY) { 
-                                    correctedY = bMinY - this.height - 0.001; 
-                                } else if (dY < 0 && pMaxY > bMinY) { 
-                                    correctedY = bMaxY + 0.001; 
-                                } else if (dY === 0 && pMinY < bMaxY && pMaxY > bMinY) { 
+                                if (dY > 0 && pMinY < bMaxY) { // Trying to move up into a block
+                                    correctedY = bMinY - this.height - 0.001;
+                                } else if (dY < 0 && pMaxY > bMinY) { // Trying to move down into a block
+                                    correctedY = bMaxY + 0.001;
+                                } else if (dY === 0 && pMinY < bMaxY && pMaxY > bMinY) { // Stationary but overlapping
                                      correctedY = (this.y > bMinY) ? (bMaxY + 0.001) : (bMinY - this.height - 0.001);
                                 }
-                            } else { 
-                                if (dY <= 0 && pMinY < bMaxY && this.y >= bMaxY - 0.01) { 
+                            } else { // Not flying
+                                if (dY <= 0 && pMinY < bMaxY && this.y >= bMaxY - 0.01) { // Landed
                                     correctedY = bMaxY;
                                     this.jumpVelocity = 0;
                                     landedOnGroundThisFrame = true;
-                                } else if (dY > 0 && pMaxY > bMinY && this.y + this.height <= bMinY + 0.01) { 
+                                } else if (dY > 0 && pMaxY > bMinY && this.y + this.height <= bMinY + 0.01) { // Hit head
                                     correctedY = bMinY - this.height;
-                                    this.jumpVelocity = -0.001; 
+                                    this.jumpVelocity = -0.001; // Small bounce
                                 }
                             }
-                        } else if (overlapX < overlapY && overlapX < overlapZ) { 
-                            if ((pMaxX - bMinX) < (bMaxX - pMinX)) { 
+                        } else if (overlapX < overlapY && overlapX < overlapZ) {
+                            if ((pMaxX - bMinX) < (bMaxX - pMinX)) {
                                 correctedX = bMinX - this.width / 2 - 0.001;
-                            } else { 
+                            } else {
                                 correctedX = bMaxX + this.width / 2 + 0.001;
                             }
-                        } else { 
-                             if ((pMaxZ - bMinZ) < (bMaxZ - pMinZ)) { 
+                        } else {
+                             if ((pMaxZ - bMinZ) < (bMaxZ - pMinZ)) {
                                 correctedZ = bMinZ - this.depth / 2 - 0.001;
-                            } else { 
+                            } else {
                                 correctedZ = bMaxZ + this.depth / 2 + 0.001;
                             }
                         }
+                         // After a collision correction, update pMin/pMax for subsequent checks in the same frame
+                        pMinX = correctedX - this.width / 2;
+                        pMaxX = correctedX + this.width / 2;
+                        pMinY = correctedY;
+                        pMaxY = correctedY + this.height;
+                        pMinZ = correctedZ - this.depth / 2;
+                        pMaxZ = correctedZ + this.depth / 2;
                     }
                 }
             }
         }
     }
-    
+
+    // Boundary checks for world limits
     if (this.flying) {
-        this.jumpVelocity = 0;
+        this.jumpVelocity = 0; // Ensure no gravity accumulation
         this.onGround = false;
         if (correctedY < 0) correctedY = 0;
         if (correctedY + this.height > world.layers) correctedY = world.layers - this.height;
     } else {
-        if (correctedY < 0) { 
+        if (correctedY < 0) {
             correctedY = 0;
-            landedOnGroundThisFrame = true; 
+            landedOnGroundThisFrame = true;
             this.jumpVelocity = 0;
-            if (!this.dead) this.die(); 
+            if (!this.dead) this.die();
         }
-        if (correctedY + this.height > world.layers) { 
+        if (correctedY + this.height > world.layers) {
             correctedY = world.layers - this.height;
-            if (this.jumpVelocity > 0) this.jumpVelocity = -0.001; 
+            if (this.jumpVelocity > 0) this.jumpVelocity = -0.001; // Hit world ceiling
         }
         this.onGround = landedOnGroundThisFrame;
     }
@@ -470,9 +491,9 @@ export class Player {
     this.y = correctedY;
     this.z = correctedZ;
 
-    if (this.y < -world.voidHeight && !this.dead) this.die(); 
+    if (this.y < -world.voidHeight && !this.dead) this.die();
 
     this.mesh.position.set(this.x, this.y, this.z);
-    camera.position.set(this.x, this.y + this.height * 0.9, this.z); 
+    camera.position.set(this.x, this.y + this.height * 0.9, this.z);
   }
 }

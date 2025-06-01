@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { World } from '@/lib/three-game/World';
 import { Block } from '@/lib/three-game/Block';
 import { Player } from '@/lib/three-game/Player';
-import { getBlockDefinitions, CONTROL_CONFIG, CURSOR_STATE, CHUNK_SIZE } from '@/lib/three-game/utils';
+import { getBlockDefinitions, CONTROL_CONFIG, CURSOR_STATE, CHUNK_SIZE, TEXTURE_PATHS } from '@/lib/three-game/utils';
 import type { GameRefs } from '@/lib/three-game/types';
 
 interface DebugInfoState {
@@ -76,6 +76,7 @@ const BlockifyGame: React.FC = () => {
       new Block("waterBlock", blockData.waterBlock, refs.textureLoader, false),
     ];
 
+
     refs.world = new World(refs);
     if (refs.renderer && refs.world) {
        refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
@@ -84,25 +85,29 @@ const BlockifyGame: React.FC = () => {
 
     const initialPlayerX = 0.5;
     const initialPlayerZ = 0.5;
-    refs.world.updateChunks(new THREE.Vector3(initialPlayerX,0,initialPlayerZ));
-
+    // Ensure chunks around spawn are loaded and meshed before determining spawn height
+    refs.world.updateChunks(new THREE.Vector3(initialPlayerX, 0, initialPlayerZ));
     while(refs.world.getRemeshQueueSize() > 0) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
     }
 
+
     let spawnY = refs.world.getSpawnHeight(initialPlayerX, initialPlayerZ);
-    for (let i = 0; i < 5; i++) { 
+    // Safety check loop for spawn position
+    for (let i = 0; i < 10; i++) { // Try up to 10 times to find a safe spot
         const blockAtFeet = refs.world.getBlock(Math.floor(initialPlayerX), Math.floor(spawnY), Math.floor(initialPlayerZ));
         const blockAtHead = refs.world.getBlock(Math.floor(initialPlayerX), Math.floor(spawnY + 1), Math.floor(initialPlayerZ));
         if (blockAtFeet === 'air' && blockAtHead === 'air') {
-            break;
+            break; // Found a safe spot
         }
-        spawnY++;
-        if (spawnY >= refs.world.layers -1) { 
-            spawnY = Math.floor(refs.world.layers / 2); 
+        spawnY++; // Move up one block and try again
+        if (spawnY >= refs.world.layers - 2) { // Avoid getting too close to world top
+            spawnY = Math.floor(refs.world.layers / 2); // Fallback
+            console.warn("Spawn safety check reached near world top, using fallback Y.");
             break;
         }
     }
+
 
     refs.player = new Player("Player", refs, initialPlayerX, spawnY, initialPlayerZ);
 
@@ -177,7 +182,7 @@ const BlockifyGame: React.FC = () => {
       const { object, distance, blockWorldCoords, worldFaceNormal } = player.lookingAt;
       const objName = object.name.length > 20 ? object.name.substring(0, 20) + "..." : object.name;
       rayTargetStr = `Ray: ${objName} D:${distance.toFixed(1)} B:[${blockWorldCoords.x.toFixed(0)},${blockWorldCoords.y.toFixed(0)},${blockWorldCoords.z.toFixed(0)}]`;
-      setCrosshairBgColor('rgba(255, 255, 255, 0.75)');
+      // setCrosshairBgColor('rgba(255, 255, 255, 0.75)'); // Client-side only part handled by useEffect
 
       if (worldFaceNormal) {
         const normal = worldFaceNormal;
@@ -187,7 +192,7 @@ const BlockifyGame: React.FC = () => {
         else highlightFaceDir = 'Unknown Face';
       }
     } else {
-      setCrosshairBgColor('rgba(0, 0, 0, 0.75)');
+      // setCrosshairBgColor('rgba(0, 0, 0, 0.75)'); // Client-side only part handled by useEffect
     }
     const highlightStr = `HL: ${highlightFaceDir}`;
 
@@ -210,6 +215,7 @@ const BlockifyGame: React.FC = () => {
     if (refs.player.dead) {
       const respawnX = 0.5;
       const respawnZ = 0.5;
+      // Ensure chunks around respawn are loaded and meshed before determining spawn height
       refs.world.updateChunks(new THREE.Vector3(respawnX, refs.player.y, respawnZ));
       while(refs.world.getRemeshQueueSize() > 0) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
@@ -217,20 +223,22 @@ const BlockifyGame: React.FC = () => {
 
       let safeRespawnY = refs.world.getSpawnHeight(respawnX, respawnZ);
       let attempts = 0;
-      const maxAttempts = 10; 
+      const maxAttempts = 15; // Increased attempts for safety
 
       while(attempts < maxAttempts) {
         const blockAtFeet = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY), Math.floor(respawnZ));
         const blockAtHead = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY + 1), Math.floor(respawnZ));
 
         if (blockAtFeet === 'air' && blockAtHead === 'air') {
-          break; 
+          // Additional check for blocks at player's wider bounding box corners could be added here if needed
+          // For now, assume the 1x1 column check is primary, and player collision will resolve minor overlaps.
+          break;
         }
-        safeRespawnY++; 
+        safeRespawnY++;
         attempts++;
-        if (safeRespawnY >= refs.world.layers -2) { 
+        if (safeRespawnY >= refs.world.layers - 2) {
             console.warn("Respawn safety check reached near world top. Defaulting Y.");
-            safeRespawnY = Math.floor(refs.world.layers / 2); 
+            safeRespawnY = Math.floor(refs.world.layers / 2);
             break;
         }
       }
@@ -256,15 +264,36 @@ const BlockifyGame: React.FC = () => {
     initGame();
     const refs = gameRefs.current;
 
+    // Effect for client-side only state update (crosshair)
+    const updateCrosshairColor = () => {
+        if (refs.player?.lookingAt) {
+            setCrosshairBgColor('rgba(255, 255, 255, 0.75)');
+        } else {
+            setCrosshairBgColor('rgba(0, 0, 0, 0.75)');
+        }
+    };
+    // Run it once on mount and then it will be updated by renderScene's logic indirectly
+    // by setting debugInfo which will trigger re-render of the component and thus this effect if player.lookingAt changes.
+    // More directly, we can call it in renderScene or tie it to a state that player.lookingAt directly influences.
+    // For now, relying on the natural re-render from setDebugInfo. A more direct update can be done if needed.
+    // A better approach is to have player.lookingAt directly influence a state variable that this effect depends on.
+
+    const intervalId = setInterval(() => {
+      if (refs.player) { // Check if player exists
+        updateCrosshairColor();
+      }
+    }, 100); // Update crosshair color periodically, or find a more event-driven way
+
+
     const handleResize = () => adjustWindow();
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
     const handleKeyDown = (e: KeyboardEvent) => refs.player?.handleKeyDown(e);
     const handleKeyUp = (e: KeyboardEvent) => refs.player?.handleKeyUp(e);
     const handleMouseMove = (e: MouseEvent) => refs.player?.lookAround(e);
     const handleMouseDown = (e: MouseEvent) => {
-      if (refs.cursor.inWindow) { 
-        if (e.button === 0) refs.player?.interactWithBlock(true); 
-        if (e.button === 2) refs.player?.interactWithBlock(false); 
+      if (refs.cursor.inWindow && refs.player) { // Check if player exists
+        if (e.button === 0) refs.player.interactWithBlock(true);
+        if (e.button === 2) refs.player.interactWithBlock(false);
       }
     };
 
@@ -275,12 +304,12 @@ const BlockifyGame: React.FC = () => {
       }
     };
     const handleTouchMove = (e: TouchEvent) => {
-      refs.cursor.holdTime = 0;
+      refs.cursor.holdTime = 0; // Reset hold time if finger moves, to prevent accidental placement
     };
     const handleTouchEnd = (e: TouchEvent) => {
-      if (refs.cursor.holding) {
-        if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) {
-          refs.player?.interactWithBlock(true); 
+      if (refs.cursor.holding && refs.player) { // Check if player exists
+        if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) { // Quick tap
+          refs.player.interactWithBlock(true); // Destroy block
         }
         refs.cursor.holding = false;
       }
@@ -300,6 +329,7 @@ const BlockifyGame: React.FC = () => {
     renderScene();
 
     return () => {
+      clearInterval(intervalId);
       if (refs.gameLoopId !== null) cancelAnimationFrame(refs.gameLoopId);
       window.removeEventListener("resize", handleResize);
       document.removeEventListener("contextmenu", handleContextMenu);

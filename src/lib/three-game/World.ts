@@ -18,7 +18,7 @@ export class World {
   public activeChunks: Map<string, Chunk>;
   private chunkDataStore: Map<string, string[][][]>;
   private blockPrototypes: Map<string, Block>;
-  public renderDistanceInChunks: number = 4;
+  public renderDistanceInChunks: number = 8; // Cambiado de 4 a 8
   private remeshQueue: Set<string>;
 
   private frustum = new THREE.Frustum();
@@ -50,7 +50,7 @@ export class World {
     }
   }
 
-  public getSpawnHeight(worldX: number, worldZ: number): number {
+  public getSpawnHeight(worldX: number, worldZ: number, ensureSolidGround: boolean = false): number {
     const chunkX = Math.floor(worldX / CHUNK_SIZE);
     const chunkZ = Math.floor(worldZ / CHUNK_SIZE);
     const key = `${chunkX},${chunkZ}`;
@@ -65,7 +65,7 @@ export class World {
       if (!blockData) {
         const tempChunk = new Chunk(this, chunkX, chunkZ, this.blockPrototypes, undefined, this.worldSeed);
         blockData = tempChunk.blocks;
-        // DO NOT store tempChunk.blocks in chunkDataStore here for getSpawnHeight
+        // DO NOT store tempChunk.blocks in chunkDataStore here for getSpawnHeight if it's just a temporary read
       }
     }
 
@@ -78,11 +78,20 @@ export class World {
     const localZ = ((Math.floor(worldZ) % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
 
     for (let y = this.layers - 1; y >= 0; y--) {
-      if (blockData[localX]?.[y]?.[localZ] !== undefined && blockData[localX][y][localZ] !== 'air') {
-        return y + 1;
+      const currentBlock = blockData[localX]?.[y]?.[localZ];
+      if (currentBlock !== undefined) {
+        if (ensureSolidGround) {
+          if (currentBlock !== 'air' && currentBlock !== 'waterBlock') {
+            return y + 1; // Spawn on top of this solid block
+          }
+        } else {
+          if (currentBlock !== 'air') {
+            return y + 1; // Spawn on top of any non-air block
+          }
+        }
       }
     }
-    console.warn(`getSpawnHeight: No solid block found at (${worldX}, ${worldZ}). Returning default base height.`);
+    console.warn(`getSpawnHeight: No suitable block found at (${worldX}, ${worldZ}) with ensureSolidGround=${ensureSolidGround}. Returning default base height.`);
     return Math.floor(this.layers / 3) + 1;
   }
 
@@ -216,11 +225,12 @@ export class World {
 
     if (!chunk) {
       let blockData = this.chunkDataStore.get(key);
+      let wasChunkGenerated = false;
       if (!blockData) {
           const tempChunkGen = new Chunk(this, cX, cZ, this.blockPrototypes, undefined, this.worldSeed);
           blockData = tempChunkGen.blocks;
-          // if tempChunkGen.wasGenerated, store its data
-          if (tempChunkGen.wasGenerated) {
+          wasChunkGenerated = tempChunkGen.wasGenerated;
+          if (wasChunkGenerated) {
             this.chunkDataStore.set(key, blockData);
           }
       }
@@ -231,9 +241,10 @@ export class World {
           if (!blockData[lX]) blockData[lX] = [];
           if (!blockData[lX][lY]) blockData[lX][lY] = [];
           blockData[lX][lY][lZ] = blockType;
-          this.chunkDataStore.set(key, blockData);
+          this.chunkDataStore.set(key, blockData); // Ensure updated data is stored
 
           this.queueChunkRemesh(cX, cZ);
+          // Queue neighbors for remesh, as this block change might affect their visible faces
           if (lX === 0) this.queueChunkRemesh(cX - 1, cZ);
           if (lX === CHUNK_SIZE - 1) this.queueChunkRemesh(cX + 1, cZ);
           if (lZ === 0) this.queueChunkRemesh(cX, cZ - 1);
@@ -242,9 +253,10 @@ export class World {
       return;
     }
 
+    // If chunk is active, just call its setBlock method
     const localX = ((Math.floor(worldX) % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const localZ = ((Math.floor(worldZ) % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    chunk.setBlock(localX, lY, localZ, blockType);
+    chunk.setBlock(localX, lY, localZ, blockType); // This will handle its own remesh and notify World
   }
 
   public notifyChunkUpdate(chunkX: number, chunkZ: number, updatedBlockData: string[][][]): void {
@@ -255,10 +267,19 @@ export class World {
   public queueChunkRemesh(chunkX: number, chunkZ: number): void {
     const key = `${chunkX},${chunkZ}`;
     const chunk = this.activeChunks.get(key);
-    if(chunk) {
+    if(chunk) { // Only mark for remesh if it's an active chunk
         chunk.needsMeshUpdate = true;
+        this.remeshQueue.add(key);
+    } else {
+        // If chunk is not active, but we need to remesh it (e.g. after setBlock on non-active chunk data)
+        // we still add it to the queue. ProcessRemeshQueue will handle loading it if necessary,
+        // or simply process its stored data if that becomes the strategy.
+        // For now, let's assume processRemeshQueue only acts on activeChunks.
+        // So if a non-active chunk is modified, it will remesh when it becomes active.
+        // To force remesh on inactive, it would need to be loaded first.
+        // However, setBlock on inactive chunks now also queues neighbors, which is good.
+         this.remeshQueue.add(key); // Add to queue regardless, processRemeshQueue will check if active
     }
-    this.remeshQueue.add(key);
   }
 
   public processRemeshQueue(maxPerFrame: number = 1): void {
@@ -270,8 +291,12 @@ export class World {
 
       const chunk = this.activeChunks.get(key);
       if (chunk && chunk.needsMeshUpdate) {
-        chunk.buildMesh();
+        chunk.buildMesh(); // buildMesh sets needsMeshUpdate to false
       }
+      // If the chunk is not active but was queued (e.g., by setBlock on inactive data),
+      // it will be meshed when it becomes active and loadChunk calls queueChunkRemesh.
+      // Or, if we modify processRemeshQueue to handle inactive chunks, it would load them here.
+      // For now, removing from queue if active and updated, or if it was never active.
       this.remeshQueue.delete(key);
       processedCount++;
     }
@@ -281,3 +306,4 @@ export class World {
     return this.remeshQueue.size;
   }
 }
+

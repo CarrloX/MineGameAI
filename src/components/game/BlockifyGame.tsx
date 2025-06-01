@@ -8,28 +8,10 @@ import { Block } from '@/lib/three-game/Block';
 import { Player } from '@/lib/three-game/Player';
 import { InputHandler } from '@/lib/three-game/InputHandler';
 import { RendererManager } from '@/lib/three-game/RendererManager';
+import { GameManager } from '@/lib/three-game/GameManager';
 import { getBlockDefinitions, CONTROL_CONFIG, CURSOR_STATE, CHUNK_SIZE } from '@/lib/three-game/utils';
-import type { GameRefs } from '@/lib/three-game/types';
+import type { GameRefs, DebugInfoState, ErrorInfo } from '@/lib/three-game/types';
 import ErrorBoundaryDisplay from './ErrorBoundaryDisplay';
-
-
-interface DebugInfoState {
-  fps: number;
-  playerPosition: string;
-  playerChunk: string;
-  raycastTarget: string;
-  highlightStatus: string;
-  visibleChunks: number;
-  totalChunks: number;
-  isFlying: string;
-  isRunning: string;
-  isBoosting: string;
-}
-
-interface ErrorInfo {
-  title: string;
-  message: string;
-}
 
 const BlockifyGame: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -44,6 +26,7 @@ const BlockifyGame: React.FC = () => {
     player: null,
     inputHandler: null,
     rendererManager: null,
+    gameManager: null,
     controlConfig: { ...CONTROL_CONFIG },
     cursor: { ...CURSOR_STATE },
     gameLoopId: null,
@@ -68,7 +51,7 @@ const BlockifyGame: React.FC = () => {
   const [isCameraSubmerged, setIsCameraSubmerged] = useState(false);
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
 
-  const renderSceneRef = useRef<() => void>(() => {});
+  const renderSceneLogicRef = useRef<(fps?: number) => void>(() => {});
 
 
   const initGame = useCallback(() => {
@@ -97,7 +80,6 @@ const BlockifyGame: React.FC = () => {
       new Block("cobblestoneBlock", blockData.cobblestoneBlock, refs.textureLoader, false),
       new Block("waterBlock", blockData.waterBlock, refs.textureLoader, false),
     ];
-
 
     refs.world = new World(refs);
     if (refs.renderer && refs.world) {
@@ -138,11 +120,13 @@ const BlockifyGame: React.FC = () => {
     refs.inputHandler = new InputHandler(refs.player, refs);
     refs.inputHandler.setupEventListeners();
 
+    refs.gameManager = new GameManager(refs, setDebugInfo, setIsCameraSubmerged);
+
 
     if (refs.camera && refs.player) {
       refs.camera.position.set(refs.player.x, refs.player.y + (refs.player.height - 0.5), refs.player.z);
       refs.camera.rotation.order = "YXZ";
-      refs.player.lookAround(); // Ensure initial camera rotation matches player's
+      refs.player.lookAround();
     }
 
     console.log("Game initialized.");
@@ -150,154 +134,29 @@ const BlockifyGame: React.FC = () => {
       console.log("Starting game loop from initGame");
       refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
-
   }, []);
 
 
-  const renderSceneLogic = () => {
-    const refs = gameRefs.current;
-    if (!refs.player || !refs.rendererManager || !refs.scene || !refs.camera || !refs.world) {
-      if (refs.gameLoopId !== null) cancelAnimationFrame(refs.gameLoopId);
-      refs.gameLoopId = null; 
-      return;
+  useEffect(() => {
+    // Keep the ref to gameManager.update current
+    if (gameRefs.current.gameManager) {
+      renderSceneLogicRef.current = (fps?: number) => gameRefs.current.gameManager!.update(fps);
     }
+  }, [gameRefs.current.gameManager]); // This will run when gameManager is initialized
 
+  const gameLoop = () => {
+    let newFpsValue: number | undefined = undefined;
     const now = performance.now();
     frameCountRef.current++;
-    let newFpsValue: number | undefined = undefined;
 
     if (now >= lastFrameTimeRef.current + 1000) {
       newFpsValue = frameCountRef.current;
       frameCountRef.current = 0;
       lastFrameTimeRef.current = now;
     }
-
-    refs.player.updatePosition();
-    refs.player.highlightBlock();
-    refs.world.updateChunks(refs.player.mesh.position);
-    if (refs.camera) {
-        refs.world.updateChunkVisibility(refs.camera);
-    }
-    refs.world.processRemeshQueue(1);
-
-    const player = refs.player;
-    const playerPosStr = `Player: X:${player.x.toFixed(2)}, Y:${player.y.toFixed(2)}, Z:${player.z.toFixed(2)}`;
-    const playerChunkX = Math.floor(player.x / CHUNK_SIZE);
-    const playerChunkZ = Math.floor(player.z / CHUNK_SIZE);
-    const playerChunkStr = `Chunk: CX:${playerChunkX}, CZ:${playerChunkZ}`;
-
-    let rayTargetStr = 'Ray: None';
-    let highlightFaceDir = 'Inactive';
-    if (player.lookingAt) {
-      const { object, distance, blockWorldCoords, worldFaceNormal } = player.lookingAt;
-      const objName = object.name.length > 20 ? object.name.substring(0, 20) + "..." : object.name;
-      rayTargetStr = `Ray: ${objName} D:${distance.toFixed(1)} B:[${blockWorldCoords.x.toFixed(0)},${blockWorldCoords.y.toFixed(0)},${blockWorldCoords.z.toFixed(0)}]`;
-      
-      if (worldFaceNormal) {
-        const normal = worldFaceNormal;
-        if (Math.abs(normal.x) > 0.5) highlightFaceDir = normal.x > 0 ? 'East (+X)' : 'West (-X)';
-        else if (Math.abs(normal.y) > 0.5) highlightFaceDir = normal.y > 0 ? 'Top (+Y)' : 'Bottom (-Y)';
-        else if (Math.abs(normal.z) > 0.5) highlightFaceDir = normal.z > 0 ? 'South (+Z)' : 'North (-Z)';
-        else highlightFaceDir = 'Unknown Face';
-      }
-    }
-    const highlightStr = `HL: ${highlightFaceDir}`;
-
-    let visibleChunksCount = 0;
-    refs.world.activeChunks.forEach(chunk => {
-      if(chunk.chunkRoot.visible) visibleChunksCount++;
-    });
-
-    if (refs.player && refs.world && refs.camera) {
-      const camWorldX = Math.floor(refs.camera.position.x);
-      const camWorldY = Math.floor(refs.camera.position.y);
-      const camWorldZ = Math.floor(refs.camera.position.z);
-      const blockAtCamera = refs.world.getBlock(camWorldX, camWorldY, camWorldZ);
-      const newIsSubmerged = blockAtCamera === 'waterBlock';
-      
-      if (newIsSubmerged !== isCameraSubmerged) {
-        setIsCameraSubmerged(newIsSubmerged);
-      }
-    }
-
-    setDebugInfo(prev => ({
-      fps: newFpsValue !== undefined ? newFpsValue : prev.fps,
-      playerPosition: playerPosStr,
-      playerChunk: playerChunkStr,
-      raycastTarget: rayTargetStr,
-      highlightStatus: highlightStr,
-      visibleChunks: visibleChunksCount,
-      totalChunks: refs.world!.activeChunks.size,
-      isFlying: `Flying: ${player.flying ? 'Yes' : 'No'}`,
-      isRunning: `Running: ${player.isRunning ? 'Yes' : 'No'}`,
-      isBoosting: `Boosting: ${player.isBoosting ? 'Yes' : 'No'}`,
-    }));
-
-
-    if (refs.player.dead) {
-      const respawnX = 0.5;
-      const respawnZ = 0.5;
-      
-      refs.world.updateChunks(new THREE.Vector3(respawnX, refs.player.y, respawnZ));
-      while(refs.world.getRemeshQueueSize() > 0) {
-        refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
-      }
-
-      let safeRespawnY = refs.world.getSpawnHeight(respawnX, respawnZ);
-      let attempts = 0;
-      const maxAttempts = 15; 
-
-      while(attempts < maxAttempts) {
-        const blockAtFeet = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY), Math.floor(respawnZ));
-        const blockAtHead = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY + 1), Math.floor(respawnZ));
-
-        if (blockAtFeet === 'air' && blockAtHead === 'air') {
-          break;
-        }
-        safeRespawnY++;
-        attempts++;
-        if (safeRespawnY >= refs.world.layers - 2) {
-            console.warn("Respawn safety check reached near world top. Defaulting Y.");
-            safeRespawnY = Math.floor(refs.world.layers / 2);
-            break;
-        }
-      }
-       if (attempts >= maxAttempts) {
-          console.warn("Could not find a perfectly safe respawn Y after " + maxAttempts + " attempts. Player collision logic should resolve.");
-      }
-      const currentPitch = refs.camera.rotation.x;
-      const currentYaw = refs.camera.rotation.y;
-      
-      refs.player = new Player(refs.player['name'], refs, respawnX, safeRespawnY, respawnZ, true);
-      if (refs.inputHandler) { 
-        refs.inputHandler['player'] = refs.player;
-      }
-      
-      if (refs.camera && refs.player) {
-        refs.player.pitch = currentPitch;
-        refs.player.yaw = currentYaw;
-        refs.camera.rotation.x = currentPitch;
-        refs.camera.rotation.y = currentYaw;
-      }
-    }
-
-    if (refs.cursor.holding) {
-      refs.cursor.holdTime++;
-      if (refs.cursor.holdTime === refs.cursor.triggerHoldTime) {
-        if (refs.player) refs.player.interactWithBlock(false); 
-      }
-    }
-
-    refs.rendererManager.render();
-  };
-
-  useEffect(() => {
-    renderSceneRef.current = renderSceneLogic;
-  }, [renderSceneLogic]);
-
-  const gameLoop = () => {
+    
     try {
-      renderSceneRef.current();
+      renderSceneLogicRef.current(newFpsValue);
     } catch (error: any) {
       console.error("Error in game loop:", error);
       setErrorInfo({
@@ -310,7 +169,7 @@ const BlockifyGame: React.FC = () => {
       }
       return; 
     }
-    if (gameRefs.current.gameLoopId !== null) {
+    if (gameRefs.current.gameLoopId !== null) { // Check if it wasn't cancelled by an error
         gameRefs.current.gameLoopId = requestAnimationFrame(gameLoop);
     }
   };
@@ -382,7 +241,7 @@ const BlockifyGame: React.FC = () => {
       });
       console.log("Cleanup complete.");
     };
-  }, [initGame]); 
+  }, [initGame]); // initGame is stable due to useCallback([])
 
 
   useEffect(() => {
@@ -413,6 +272,8 @@ const BlockifyGame: React.FC = () => {
           message={errorInfo.message}
           onClose={() => {
             setErrorInfo(null);
+            // Consider if game re-initialization logic is needed here, or just a page refresh.
+            // For now, it keeps the game stopped.
           }}
         />
       )}

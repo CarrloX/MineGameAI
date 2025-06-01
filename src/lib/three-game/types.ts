@@ -5,6 +5,7 @@ import type { World } from './World';
 import type { Block } from './Block';
 import type { InputHandler } from './InputHandler';
 import type { RendererManager } from './RendererManager';
+import type { GameManager } from './GameManager';
 
 export interface ControlConfig {
   backwards: string;
@@ -37,6 +38,24 @@ export interface LookingAtInfo {
   distance: number;
 }
 
+export interface DebugInfoState {
+  fps: number;
+  playerPosition: string;
+  playerChunk: string;
+  raycastTarget: string;
+  highlightStatus: string;
+  visibleChunks: number;
+  totalChunks: number;
+  isFlying: string;
+  isRunning: string;
+  isBoosting: string;
+}
+
+export interface ErrorInfo {
+  title: string;
+  message: string;
+}
+
 export interface GameRefs {
   scene: THREE.Scene | null;
   camera: THREE.PerspectiveCamera | null;
@@ -52,6 +71,7 @@ export interface GameRefs {
   canvasRef: HTMLDivElement | null;
   inputHandler: InputHandler | null;
   rendererManager: RendererManager | null;
+  gameManager: GameManager | null;
 }
 
 export type BlockDefinition = { side: string } | string[];

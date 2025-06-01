@@ -104,34 +104,56 @@ export class Chunk {
     const waterBlockName = 'waterBlock';
 
     const baseHeight = Math.floor(this.world.layers / 2.5);
-    const waterLevel = baseHeight - 1;
+    const waterLevel = baseHeight - 3; // Lowered water level
     
+    const mountainMainFreqBase = 0.05;
+    const mountainMainAmpBase = 15;
+    const mountainDetailFreqBase = 0.15;
+    const mountainDetailAmpBase = 5;
+    const mountainRoughnessFreqBase = 0.3;
+    const mountainRoughnessAmpBase = 1.5;
+    const mountainBasinFreqBase = 0.04;
+    const mountainBasinAmpBase = 15; // Reduced basin amplitude
+    const mountainBasinThresholdBase = 0.28; // Adjusted basin threshold
+
+    const plainsMainFreqBase = 0.04;
+    const plainsMainAmpBase = 3;
+    const plainsDetailFreqBase = 0.1;
+    const plainsDetailAmpBase = 1;
+    const plainsRoughnessFreqBase = 0.25;
+    const plainsRoughnessAmpBase = 0.2;
+    const plainsBasinFreqBase = 0.05;
+    const plainsBasinAmpBase = 2.0; // Reduced basin amplitude
+    const plainsBasinThresholdBase = 0.62; // Adjusted basin threshold
+
+    const biomeScaleBase = 0.008;
+    const biomeBlendStartBase = -0.1;
+    const biomeBlendEndBase = 0.2;
+
     // Parameters influenced by world seed for global world 'style'
-    // For these, vX, vY, vZ to seededRandom should be constant (e.g., 0,0,0)
-    // so these parameters are the same across the entire world for a given seed.
-    const mountainMainFreq = 0.05 + this.seededRandom(0,0,0, this.worldSeed, "mtMainFreq") * 0.01 - 0.005;
-    const mountainMainAmp = 15 + this.seededRandom(0,0,0, this.worldSeed, "mtMainAmp") * 5 - 2.5;
-    const mountainDetailFreq = 0.15 + this.seededRandom(0,0,0, this.worldSeed, "mtDetailFreq") * 0.02 - 0.01;
-    const mountainDetailAmp = 5 + this.seededRandom(0,0,0, this.worldSeed, "mtDetailAmp") * 2 - 1;
-    const mountainRoughnessFreq = 0.3 + this.seededRandom(0,0,0, this.worldSeed, "mtRoughFreq") * 0.05 - 0.025;
-    const mountainRoughnessAmp = 1.5 + this.seededRandom(0,0,0, this.worldSeed, "mtRoughAmp") * 1 - 0.5;
-    const mountainBasinFreq = 0.04 + this.seededRandom(0,0,0, this.worldSeed, "mtBasinFreq") * 0.01 - 0.005;
-    const mountainBasinAmp = 20 + this.seededRandom(0,0,0, this.worldSeed, "mtBasinAmp") * 5 - 2.5;
-    const mountainBasinThreshold = 0.3 + this.seededRandom(0,0,0, this.worldSeed, "mtBasinThresh") * 0.1 - 0.05;
+    const mountainMainFreq = mountainMainFreqBase + this.seededRandom(0,0,0, this.worldSeed, "mtMainFreq") * 0.01 - 0.005;
+    const mountainMainAmp = mountainMainAmpBase + this.seededRandom(0,0,0, this.worldSeed, "mtMainAmp") * 5 - 2.5;
+    const mountainDetailFreq = mountainDetailFreqBase + this.seededRandom(0,0,0, this.worldSeed, "mtDetailFreq") * 0.02 - 0.01;
+    const mountainDetailAmp = mountainDetailAmpBase + this.seededRandom(0,0,0, this.worldSeed, "mtDetailAmp") * 2 - 1;
+    const mountainRoughnessFreq = mountainRoughnessFreqBase + this.seededRandom(0,0,0, this.worldSeed, "mtRoughFreq") * 0.05 - 0.025;
+    const mountainRoughnessAmp = mountainRoughnessAmpBase + this.seededRandom(0,0,0, this.worldSeed, "mtRoughAmp") * 1 - 0.5;
+    const mountainBasinFreq = mountainBasinFreqBase + this.seededRandom(0,0,0, this.worldSeed, "mtBasinFreq") * 0.01 - 0.005;
+    const mountainBasinAmp = mountainBasinAmpBase + this.seededRandom(0,0,0, this.worldSeed, "mtBasinAmp") * 5 - 2.5;
+    const mountainBasinThreshold = mountainBasinThresholdBase + this.seededRandom(0,0,0, this.worldSeed, "mtBasinThresh") * 0.1 - 0.05;
 
-    const plainsMainFreq = 0.04 + this.seededRandom(0,0,0, this.worldSeed, "plMainFreq") * 0.01 - 0.005;
-    const plainsMainAmp = 3 + this.seededRandom(0,0,0, this.worldSeed, "plMainAmp") * 1 - 0.5;
-    const plainsDetailFreq = 0.1 + this.seededRandom(0,0,0, this.worldSeed, "plDetailFreq") * 0.02 - 0.01;
-    const plainsDetailAmp = 1 + this.seededRandom(0,0,0, this.worldSeed, "plDetailAmp") * 0.5 - 0.25;
-    const plainsRoughnessFreq = 0.25 + this.seededRandom(0,0,0, this.worldSeed, "plRoughFreq") * 0.05 - 0.025;
-    const plainsRoughnessAmp = 0.2 + this.seededRandom(0,0,0, this.worldSeed, "plRoughAmp") * 0.1 - 0.05;
-    const plainsBasinFreq = 0.05 + this.seededRandom(0,0,0, this.worldSeed, "plBasinFreq") * 0.01 - 0.005;
-    const plainsBasinAmp = 3 + this.seededRandom(0,0,0, this.worldSeed, "plBasinAmp") * 1 - 0.5;
-    const plainsBasinThreshold = 0.65 + this.seededRandom(0,0,0, this.worldSeed, "plBasinThresh") * 0.1 - 0.05;
+    const plainsMainFreq = plainsMainFreqBase + this.seededRandom(0,0,0, this.worldSeed, "plMainFreq") * 0.01 - 0.005;
+    const plainsMainAmp = plainsMainAmpBase + this.seededRandom(0,0,0, this.worldSeed, "plMainAmp") * 1 - 0.5;
+    const plainsDetailFreq = plainsDetailFreqBase + this.seededRandom(0,0,0, this.worldSeed, "plDetailFreq") * 0.02 - 0.01;
+    const plainsDetailAmp = plainsDetailAmpBase + this.seededRandom(0,0,0, this.worldSeed, "plDetailAmp") * 0.5 - 0.25;
+    const plainsRoughnessFreq = plainsRoughnessFreqBase + this.seededRandom(0,0,0, this.worldSeed, "plRoughFreq") * 0.05 - 0.025;
+    const plainsRoughnessAmp = plainsRoughnessAmpBase + this.seededRandom(0,0,0, this.worldSeed, "plRoughAmp") * 0.1 - 0.05;
+    const plainsBasinFreq = plainsBasinFreqBase + this.seededRandom(0,0,0, this.worldSeed, "plBasinFreq") * 0.01 - 0.005;
+    const plainsBasinAmp = plainsBasinAmpBase + this.seededRandom(0,0,0, this.worldSeed, "plBasinAmp") * 1 - 0.5;
+    const plainsBasinThreshold = plainsBasinThresholdBase + this.seededRandom(0,0,0, this.worldSeed, "plBasinThresh") * 0.1 - 0.05;
 
-    const biomeScale = 0.008 + this.seededRandom(0,0,0, this.worldSeed, "biomeScale") * 0.002 - 0.001;
-    const biomeBlendStart = -0.1 + this.seededRandom(0,0,0, this.worldSeed, "biomeBlendStart") * 0.05 - 0.025;
-    const biomeBlendEnd = 0.2 + this.seededRandom(0,0,0, this.worldSeed, "biomeBlendEnd") * 0.05 - 0.025;
+    const biomeScale = biomeScaleBase + this.seededRandom(0,0,0, this.worldSeed, "biomeScale") * 0.002 - 0.001;
+    const biomeBlendStart = biomeBlendStartBase + this.seededRandom(0,0,0, this.worldSeed, "biomeBlendStart") * 0.05 - 0.025;
+    const biomeBlendEnd = biomeBlendEndBase + this.seededRandom(0,0,0, this.worldSeed, "biomeBlendEnd") * 0.05 - 0.025;
 
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
@@ -139,8 +161,10 @@ export class Chunk {
         const absoluteWorldX = this.worldX * CHUNK_SIZE + x;
         const absoluteWorldZ = this.worldZ * CHUNK_SIZE + z;
 
+        // Use direct world coordinates for noise input for continuity
         const noiseInputX1 = absoluteWorldX;
         const noiseInputZ1 = absoluteWorldZ;
+        // Use a large, fixed offset for a secondary noise layer to ensure it's different but still continuous
         const noiseInputX2 = absoluteWorldX + 10000.5; 
         const noiseInputZ2 = absoluteWorldZ - 10000.5;
 
@@ -182,13 +206,13 @@ export class Chunk {
         for (let y = 0; y < this.world.layers; y++) {
           if (y < surfaceY - 3) {
             this.blocks[x][y][z] = stoneBlockName;
-          } else if (y < surfaceY) { // Between stone and surface
+          } else if (y < surfaceY) { 
             if (surfaceY <= waterLevel) { 
                  this.blocks[x][y][z] = sandBlockName;
             } else {
                  this.blocks[x][y][z] = dirtBlockName;
             }
-          } else if (y === surfaceY) { // Surface block
+          } else if (y === surfaceY) { 
             if (surfaceY < waterLevel ) { 
                 this.blocks[x][y][z] = sandBlockName;
             } else if (surfaceY === waterLevel) { 
@@ -197,10 +221,10 @@ export class Chunk {
             else { 
                 this.blocks[x][y][z] = grassBlockName;
             }
-          } else if (y > surfaceY && y <= waterLevel) { // Above surface but at or below water level
+          } else if (y > surfaceY && y <= waterLevel) {
              this.blocks[x][y][z] = waterBlockName;
           }
-          else { // Above water level and above surface
+          else { 
             this.blocks[x][y][z] = 'air';
           }
         }
@@ -266,9 +290,7 @@ export class Chunk {
             faceGeometry.rotateX(faceRotation[0]);
             faceGeometry.rotateY(faceRotation[1]);
             faceGeometry.rotateZ(faceRotation[2]);
-            // Translations are local to the chunk's coordinate system
             faceGeometry.translate(x + faceTranslation[0], y + faceTranslation[1], z + faceTranslation[2]);
-
 
             const materialKey = material.uuid + (material.transparent ? '_transparent' : '_opaque');
             if (!geometriesByMaterial.has(materialKey)) {
@@ -277,30 +299,9 @@ export class Chunk {
             geometriesByMaterial.get(materialKey)!.geometries.push(faceGeometry);
           };
           
-          // Face translation values are offsets from the block's origin (min corner) to the center of the face
           if (shouldRenderFace(blockType, neighbors.right)) { 
-            const materialIndex = blockProto.multiTexture ? 0 : 0; // Right is typically the first in a multi-texture array
+            const materialIndex = blockProto.multiTexture ? 0 : 0; 
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
-            addFace(material, [0, Math.PI / 2, 0], [0.5, 0.5, 0.5]); // Translate to center, then one unit in X (local block space)
-                                                                     // Corrected: This translation was over-complex.
-                                                                     // Plane origin is center. For a +X face at x=1 (local), center is (1, 0.5, 0.5)
-                                                                     // It should be: addFace(material, [0, Math.PI / 2, 0], [1, 0.5, 0.5]);
-                                                                     // But since we are translating based on x,y,z, it's simpler to think of the face geometry's center.
-                                                                     // A plane is 1x1, centered at 0,0. To place its center at local (x_block + 0.5, y_block + 0.5, z_block + 0.5)
-                                                                     // and then adjust for face direction... this is tricky.
-                                                                     // Let's stick to the PlaneGeometry origin being at its center.
-                                                                     // Then for +X face, its center in local coords is (x + 1, y + 0.5, z + 0.5)
-                                                                     // No, this is wrong. Plane at (0,0). Translate to (x,y,z).
-                                                                     // For +X face: center is at (x + 0.5, y + 0.5, z + 0.5). Geometry needs to be at (x+1, y+0.5, z+0.5)
-                                                                     // If we add 0.5 to x,y,z and then translate the plane
-                                                                     // Let's re-evaluate:
-                                                                     // The instance of the block is at (x,y,z) local chunk coords.
-                                                                     // The +X face of this block spans from (x+1, y, z) to (x+1, y+1, z+1).
-                                                                     // The center of this face is (x+1, y+0.5, z+0.5).
-                                                                     // PlaneGeometry is created centered at origin.
-                                                                     // So translate it to (x+1, y+0.5, z+0.5).
-                                                                     // The `faceTranslation` parameter to `addFace` is relative to the block's origin (x,y,z)
-                                                                     // So `addFace(material, [0, Math.PI/2, 0], [1, 0.5, 0.5])` is correct for +X face.
              addFace(material, [0, Math.PI / 2, 0], [1, 0.5, 0.5]);
           }
           if (shouldRenderFace(blockType, neighbors.left)) { 

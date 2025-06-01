@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { World } from '@/lib/three-game/World';
 import { Block } from '@/lib/three-game/Block';
 import { Player } from '@/lib/three-game/Player';
+import { InputHandler } from '@/lib/three-game/InputHandler';
 import { getBlockDefinitions, CONTROL_CONFIG, CURSOR_STATE, CHUNK_SIZE } from '@/lib/three-game/utils';
 import type { GameRefs } from '@/lib/three-game/types';
 import ErrorBoundaryDisplay from './ErrorBoundaryDisplay';
@@ -40,6 +41,7 @@ const BlockifyGame: React.FC = () => {
     world: null,
     blocks: null,
     player: null,
+    inputHandler: null,
     controlConfig: { ...CONTROL_CONFIG },
     cursor: { ...CURSOR_STATE },
     gameLoopId: null,
@@ -64,7 +66,6 @@ const BlockifyGame: React.FC = () => {
   const [isCameraSubmerged, setIsCameraSubmerged] = useState(false);
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
 
-  // Ref for the renderScene function to avoid re-creating it in game loop
   const renderSceneRef = useRef<() => void>(() => {});
 
 
@@ -74,7 +75,6 @@ const BlockifyGame: React.FC = () => {
     if (!mountRef.current) return;
     refs.canvasRef = mountRef.current;
 
-    // Clear previous error if any
     setErrorInfo(null);
 
     refs.scene = new THREE.Scene();
@@ -137,6 +137,9 @@ const BlockifyGame: React.FC = () => {
     }
 
     refs.player = new Player("Player", refs, initialPlayerX, spawnY, initialPlayerZ);
+    refs.inputHandler = new InputHandler(refs.player, refs);
+    refs.inputHandler.setupEventListeners();
+
 
     if (refs.camera && refs.player) {
       refs.camera.position.set(refs.player.x, refs.player.y + (refs.player.height - 0.5), refs.player.z);
@@ -146,23 +149,7 @@ const BlockifyGame: React.FC = () => {
       refs.camera.updateProjectionMatrix();
     }
 
-    const canvasEl = refs.renderer.domElement;
-    canvasEl.addEventListener("click", () => {
-      if (!document.pointerLockElement) {
-        canvasEl.requestPointerLock().catch(err => console.error("Pointer lock failed:", err));
-      }
-    });
-
-    document.addEventListener('pointerlockchange', () => {
-      refs.cursor.inWindow = document.pointerLockElement === canvasEl;
-      if (!refs.cursor.inWindow && refs.canvasRef) {
-            refs.cursor.x = refs.canvasRef.clientWidth / 2;
-            refs.cursor.y = refs.canvasRef.clientHeight / 2;
-      }
-    }, false);
-
     console.log("Game initialized.");
-    // Ensure game loop is started after init
     if (refs.gameLoopId === null) {
       console.log("Starting game loop from initGame");
       refs.gameLoopId = requestAnimationFrame(gameLoop);
@@ -179,7 +166,6 @@ const BlockifyGame: React.FC = () => {
     }
   }, []);
 
-  // This function is the core logic and will be wrapped in the ref
   const renderSceneLogic = () => {
     const refs = gameRefs.current;
     if (!refs.player || !refs.renderer || !refs.scene || !refs.camera || !refs.world) {
@@ -234,7 +220,6 @@ const BlockifyGame: React.FC = () => {
       if(chunk.chunkRoot.visible) visibleChunksCount++;
     });
 
-    // Underwater check
     if (refs.player && refs.world && refs.camera) {
       const camWorldX = Math.floor(refs.camera.position.x);
       const camWorldY = Math.floor(refs.camera.position.y);
@@ -242,7 +227,6 @@ const BlockifyGame: React.FC = () => {
       const blockAtCamera = refs.world.getBlock(camWorldX, camWorldY, camWorldZ);
       const newIsSubmerged = blockAtCamera === 'waterBlock';
       
-      // setIsCameraSubmerged should be stable if called with current value
       if (newIsSubmerged !== isCameraSubmerged) {
         setIsCameraSubmerged(newIsSubmerged);
       }
@@ -293,13 +277,14 @@ const BlockifyGame: React.FC = () => {
        if (attempts >= maxAttempts) {
           console.warn("Could not find a perfectly safe respawn Y after " + maxAttempts + " attempts. Player collision logic should resolve.");
       }
-      // Preserve camera orientation if desired, or reset it
       const currentPitch = refs.camera.rotation.x;
       const currentYaw = refs.camera.rotation.y;
       
-      refs.player = new Player(refs.player['name'], refs, respawnX, safeRespawnY, respawnZ, true); // Pass true to preserve camera
+      refs.player = new Player(refs.player['name'], refs, respawnX, safeRespawnY, respawnZ, true);
+      if (refs.inputHandler) { // Re-assign player to existing input handler
+        refs.inputHandler['player'] = refs.player;
+      }
       
-      // Re-apply preserved camera orientation
       if (refs.camera && refs.player) {
         refs.player.pitch = currentPitch;
         refs.player.yaw = currentYaw;
@@ -311,19 +296,17 @@ const BlockifyGame: React.FC = () => {
     if (refs.cursor.holding) {
       refs.cursor.holdTime++;
       if (refs.cursor.holdTime === refs.cursor.triggerHoldTime) {
-        refs.player.interactWithBlock(false);
+        if (refs.player) refs.player.interactWithBlock(false); // Place block on hold
       }
     }
 
     refs.renderer.render(refs.scene, refs.camera);
   };
 
-  // Update the ref whenever renderSceneLogic changes (though it's stable now)
   useEffect(() => {
     renderSceneRef.current = renderSceneLogic;
-  }, [renderSceneLogic]); // Dependency array can be refined if renderSceneLogic relies on more state/props
+  }, [renderSceneLogic]);
 
-  // Game loop function that calls the ref
   const gameLoop = () => {
     try {
       renderSceneRef.current();
@@ -335,19 +318,19 @@ const BlockifyGame: React.FC = () => {
       });
       if (gameRefs.current.gameLoopId !== null) {
         cancelAnimationFrame(gameRefs.current.gameLoopId);
-        gameRefs.current.gameLoopId = null; // Stop the loop
+        gameRefs.current.gameLoopId = null; 
       }
-      return; // Exit loop function on error
+      return; 
     }
-    if (gameRefs.current.gameLoopId !== null) { // Check if loop was stopped by error
+    if (gameRefs.current.gameLoopId !== null) {
         gameRefs.current.gameLoopId = requestAnimationFrame(gameLoop);
     }
   };
 
   useEffect(() => {
-    initGame(); // Initialize game on mount
+    initGame(); 
     
-    const refs = gameRefs.current; // For cleanup
+    const refs = gameRefs.current; 
 
     const updateCrosshairColor = () => {
         if (refs.player?.lookingAt) {
@@ -366,47 +349,12 @@ const BlockifyGame: React.FC = () => {
 
     const handleResize = () => adjustWindow();
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
-    const handleKeyDown = (e: KeyboardEvent) => refs.player?.handleKeyDown(e);
-    const handleKeyUp = (e: KeyboardEvent) => refs.player?.handleKeyUp(e);
-    const handleMouseMove = (e: MouseEvent) => refs.player?.lookAround(e);
-    const handleMouseDown = (e: MouseEvent) => {
-      if (refs.cursor.inWindow && refs.player) { 
-        if (e.button === 0) refs.player.interactWithBlock(true);
-        if (e.button === 2) refs.player.interactWithBlock(false);
-      }
-    };
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 1) {
-        refs.cursor.holding = true;
-        refs.cursor.holdTime = 0;
-      }
-    };
-    const handleTouchMove = (e: TouchEvent) => {
-      refs.cursor.holdTime = 0; 
-    };
-    const handleTouchEnd = (e: TouchEvent) => {
-      if (refs.cursor.holding && refs.player) { 
-        if (refs.cursor.holdTime < refs.cursor.triggerHoldTime && refs.cursor.holdTime > 0) { 
-          refs.player.interactWithBlock(true); 
-        }
-        refs.cursor.holding = false;
-      }
-    };
-
+    
     window.addEventListener("resize", handleResize);
     document.addEventListener("contextmenu", handleContextMenu);
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("mousemove", handleMouseMove);
-    refs.canvasRef?.addEventListener("mousedown", handleMouseDown);
-    refs.canvasRef?.addEventListener("touchstart", handleTouchStart, { passive: true });
-    refs.canvasRef?.addEventListener("touchmove", handleTouchMove, { passive: true });
-    refs.canvasRef?.addEventListener("touchend", handleTouchEnd);
+   
 
-
-    // Start game loop
-    if (refs.gameLoopId === null && !errorInfo) { // Only start if not already running and no error
+    if (refs.gameLoopId === null && !errorInfo) { 
         console.log("Starting game loop from useEffect setup");
         refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
@@ -421,26 +369,8 @@ const BlockifyGame: React.FC = () => {
       }
       window.removeEventListener("resize", handleResize);
       document.removeEventListener("contextmenu", handleContextMenu);
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("mousemove", handleMouseMove);
-      refs.canvasRef?.removeEventListener("mousedown", handleMouseDown);
-      refs.canvasRef?.removeEventListener("touchstart", handleTouchStart);
-      refs.canvasRef?.removeEventListener("touchmove", handleTouchMove);
-      refs.canvasRef?.removeEventListener("touchend", handleTouchEnd);
-
-      const canvasEl = refs.renderer?.domElement;
-      const pointerLockListener = () => {
-        if (refs.cursor && refs.canvasRef) { // Check if refs.cursor and refs.canvasRef exist
-            refs.cursor.inWindow = document.pointerLockElement === canvasEl;
-            if (!refs.cursor.inWindow) {
-                refs.cursor.x = refs.canvasRef.clientWidth / 2;
-                refs.cursor.y = refs.canvasRef.clientHeight / 2;
-            }
-        }
-      };
-      document.removeEventListener('pointerlockchange', pointerLockListener, false);
-
+      
+      refs.inputHandler?.removeEventListeners();
 
       refs.world?.activeChunks.forEach((chunk) => {
         if (chunk && typeof chunk.dispose === 'function') {
@@ -471,7 +401,7 @@ const BlockifyGame: React.FC = () => {
       }
       console.log("Cleanup complete.");
     };
-  }, [initGame, adjustWindow]); // Removed renderSceneLogic from here
+  }, [initGame, adjustWindow]); 
 
 
   useEffect(() => {
@@ -502,9 +432,6 @@ const BlockifyGame: React.FC = () => {
           message={errorInfo.message}
           onClose={() => {
             setErrorInfo(null);
-            // Optionally, you could try to re-initialize or prompt the user to refresh
-            // For now, closing just hides the dialog. The game loop remains stopped.
-            // initGame(); // Uncomment to try re-initializing, but might lead to loop if error is persistent
           }}
         />
       )}

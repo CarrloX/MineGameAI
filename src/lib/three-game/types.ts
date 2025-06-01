@@ -3,6 +3,7 @@ import type * as THREE from 'three';
 import type { Player } from './Player';
 import type { World } from './World';
 import type { Block } from './Block';
+import type { InputHandler } from './InputHandler';
 
 export interface ControlConfig {
   backwards: string;
@@ -12,7 +13,7 @@ export interface ControlConfig {
   jump: string;
   respawn: string;
   flyDown: string;
-  boost: string; // Added for boosting/sprinting
+  boost: string;
 }
 
 export interface CursorState {
@@ -48,6 +49,7 @@ export interface GameRefs {
   cursor: CursorState;
   gameLoopId: number | null;
   canvasRef: HTMLDivElement | null;
+  inputHandler: InputHandler | null;
 }
 
 export type BlockDefinition = { side: string } | string[];

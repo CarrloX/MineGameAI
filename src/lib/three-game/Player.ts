@@ -33,15 +33,15 @@ export class Player {
 
   public flying: boolean = false;
   public flySpeed: number = 0.1;
-  private lastSpacePressTime: number = 0;
-  private flyToggleDelay: number = 300;
+  public lastSpacePressTime: number = 0;
+  public flyToggleDelay: number = 300;
   public isFlyingAscending: boolean = false;
   public isFlyingDescending: boolean = false;
   
   public isRunning: boolean = false;
-  public runSpeedMultiplier: number = 1.4; 
+  public runSpeedMultiplier: number = 1.4;
   public isBoosting: boolean = false; 
-  public boostSpeedMultiplier: number = 3.0; 
+  public boostSpeedMultiplier: number = 3.0;
 
 
   constructor(name: string, gameRefs: GameRefs, x: number = 0, y: number = 0, z: number = 0, preserveCam: boolean = false) {
@@ -56,7 +56,7 @@ export class Player {
     this.depth = 0.6;
     this.pitch = 0;
     this.yaw = 0;
-    this.speed = 0.065; // Reduced walking speed
+    this.speed = 0.065;
     this.velocity = 0;
     this.jumpSpeed = 0.11;
     this.jumpVelocity = 0;
@@ -87,7 +87,7 @@ export class Player {
         this.pitch = this.gameRefs.camera.rotation.x;
         this.yaw = this.gameRefs.camera.rotation.y;
     } else {
-        this.lookAround();
+        this.lookAround(); // Initial call if not preserving camera
     }
   }
 
@@ -172,31 +172,43 @@ export class Player {
     }
   }
 
-  lookAround(e?: MouseEvent | Touch): void {
-    const { cursor, camera } = this.gameRefs;
-    if (!cursor || !camera || !this.gameRefs.canvasRef) return;
+  public lookAround(e?: MouseEvent | Touch): void {
+    const { camera, cursor } = this.gameRefs;
+    if (!camera) return;
 
-    if (cursor.inWindow) {
+    // If no event is passed (e.g., initial call), just ensure camera rotation matches player pitch/yaw
+    if (!e && cursor) {
+        if (cursor.inWindow) { // Ensure pointer lock is active for any mouse movement based update
+             // This case might be redundant if initial look is handled by InputHandler with a synthetic event or similar
+        }
+        camera.rotation.x = this.pitch;
+        camera.rotation.y = this.yaw;
+        return;
+    }
+    
+    if (cursor && cursor.inWindow && e) {
       const sensitivity = 0.002;
       if (e instanceof MouseEvent) {
         this.yaw -= e.movementX * sensitivity;
         this.pitch -= e.movementY * sensitivity;
+      } else if (e instanceof Touch) {
+        // Basic touch look (requires tracking previous touch for delta)
+        // This is a simplified placeholder, real touch controls are more complex
+        // For now, we assume mouse movement is primary for look
       }
+      
       const maxPitch = Math.PI / 2 - 0.01; 
       this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
       this.yaw = ((this.yaw % (2 * Math.PI)) + (2 * Math.PI)) % (2 * Math.PI); 
       camera.rotation.x = this.pitch;
       camera.rotation.y = this.yaw;
-    } else {
-        camera.rotation.x = this.pitch;
-        camera.rotation.y = this.yaw;
     }
   }
 
-  interactWithBlock(destroy: boolean): void {
-    const { world, cursor } = this.gameRefs;
-    if (!world || !this.lookingAt || !cursor || !cursor.inWindow) return;
 
+  public interactWithBlock(destroy: boolean): void {
+    const { world, cursor } = this.gameRefs;
+    if (!world || !this.lookingAt ) return; // Removed cursor.inWindow check as InputHandler ensures this
 
     if (destroy) {
       const { x, y, z } = this.lookingAt.blockWorldCoords;
@@ -235,76 +247,7 @@ export class Player {
     }
   }
 
-  handleKeyDown(e: KeyboardEvent): void {
-    const { controlConfig, cursor } = this.gameRefs;
-    if (!controlConfig || !cursor || !cursor.inWindow) return;
-
-    switch (e.code) {
-      case controlConfig.left: this.xdir = "left"; break;
-      case controlConfig.right: this.xdir = "right"; break;
-      case controlConfig.forwards: this.zdir = "forwards"; break;
-      case controlConfig.backwards: this.zdir = "backwards"; break;
-      case controlConfig.respawn: this.die(); break;
-      case controlConfig.jump:
-        const now = performance.now();
-        if (now - this.lastSpacePressTime < this.flyToggleDelay && this.lastSpacePressTime !== 0) {
-            this.flying = !this.flying;
-            this.isFlyingAscending = false;
-            this.isFlyingDescending = false;
-            this.lastSpacePressTime = 0; 
-            if (this.flying) {
-                this.jumping = false;
-                this.jumpVelocity = 0;
-                this.onGround = false;
-                this.isRunning = false; 
-            } else {
-                this.isBoosting = false; 
-                this.onGround = false; 
-            }
-        } else {
-            if (this.flying) {
-                this.isFlyingAscending = true;
-            } else {
-                this.jumping = true; 
-            }
-            this.lastSpacePressTime = now;
-        }
-        break;
-      case controlConfig.flyDown: 
-        if (this.flying) {
-          this.isFlyingDescending = true;
-        }
-        break;
-      case controlConfig.boost: 
-        if (this.flying) {
-            this.isBoosting = !this.isBoosting;
-        } else {
-            this.isRunning = !this.isRunning;
-        }
-        break;
-    }
-  }
-
-  handleKeyUp(e: KeyboardEvent): void {
-    const { controlConfig } = this.gameRefs;
-    if (!controlConfig) return;
-
-    switch (e.code) {
-      case controlConfig.left: if(this.xdir === "left") this.xdir = ""; break;
-      case controlConfig.right: if(this.xdir === "right") this.xdir = ""; break;
-      case controlConfig.forwards: if(this.zdir === "forwards") this.zdir = ""; break;
-      case controlConfig.backwards: if(this.zdir === "backwards") this.zdir = ""; break;
-      case controlConfig.jump:
-        this.jumping = false; 
-        this.isFlyingAscending = false; 
-        break;
-      case controlConfig.flyDown:
-        this.isFlyingDescending = false;
-        break;
-    }
-  }
-
-  die(): void {
+  public die(): void {
     this.dead = true;
     this.flying = false;
     this.isBoosting = false;
@@ -489,10 +432,9 @@ export class Player {
         this.onGround = landedOnGroundThisFrame;
     }
 
-    // Check if player is in water and cancel sprint if so
     if (!this.flying && this.isRunning) {
         const playerFeetBlockX = Math.floor(this.x);
-        const playerFeetBlockY = Math.floor(this.y + 0.01); // Check slightly above the player's very bottom
+        const playerFeetBlockY = Math.floor(this.y + 0.01); 
         const playerFeetBlockZ = Math.floor(this.z);
         const blockAtFeet = world.getBlock(playerFeetBlockX, playerFeetBlockY, playerFeetBlockZ);
 
@@ -507,4 +449,3 @@ export class Player {
     camera.position.set(this.x, this.y + this.height * 0.9, this.z); 
   }
 }
-

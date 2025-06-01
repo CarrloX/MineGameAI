@@ -73,6 +73,10 @@ export class Chunk {
     }
   }
 
+  private lerp(a: number, b: number, t: number): number {
+    return a * (1 - t) + b * t;
+  }
+
   public generateTerrainData(): void {
     const grassBlockName = 'grassBlock';
     const dirtBlockName = 'dirtBlock';
@@ -81,8 +85,9 @@ export class Chunk {
     const waterBlockName = 'waterBlock'; 
 
     const baseHeight = Math.floor(this.world.layers / 2.5);
-    const waterLevel = baseHeight - 2; // Adjusted water level to be slightly higher for more visible lakes
+    const waterLevel = baseHeight - 1; 
 
+    // Mountain Parameters
     const mountainMainFreq = 0.05;
     const mountainMainAmp = 15;
     const mountainDetailFreq = 0.15;
@@ -93,17 +98,20 @@ export class Chunk {
     const mountainBasinAmp = 20;
     const mountainBasinThreshold = 0.3;
 
-    const plainsMainFreq = 0.04;
-    const plainsMainAmp = 4;
-    const plainsDetailFreq = 0.1;
-    const plainsDetailAmp = 1.5;
-    const plainsRoughnessFreq = 0.25;
-    const plainsRoughnessAmp = 0.4;
-    const plainsBasinFreq = 0.05;
-    const plainsBasinAmp = 6; // Slightly deeper basins in plains for potential ponds
-    const plainsBasinThreshold = 0.55; // Adjusted threshold for plains basins
+    // Plains Parameters
+    const plainsMainFreq = 0.04; // Using same frequency for smoother transition, only amp changes
+    const plainsMainAmp = 3; // Reduced amplitude for plains
+    const plainsDetailFreq = 0.1; // Using same frequency
+    const plainsDetailAmp = 1; // Reduced amplitude
+    const plainsRoughnessFreq = 0.25; // Using same frequency
+    const plainsRoughnessAmp = 0.2; // Reduced amplitude
+    const plainsBasinFreq = 0.05; 
+    const plainsBasinAmp = 3; // Shallower basins in plains
+    const plainsBasinThreshold = 0.65; // Less likely to form deep basins
 
-    const biomeScale = 0.015;
+    const biomeScale = 0.008; 
+    const biomeBlendStart = -0.1; // Start blending from plains towards mountains
+    const biomeBlendEnd = 0.2;   // Fully mountain characteristics by this value
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -113,31 +121,20 @@ export class Chunk {
         const biomeNoiseVal = (Math.sin(absoluteWorldX * biomeScale) * Math.cos(absoluteWorldZ * biomeScale * 0.77) +
                                Math.cos(absoluteWorldX * biomeScale * 1.23) * Math.sin(absoluteWorldZ * biomeScale * 0.89)) / 2;
 
-        let currentMainFreq, currentMainAmp, currentDetailFreq, currentDetailAmp,
-            currentRoughnessFreq, currentRoughnessAmp, currentBasinFreq,
-            currentBasinAmp, currentBasinThreshold;
+        let blendFactor = (biomeNoiseVal - biomeBlendStart) / (biomeBlendEnd - biomeBlendStart);
+        blendFactor = Math.max(0, Math.min(1, blendFactor)); 
 
-        if (biomeNoiseVal > 0.05) {
-            currentMainFreq = mountainMainFreq;
-            currentMainAmp = mountainMainAmp;
-            currentDetailFreq = mountainDetailFreq;
-            currentDetailAmp = mountainDetailAmp;
-            currentRoughnessFreq = mountainRoughnessFreq;
-            currentRoughnessAmp = mountainRoughnessAmp;
-            currentBasinFreq = mountainBasinFreq;
-            currentBasinAmp = mountainBasinAmp;
-            currentBasinThreshold = mountainBasinThreshold;
-        } else {
-            currentMainFreq = plainsMainFreq;
-            currentMainAmp = plainsMainAmp;
-            currentDetailFreq = plainsDetailFreq;
-            currentDetailAmp = plainsDetailAmp;
-            currentRoughnessFreq = plainsRoughnessFreq;
-            currentRoughnessAmp = plainsRoughnessAmp;
-            currentBasinFreq = plainsBasinFreq;
-            currentBasinAmp = plainsBasinAmp;
-            currentBasinThreshold = plainsBasinThreshold;
-        }
+        const currentMainAmp = this.lerp(plainsMainAmp, mountainMainAmp, blendFactor);
+        const currentDetailAmp = this.lerp(plainsDetailAmp, mountainDetailAmp, blendFactor);
+        const currentRoughnessAmp = this.lerp(plainsRoughnessAmp, mountainRoughnessAmp, blendFactor);
+        const currentBasinAmp = this.lerp(plainsBasinAmp, mountainBasinAmp, blendFactor);
+        const currentBasinThreshold = this.lerp(plainsBasinThreshold, mountainBasinThreshold, blendFactor);
+        
+        // Frequencies can also be lerped if desired, but start with amplitudes for stability
+        const currentMainFreq = this.lerp(plainsMainFreq, mountainMainFreq, blendFactor); // Or keep them separate
+        const currentDetailFreq = this.lerp(plainsDetailFreq, mountainDetailFreq, blendFactor);
+        const currentRoughnessFreq = this.lerp(plainsRoughnessFreq, mountainRoughnessFreq, blendFactor);
+        const currentBasinFreq = this.lerp(plainsBasinFreq, mountainBasinFreq, blendFactor);
 
         let height = baseHeight;
         height += currentMainAmp * (Math.sin(absoluteWorldX * currentMainFreq) * Math.cos(absoluteWorldZ * currentMainFreq * 0.8));
@@ -161,19 +158,19 @@ export class Chunk {
           if (y < surfaceY - 3) {
             this.blocks[x][y][z] = stoneBlockName;
           } else if (y < surfaceY) {
-            if (surfaceY < waterLevel && y >= surfaceY -1 && y < waterLevel) { // Sand at edges of water bodies
+            if (surfaceY < waterLevel && y >= surfaceY -1 && y < waterLevel) { 
                  this.blocks[x][y][z] = sandBlockName;
             } else {
                  this.blocks[x][y][z] = dirtBlockName;
             }
           } else if (y === surfaceY) {
-            if (surfaceY < waterLevel -1) {
+            if (surfaceY < waterLevel -1) { 
                 this.blocks[x][y][z] = sandBlockName; 
-            } else {
+            } else { 
                 this.blocks[x][y][z] = grassBlockName;
             }
           } else if (y > surfaceY && y <= waterLevel) { 
-             this.blocks[x][y][z] = waterBlockName; // Actually place water
+             this.blocks[x][y][z] = waterBlockName; 
           }
           else {
             this.blocks[x][y][z] = 'air';
@@ -254,37 +251,31 @@ export class Chunk {
             geometriesByMaterial.get(materialKey)!.geometries.push(faceGeometry);
           };
 
-          // Right face (+X)
           if (shouldRenderFace(blockType, neighbors.right)) {
             const materialIndex = blockProto.multiTexture ? 0 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, Math.PI / 2, 0], [1, 0.5, 0.5]);
           }
-          // Left face (-X)
           if (shouldRenderFace(blockType, neighbors.left)) {
             const materialIndex = blockProto.multiTexture ? 1 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, -Math.PI / 2, 0], [0, 0.5, 0.5]);
           }
-          // Top face (+Y)
           if (shouldRenderFace(blockType, neighbors.top)) {
             const materialIndex = blockProto.multiTexture ? 2 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [-Math.PI / 2, 0, 0], [0.5, 1, 0.5]);
           }
-          // Bottom face (-Y)
           if (shouldRenderFace(blockType, neighbors.bottom)) {
             const materialIndex = blockProto.multiTexture ? 3 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [Math.PI / 2, 0, 0], [0.5, 0, 0.5]);
           }
-          // Front face (+Z)
           if (shouldRenderFace(blockType, neighbors.front)) {
             const materialIndex = blockProto.multiTexture ? 4 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
             addFace(material, [0, 0, 0], [0.5, 0.5, 1]);
           }
-          // Back face (-Z)
           if (shouldRenderFace(blockType, neighbors.back)) {
             const materialIndex = blockProto.multiTexture ? 5 : 0;
             const material = Array.isArray(blockProto.mesh.material) ? blockProto.mesh.material[materialIndex] : blockProto.mesh.material;
@@ -338,3 +329,4 @@ export class Chunk {
     }
   }
 }
+

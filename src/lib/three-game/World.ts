@@ -136,30 +136,6 @@ export class World {
         } else {
             chunk.chunkRoot.visible = true;
         }
-
-        // Temporarily disabled dot-product based culling for diagnostics
-        // const playerDirection = new THREE.Vector3();
-        // camera.getWorldDirection(playerDirection);
-
-        // const vectorToChunk = new THREE.Vector3().subVectors(chunkCenterVec, camera.position);
-        // const distanceToChunk = vectorToChunk.length();
-        // vectorToChunk.normalize();
-
-        // const dotProduct = playerDirection.dot(vectorToChunk);
-
-        // const pitch = camera.rotation.x;
-        // const lookingDownFactor = Math.max(0, Math.sin(pitch));
-
-        // let dynamicDotThreshold = -0.4 + (lookingDownFactor * 0.3);
-        // dynamicDotThreshold = Math.min(-0.1, dynamicDotThreshold);
-
-        // const dynamicDistanceThreshold = CHUNK_SIZE * 2.0;
-
-        // if (dotProduct < dynamicDotThreshold && distanceToChunk > dynamicDistanceThreshold) {
-        //     // chunk.chunkRoot.visible = false; // Already handled by frustum or if we re-enable this
-        // } else {
-        //     // chunk.chunkRoot.visible = true; // Already handled by frustum
-        // }
     });
   }
 

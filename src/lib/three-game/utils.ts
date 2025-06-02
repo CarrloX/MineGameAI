@@ -25,17 +25,18 @@ export const CURSOR_STATE: CursorState = {
   triggerHoldTime: 20,
 };
 
-const GRASS_TOP_URL = "https://placehold.co/16x16/228B22/FFFFFF.png";
-const GRASS_SIDE_URL = "https://placehold.co/16x16/90EE90/000000.png";
-const DIRT_URL = "https://placehold.co/16x16/A0522D/FFFFFF.png";
-const STONE_URL = "https://placehold.co/16x16/808080/FFFFFF.png";
-const SAND_URL = "https://placehold.co/16x16/F0E68C/000000.png";
-const WOOD_LOG_SIDE_URL = "https://placehold.co/16x16/8B4513/FFFFFF.png";
-const WOOD_LOG_END_URL = "https://placehold.co/16x16/DEB887/000000.png";
-const REDSTONE_BLOCK_URL = "https://placehold.co/16x16/8B0000/FFFFFF.png";
-const ORANGE_WOOL_URL = "https://placehold.co/16x16/FFA500/FFFFFF.png";
-const COBBLESTONE_URL = "https://placehold.co/16x16/696969/FFFFFF.png";
-const WATER_URL = "https://placehold.co/16x16/1E90FF/FFFFFF.png"; // DodgerBlue placeholder
+// Using specific hex colors to avoid any text/watermarks from placehold.co
+const GRASS_TOP_URL = "https://placehold.co/16x16/228B22/228B22.png"; // ForestGreen
+const GRASS_SIDE_URL = "https://placehold.co/16x16/90EE90/90EE90.png"; // LightGreen
+const DIRT_URL = "https://placehold.co/16x16/A0522D/A0522D.png"; // Sienna
+const STONE_URL = "https://placehold.co/16x16/808080/808080.png"; // Gray
+const SAND_URL = "https://placehold.co/16x16/F0E68C/F0E68C.png"; // Khaki
+const WOOD_LOG_SIDE_URL = "https://placehold.co/16x16/8B4513/8B4513.png"; // SaddleBrown
+const WOOD_LOG_END_URL = "https://placehold.co/16x16/DEB887/DEB887.png"; // BurlyWood
+const REDSTONE_BLOCK_URL = "https://placehold.co/16x16/FF0000/FF0000.png"; // Red
+const ORANGE_WOOL_URL = "https://placehold.co/16x16/FFA500/FFA500.png"; // Orange
+const COBBLESTONE_URL = "https://placehold.co/16x16/696969/696969.png"; // DimGray
+const WATER_URL = "https://placehold.co/16x16/1E90FF/1E90FF.png"; // DodgerBlue
 
 export const TEXTURE_PATHS = {
   GRASS_BLOCK: {
@@ -93,3 +94,4 @@ export const getTextureHint = (nameKey: string): string => {
     if (nameKey === "waterBlock") return TEXTURE_PATHS.WATER_BLOCK.hint;
     return "block pattern";
 }
+

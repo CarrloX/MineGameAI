@@ -30,12 +30,10 @@ export class GameLogic {
     const initialPlayerX = 0.5;
     const initialPlayerZ = 0.5;
     
-    // Ensure the initial spawn chunk is loaded before getting height
     const initialChunkX = Math.floor(initialPlayerX / CHUNK_SIZE);
     const initialChunkZ = Math.floor(initialPlayerZ / CHUNK_SIZE);
     if (refs.world && !refs.world.activeChunks.has(`${initialChunkX},${initialChunkZ}`)) {
         refs.world.loadChunk(initialChunkX, initialChunkZ);
-        // Process remesh for the newly loaded chunk
         let initialRemeshLoops = 0;
         while(refs.world.getRemeshQueueSize() > 0 && initialRemeshLoops < 5) {
             refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
@@ -67,14 +65,16 @@ export class GameLogic {
   }
 
 
-  public update(newFpsValue?: number): void {
+  public update(deltaTime: number, newFpsValue?: number): void {
     const refs = this.gameRefs;
-    if (!refs.player || !refs.rendererManager || !refs.scene || !refs.camera || !refs.world || !refs.raycaster || !refs.inputController) {
+    if (!refs.player || !refs.rendererManager || !refs.scene || !refs.camera || !refs.world || !refs.raycaster || !refs.inputController || !refs.sky) {
       if (refs.gameLoopId !== null) cancelAnimationFrame(refs.gameLoopId);
       refs.gameLoopId = null;
-      console.warn("GameLogic.update: Critical refs missing, stopping loop.", refs);
+      console.warn("GameLogic.update: Critical refs missing (incl. sky), stopping loop.", refs);
       return;
     }
+
+    refs.sky.update(deltaTime, refs.camera);
 
     refs.player.updatePosition();
     refs.player.highlightBlock();
@@ -149,7 +149,7 @@ export class GameLogic {
       }
       
       let safetyRemeshLoops = 0;
-      const maxRemeshLoops = 5; // Prevent infinite loop
+      const maxRemeshLoops = 5; 
       while(refs.world.getRemeshQueueSize() > 0 && safetyRemeshLoops < maxRemeshLoops) {
         refs.world.processRemeshQueue(refs.world.getRemeshQueueSize()); 
         safetyRemeshLoops++;
@@ -160,8 +160,8 @@ export class GameLogic {
 
       let safeRespawnY = refs.world.getSpawnHeight(respawnX, respawnZ);
       let attempts = 0;
-      const maxSafetyCheckAttempts = refs.world.layers; // Check up to world height
-      const playerHeightForCheck = refs.player.height - 0.01; // Check clearance up to nearly top of head
+      const maxSafetyCheckAttempts = refs.world.layers; 
+      const playerHeightForCheck = refs.player.height - 0.01; 
 
       while(attempts < maxSafetyCheckAttempts) {
         const blockAtFeet = refs.world.getBlock(Math.floor(respawnX), Math.floor(safeRespawnY), Math.floor(respawnZ));
@@ -185,9 +185,8 @@ export class GameLogic {
           safeRespawnY = Math.max(1, Math.min(safeRespawnY, refs.world.layers - Math.ceil(playerHeightForCheck) - 2));
       }
 
-      // Final boundary checks for safeRespawnY
-      safeRespawnY = Math.max(1, safeRespawnY); // Ensure not spawning at or below Y=0 (void)
-      safeRespawnY = Math.min(safeRespawnY, refs.world.layers - Math.ceil(refs.player.height) -1); // Ensure enough space below world top
+      safeRespawnY = Math.max(1, safeRespawnY); 
+      safeRespawnY = Math.min(safeRespawnY, refs.world.layers - Math.ceil(refs.player.height) -1); 
 
 
       const currentPitch = refs.camera!.rotation.x;

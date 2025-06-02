@@ -34,6 +34,7 @@ const BlockifyGame: React.FC = () => {
     gameLoopId: null,
     canvasRef: null,
     worldSeed: null,
+    sky: null,
   });
 
   const [debugInfo, setDebugInfo] = useState<DebugInfoState>({
@@ -56,25 +57,31 @@ const BlockifyGame: React.FC = () => {
 
   const gameLoop = useCallback(() => {
     const refs = gameRefs.current;
-    if (!refs.gameLogic) {
+    if (!refs.gameLogic || !refs.camera) { // Added camera check for deltaTime logic
         if (refs.gameLoopId !== null) {
           refs.gameLoopId = requestAnimationFrame(gameLoop);
         }
         return;
     }
 
-    let newFpsValue: number | undefined = undefined;
     const now = performance.now();
+    const deltaTime = (now - lastFrameTimeRef.current) / 1000.0; // deltaTime in seconds
     frameCountRef.current++;
+    let newFpsValue: number | undefined = undefined;
 
     if (now >= lastFrameTimeRef.current + 1000) {
       newFpsValue = frameCountRef.current;
       frameCountRef.current = 0;
-      lastFrameTimeRef.current = now;
+      lastFrameTimeRef.current = now; // Only update lastFrameTimeRef here if calculating FPS over 1s
+    }
+    // Always update lastFrameTimeRef for deltaTime calculation if not doing 1s FPS updates
+    if (newFpsValue === undefined) { // If FPS wasn't updated this frame, ensure lastFrameTimeRef is current for next deltaTime
+         // lastFrameTimeRef.current = now; // This line was the issue, it should be updated AFTER deltaTime is calculated
     }
 
+
     try {
-      refs.gameLogic.update(newFpsValue);
+      refs.gameLogic.update(deltaTime, newFpsValue);
     } catch (error: any) {
       console.error("Error in game loop:", error);
       setErrorInfo({
@@ -87,6 +94,8 @@ const BlockifyGame: React.FC = () => {
       }
       return;
     }
+    lastFrameTimeRef.current = now; // Update for next frame's deltaTime calculation
+
     if (refs.gameLoopId !== null) {
         refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
@@ -105,18 +114,17 @@ const BlockifyGame: React.FC = () => {
     console.log("Generated World Seed:", refs.worldSeed);
 
     refs.threeSetup = new ThreeSetup();
-    refs.threeSetup.initialize(refs.canvasRef, refs);
+    refs.threeSetup.initialize(refs.canvasRef, refs); // threeSetup now populates refs.sky
 
-    if (!refs.scene || !refs.camera || !refs.renderer || !refs.textureLoader || !refs.blocks || !refs.lighting || !refs.raycaster) {
-        console.error("ThreeSetup did not initialize all required gameRefs properties.");
-        setErrorInfo({ title: "Initialization Error", message: "ThreeSetup failed to initialize essential Three.js components." });
+    if (!refs.scene || !refs.camera || !refs.renderer || !refs.textureLoader || !refs.blocks || !refs.lighting || !refs.raycaster || !refs.sky) {
+        console.error("ThreeSetup did not initialize all required gameRefs properties, including AdvancedSky.");
+        setErrorInfo({ title: "Initialization Error", message: "ThreeSetup failed to initialize essential Three.js or AdvancedSky components." });
         return;
     }
     
     refs.rendererManager = new RendererManager(refs.canvasRef, refs);
-     // Initial clear color set in ThreeSetup or RendererManager. World might not be fully ready here.
-    if (refs.renderer && refs.world) { // World might be null initially if ThreeSetup doesn't create it
-       refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
+    if (refs.renderer && refs.sky && refs.sky.getSkyColorProvider()) {
+       refs.renderer.setClearColor(refs.sky.getSkyColorProvider().getSkyColor());
     } else if (refs.renderer) {
        refs.renderer.setClearColor(new THREE.Color(0xf1f1f1)); // Default sky color
     }
@@ -128,8 +136,8 @@ const BlockifyGame: React.FC = () => {
         return;
     }
     refs.world = new World(refs, refs.worldSeed);
-     if (refs.renderer && refs.world) {
-       refs.renderer.setClearColor(new THREE.Color(refs.world.skyColor));
+     if (refs.renderer && refs.sky && refs.sky.getSkyColorProvider()) {
+       refs.renderer.setClearColor(refs.sky.getSkyColorProvider().getSkyColor());
     }
 
     refs.inputController = new InputController(refs); 
@@ -147,6 +155,7 @@ const BlockifyGame: React.FC = () => {
     console.log("Game initialized by BlockifyGame.");
     if (refs.gameLoopId === null) {
       console.log("Starting game loop from initGame");
+      lastFrameTimeRef.current = performance.now(); // Initialize lastFrameTimeRef before first gameLoop call
       refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
   }, [gameLoop, setDebugInfo, setIsCameraSubmerged]);
@@ -186,6 +195,7 @@ const BlockifyGame: React.FC = () => {
 
       gameRefs.current.inputController?.removeEventListeners();
       gameRefs.current.rendererManager?.dispose();
+      gameRefs.current.sky?.dispose(); // Dispose AdvancedSky
       
       gameRefs.current.world?.activeChunks.forEach((chunk) => {
         if (chunk && typeof chunk.dispose === 'function') {
@@ -210,7 +220,8 @@ const BlockifyGame: React.FC = () => {
         }
       });
       if (gameRefs.current.lighting?.ambient) gameRefs.current.scene?.remove(gameRefs.current.lighting.ambient);
-      if (gameRefs.current.lighting?.directional) gameRefs.current.scene?.remove(gameRefs.current.lighting.directional);
+      // Directional light is managed by AdvancedSky (Sun), so it's removed when sky is disposed.
+      // if (gameRefs.current.lighting?.directional) gameRefs.current.scene?.remove(gameRefs.current.lighting.directional);
 
       Object.keys(gameRefs.current).forEach(key => {
         if (key !== 'controlConfig' && key !== 'cursor' && key !== 'canvasRef' && key !== 'worldSeed') {
@@ -224,33 +235,35 @@ const BlockifyGame: React.FC = () => {
 
 
   useEffect(() => {
-    const { renderer, scene, world } = gameRefs.current;
-    if (!renderer || !scene || !world) return;
+    const { renderer, scene, world, sky } = gameRefs.current;
+    if (!renderer || !scene || !world || !sky?.getSkyColorProvider()) return;
+
+    const skyColorProvider = sky.getSkyColorProvider();
 
     if (isCameraSubmerged) {
         renderer.setClearColor(new THREE.Color(0x3A5F83)); // Dark blue for water
         if (!scene.fog || !(scene.fog instanceof THREE.Fog) || scene.fog.color.getHex() !== 0x3A5F83) {
             scene.fog = new THREE.Fog(0x3A5F83, 0.1, CHUNK_SIZE * 1.5);
-        } else { // Fog exists and is already water fog, just ensure parameters
+        } else { 
             scene.fog.near = 0.1;
             scene.fog.far = CHUNK_SIZE * 1.5;
         }
     } else {
-        const skyColorToUse = world.skyColor;
-        renderer.setClearColor(new THREE.Color(skyColorToUse));
+        const skyFogColor = skyColorProvider.getFogColor();
+        renderer.setClearColor(skyColorProvider.getSkyColor());
 
         const fogNearDistance = world.renderDistanceInChunks * CHUNK_SIZE * 0.6;
         const fogFarDistance = world.renderDistanceInChunks * CHUNK_SIZE * 1.1;
         
-        if (!scene.fog || !(scene.fog instanceof THREE.Fog) || scene.fog.color.getHex() !== skyColorToUse) {
-            scene.fog = new THREE.Fog(skyColorToUse, fogNearDistance, fogFarDistance);
-        } else { // Fog exists and is already sky fog, ensure parameters
-            scene.fog.color.setHex(skyColorToUse); // Ensure color is up-to-date if it could change
+        if (!scene.fog || !(scene.fog instanceof THREE.Fog) || scene.fog.color.getHex() !== skyFogColor.getHex()) {
+            scene.fog = new THREE.Fog(skyFogColor, fogNearDistance, fogFarDistance);
+        } else { 
+            scene.fog.color.copy(skyFogColor); 
             scene.fog.near = fogNearDistance;
             scene.fog.far = fogFarDistance;
         }
     }
-  }, [isCameraSubmerged]);
+  }, [isCameraSubmerged, gameRefs.current.world?.renderDistanceInChunks]); // Added world.renderDistanceInChunks
 
 
   return (
@@ -292,5 +305,4 @@ const BlockifyGame: React.FC = () => {
 };
 
 export default BlockifyGame;
-
     

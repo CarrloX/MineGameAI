@@ -7,6 +7,7 @@ import type { InputController } from './InputController';
 import type { RendererManager } from './RendererManager';
 import type { GameLogic } from './GameLogic';
 import type { ThreeSetup } from './ThreeSetup';
+import type { AdvancedSky } from './sky/AdvancedSky'; // New import
 
 export interface ControlConfig {
   backwards: string;
@@ -76,6 +77,7 @@ export interface GameRefs {
   threeSetup: ThreeSetup | null;
   lighting: { ambient: THREE.AmbientLight; directional: THREE.DirectionalLight; } | null;
   worldSeed: number | null;
+  sky: AdvancedSky | null; // Changed from Sky to AdvancedSky
 }
 
 export type BlockDefinition = { side: string } | string[];
@@ -85,4 +87,3 @@ export type PlayerWorldService = Pick<World, 'getBlock' | 'setBlock' | 'layers' 
 export type PlayerCameraService = THREE.PerspectiveCamera;
 export type PlayerSceneService = Pick<THREE.Scene, 'add' | 'remove' | 'getObjectByName'>;
 export type PlayerRaycasterService = Pick<THREE.Raycaster, 'setFromCamera' | 'intersectObjects'>;
-

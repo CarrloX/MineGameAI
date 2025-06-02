@@ -1,4 +1,7 @@
 # Firebase Studio
+#Puedes testear el proyecto aqui mismo
+
+https://mine-game-ai.vercel.app/
 
 This is a NextJS starter in Firebase Studio.
 

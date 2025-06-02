@@ -4,7 +4,7 @@ import type { ICelestialBody, ICelestialBodyData } from './ICelestialBody';
 
 export class Sun implements ICelestialBody {
   public name: string = 'sun';
-  private texture: THREE.Texture | null = null;
+  private texture: THREE.Texture | null = null; // Set to null, no external texture
   private size: number;
   private orbitalPathRadius: number;
   public light: THREE.DirectionalLight;
@@ -14,12 +14,8 @@ export class Sun implements ICelestialBody {
     this.size = size;
     this.orbitalPathRadius = orbitalPathRadius;
 
-    textureLoader.load('https://placehold.co/128x128/FFFF00/FFFF00.png?text=.', (tex) => {
-        this.texture = tex;
-        if (this.renderData) this.renderData.texture = this.texture;
-        (this.texture as any)['data-ai-hint'] = 'sun bright';
-    });
-
+    // No texture loading from placehold.co for the Sun
+    // (textureLoader is passed but not used for Sun's own texture)
 
     this.light = new THREE.DirectionalLight(0xffffff, 0.0);
     this.light.name = "SunDirectionalLight";
@@ -44,9 +40,9 @@ export class Sun implements ICelestialBody {
     this.renderData = {
       name: this.name,
       position: new THREE.Vector3(),
-      texture: this.texture,
+      texture: this.texture, // Will be null
       size: this.size,
-      color: new THREE.Color(0xffffee),
+      color: new THREE.Color(0xffffee), // Base color for the sun if no texture
       intensity: 1.0,
       isVisible: false,
     };
@@ -55,7 +51,7 @@ export class Sun implements ICelestialBody {
   update(timeNormalized: number, cameraPosition: THREE.Vector3): void {
     const dayPortionStart = 0.25;
     const dayPortionEnd = 0.75;
-    const dayDuration = dayPortionEnd - dayPortionStart;
+    // const dayDuration = dayPortionEnd - dayPortionStart; // Not used
 
     this.renderData.isVisible = timeNormalized >= dayPortionStart && timeNormalized <= dayPortionEnd;
 
@@ -73,11 +69,11 @@ export class Sun implements ICelestialBody {
       this.light.target.position.set(cameraPosition.x, Math.max(0, cameraPosition.y - 50), cameraPosition.z); 
       this.light.target.updateMatrixWorld();
 
-      const noonTime = 0.5;
+      // const noonTime = 0.5; // Not used directly in this intensity calculation
       const peakVisualIntensity = 1.0;
       const horizonVisualIntensity = 0.3;
-      const peakLightIntensity = 0.9;
-      const horizonLightIntensity = 0.2;
+      const peakLightIntensity = 1.0; // Increased from 0.9
+      const horizonLightIntensity = 0.3; // Increased from 0.2
 
       let sunHeightFactor = Math.cos(noonAngle);
       sunHeightFactor = Math.max(0, sunHeightFactor);
@@ -85,20 +81,22 @@ export class Sun implements ICelestialBody {
       this.renderData.intensity = horizonVisualIntensity + (peakVisualIntensity - horizonVisualIntensity) * sunHeightFactor;
       this.light.intensity = horizonLightIntensity + (peakLightIntensity - horizonLightIntensity) * sunHeightFactor;
       
-      const morningColor = new THREE.Color(0xFFEBCD);
-      const noonColor = new THREE.Color(0xFFFFFF);
-      const eveningColor = new THREE.Color(0xFFDAB9);
+      const morningColor = new THREE.Color(0xFFEBCD); // Light Orange/Yellow
+      const noonColor = new THREE.Color(0xFFFFFF);    // White
+      const eveningColor = new THREE.Color(0xFFDAB9);  // Lighter Orange/Pink
 
+      // Visual colors for the sun disk itself
       const visualMorningColor = new THREE.Color(0xffccaa);
-      const visualNoonColor = new THREE.Color(0xffffee);
+      const visualNoonColor = new THREE.Color(0xffffee); // Very light yellow/white
       const visualEveningColor = new THREE.Color(0xffaa88);
 
-      if (timeNormalized < noonTime) {
-          const t = (timeNormalized - dayPortionStart) / (noonTime - dayPortionStart);
+
+      if (timeNormalized < 0.5) { // Before noon
+          const t = (timeNormalized - dayPortionStart) / (0.5 - dayPortionStart);
           this.light.color.lerpColors(morningColor, noonColor, t);
           this.renderData.color.lerpColors(visualMorningColor, visualNoonColor, t);
-      } else {
-          const t = (timeNormalized - noonTime) / (dayPortionEnd - noonTime);
+      } else { // After noon
+          const t = (timeNormalized - 0.5) / (dayPortionEnd - 0.5);
           this.light.color.lerpColors(noonColor, eveningColor, t);
           this.renderData.color.lerpColors(visualNoonColor, visualEveningColor, t);
       }
@@ -113,7 +111,7 @@ export class Sun implements ICelestialBody {
   }
 
   dispose(): void {
-    this.texture?.dispose();
+    // No texture to dispose for the Sun itself
     if(this.light.parent) this.light.parent.remove(this.light);
     if(this.light.target && this.light.target.parent) this.light.target.parent.remove(this.light.target);
   }

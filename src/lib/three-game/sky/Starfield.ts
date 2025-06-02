@@ -4,11 +4,13 @@ import * as THREE from 'three';
 export class Starfield {
   public mesh: THREE.Mesh;
   private material: THREE.MeshBasicMaterial;
-  private texture: THREE.Texture | null = null;
+  private texture: THREE.Texture | null = null; // Set to null
 
   constructor(scene: THREE.Scene, textureLoader: THREE.TextureLoader, radius: number = 900) {
     const geometry = new THREE.SphereGeometry(radius, 32, 16);
     this.material = new THREE.MeshBasicMaterial({
+      // No map initially, rely on color or future direct texture assignment
+      color: 0x050510, // A very dark color for the starfield background if no texture
       side: THREE.BackSide,
       transparent: true,
       opacity: 0, // Start invisible
@@ -16,14 +18,8 @@ export class Starfield {
       fog: false, // Stars should not be affected by scene fog
     });
 
-    textureLoader.load('https://placehold.co/2048x1024/000000/FFFFFF.png?text=Stars', (loadedTexture) => {
-      this.texture = loadedTexture;
-      this.texture.wrapS = THREE.RepeatWrapping;
-      this.texture.wrapT = THREE.RepeatWrapping;
-      (this.texture as any)['data-ai-hint'] = 'starry night space';
-      this.material.map = this.texture;
-      this.material.needsUpdate = true;
-    });
+    // No texture loading from placehold.co for the Starfield
+    // (textureLoader is passed but not used here)
 
     this.mesh = new THREE.Mesh(geometry, this.material);
     this.mesh.name = "StarfieldSphere";
@@ -49,7 +45,7 @@ export class Starfield {
       this.mesh.parent.remove(this.mesh);
     }
     this.mesh.geometry.dispose();
-    this.material.map?.dispose(); // Dispose texture if it was loaded
+    // No texture map to dispose from this.material itself
     this.material.dispose();
   }
 }

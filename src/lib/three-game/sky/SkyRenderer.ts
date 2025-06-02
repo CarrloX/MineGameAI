@@ -24,15 +24,15 @@ export class SkyRenderer {
     skyColorProvider: ISkyColorProvider,
     celestialBodyController: CelestialBodyController,
     starfield: Starfield,
-    skyboxRadius: number // Added skyboxRadius parameter
+    skyboxRadius: number 
   ) {
     this.scene = scene;
-    this.textureLoader = textureLoader; // Store textureLoader
+    this.textureLoader = textureLoader; 
     this.skyColorProvider = skyColorProvider;
     this.celestialBodyController = celestialBodyController;
     this.starfield = starfield;
 
-    const skyboxGeometry = new THREE.SphereGeometry(skyboxRadius, 32, 16); // Use passed radius
+    const skyboxGeometry = new THREE.SphereGeometry(skyboxRadius, 32, 16); 
     this.skyboxMaterial = new THREE.MeshBasicMaterial({
       side: THREE.BackSide,
       depthWrite: false,
@@ -40,7 +40,7 @@ export class SkyRenderer {
     });
     this.skyboxMesh = new THREE.Mesh(skyboxGeometry, this.skyboxMaterial);
     this.skyboxMesh.name = "SkyboxSphere";
-    this.skyboxMesh.renderOrder = -1; // After starfield, before celestial bodies
+    this.skyboxMesh.renderOrder = -1; 
     this.scene.add(this.skyboxMesh);
 
     this.celestialBodyMeshes = new Map();
@@ -55,8 +55,13 @@ export class SkyRenderer {
         transparent: true,
         depthWrite: false,
         fog: false,
-        color: bodyData.color, // Set initial color
+        color: bodyData.color, 
       });
+
+      if (bodyData.name === 'sun') {
+        material.blending = THREE.AdditiveBlending;
+      }
+
       mesh = new THREE.Mesh(geometry, material);
       mesh.name = `CelestialBody_${bodyData.name}`;
       mesh.renderOrder = bodyData.name === 'sun' ? -0.9 : -0.8; 
@@ -67,14 +72,11 @@ export class SkyRenderer {
   }
 
   public update(camera: THREE.Camera): void {
-    // Update Skybox color and position
     this.skyboxMaterial.color.copy(this.skyColorProvider.getSkyColor());
     this.skyboxMesh.position.copy(camera.position);
 
-    // Update Starfield position and intensity
     this.starfield.update(camera.position, this.skyColorProvider.getStarfieldIntensity());
 
-    // Update Celestial Bodies
     const bodiesData = this.celestialBodyController.getRenderableBodiesData();
     
     const activeBodyNamesThisFrame = new Set(bodiesData.map(bd => bd.name));

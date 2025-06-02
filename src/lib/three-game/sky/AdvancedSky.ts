@@ -28,7 +28,12 @@ export class AdvancedSky {
     scene: THREE.Scene,
     textureLoader: THREE.TextureLoader,
     worldRenderDistanceChunks: number, 
-    chunkSize: number 
+    chunkSize: number,
+    dayDurationMinutes?: number,
+    sunOrbitalRadiusFactor?: number,
+    moonOrbitalRadiusFactor?: number,
+    sunSizeFactor?: number,
+    moonSizeFactor?: number
   ) {
     this.scene = scene;
     this.textureLoader = textureLoader;
@@ -36,15 +41,20 @@ export class AdvancedSky {
     const maxVisibleDistance = worldRenderDistanceChunks * chunkSize; 
     const skyElementsBaseRadius = Math.max(500, maxVisibleDistance * 1.5); 
 
+    // Determine final orbital radii and sizes using factors or defaults
+    const finalSunOrbitalRadius = skyElementsBaseRadius * (sunOrbitalRadiusFactor ?? 0.8);
+    const finalMoonOrbitalRadius = skyElementsBaseRadius * (moonOrbitalRadiusFactor ?? 0.75);
+    const finalSunSize = skyElementsBaseRadius * 0.05 * (sunSizeFactor ?? 1.0);
+    const finalMoonSize = skyElementsBaseRadius * 0.04 * (moonSizeFactor ?? 1.0);
 
-    this.timeManager = new TimeOfDayManager(20, 0.25); 
+    this.timeManager = new TimeOfDayManager(dayDurationMinutes ?? 20, 0.25); 
     this.skyColorController = new SkyColorController(this.timeManager);
     this.celestialBodyController = new CelestialBodyController(this.timeManager);
 
-    this.sun = new Sun(this.textureLoader, this.scene, skyElementsBaseRadius * 0.8, skyElementsBaseRadius * 0.05);
+    this.sun = new Sun(this.textureLoader, this.scene, finalSunOrbitalRadius, finalSunSize);
     this.celestialBodyController.addBody(this.sun);
 
-    this.moon = new Moon(this.textureLoader, skyElementsBaseRadius * 0.75, skyElementsBaseRadius * 0.04);
+    this.moon = new Moon(this.textureLoader, finalMoonOrbitalRadius, finalMoonSize);
     this.celestialBodyController.addBody(this.moon);
 
     this.starfield = new Starfield(this.scene, this.textureLoader, skyElementsBaseRadius * 1.1);
@@ -71,19 +81,16 @@ export class AdvancedSky {
         ambientLight.intensity = this.skyColorController.getAmbientLightIntensity();
     }
     
-    // The main scene fog (not water fog) is updated based on sky color
-    // This part assumes BlockifyGame.tsx will not override sky fog if player is not submerged.
-    // We will need to coordinate this with BlockifyGame.tsx's fog logic.
-    const playerIsNotSubmerged = true; // Placeholder: this logic will eventually be in BlockifyGame
+    const playerIsNotSubmerged = true; 
     if (this.scene.fog instanceof THREE.Fog && playerIsNotSubmerged) {
         this.scene.fog.color.copy(this.skyColorController.getFogColor());
-        // Near and Far for sky fog are handled in BlockifyGame.tsx to sync with render distance
     }
   }
   
   public dispose(): void {
     this.skyRenderer.dispose(); 
     this.celestialBodyController.dispose(); 
+    // TimeOfDayManager and SkyColorController do not have Three.js resources to dispose of.
   }
 
   public getSunLight(): THREE.DirectionalLight | null {

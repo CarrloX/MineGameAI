@@ -24,11 +24,12 @@ export class CelestialBodyController {
   }
 
   public getRenderableBodiesData(): ICelestialBodyData[] {
-    return this.celestialBodies.map(body => body.getRenderData()).filter(data => data.isVisible);
+    return this.celestialBodies
+      .map(body => body.getRenderData())
+      .filter(data => data.isVisible && data.texture); // Ensure texture is loaded before trying to render
   }
   
   public getBodyByName(name: string): ICelestialBody | undefined {
-    // This assumes celestial bodies will have a name property or similar identifier
     return this.celestialBodies.find(body => (body as any).name === name);
   }
 

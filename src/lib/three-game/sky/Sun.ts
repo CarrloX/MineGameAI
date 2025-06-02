@@ -17,27 +17,30 @@ export class Sun implements ICelestialBody {
     textureLoader.load('https://placehold.co/128x128/FFFF00/FFFF00.png?text=.', (tex) => {
         this.texture = tex;
         if (this.renderData) this.renderData.texture = this.texture;
+        (this.texture as any)['data-ai-hint'] = 'sun bright';
     });
-    (this.texture as any) = {'data-ai-hint': 'sun bright'};
 
 
-    this.light = new THREE.DirectionalLight(0xffffff, 0.0); // Initial intensity 0, will be set by SkyColorController or main logic
-    this.light.name = "SunLight";
+    this.light = new THREE.DirectionalLight(0xffffff, 0.0); // Initial intensity 0
+    this.light.name = "SunDirectionalLight"; // Renamed to be specific
     this.light.castShadow = true;
-    // Configure shadow properties (needs to be adjusted based on world scale)
-    const shadowCamSize = 200; // Example value
+    
+    const shadowCamSize = 200; // Example value, should be tuned
     this.light.shadow.camera.left = -shadowCamSize;
     this.light.shadow.camera.right = shadowCamSize;
     this.light.shadow.camera.top = shadowCamSize;
     this.light.shadow.camera.bottom = -shadowCamSize;
     this.light.shadow.camera.near = 0.5;
-    this.light.shadow.camera.far = orbitalPathRadius * 2.5;
-    this.light.shadow.mapSize.width = 2048; // Or 4096 for higher quality
+    this.light.shadow.camera.far = orbitalPathRadius * 3; // Increased far plane for shadows
+    this.light.shadow.mapSize.width = 2048; 
     this.light.shadow.mapSize.height = 2048;
-    this.light.shadow.bias = -0.001; // Adjust to prevent shadow acne
+    this.light.shadow.bias = -0.001; 
 
     scene.add(this.light);
-    scene.add(this.light.target); // Target needs to be in the scene
+    if (this.light.target && !this.light.target.parent) { // Ensure target is in scene if not already
+        scene.add(this.light.target);
+    }
+
 
     this.renderData = {
       position: new THREE.Vector3(),
@@ -50,51 +53,66 @@ export class Sun implements ICelestialBody {
   }
 
   update(timeNormalized: number, cameraPosition: THREE.Vector3): void {
-    // Calculate sun's angle based on time (0.0 at sunrise, 0.25 at noon, 0.5 at sunset)
-    // Sun is visible from time ~0.0 (sunrise) to ~0.5 (sunset) in its own cycle if day is half the total cycle
-    // If total cycle is 0 to 1 (midnight to midnight):
-    // Sunrise at ~0.25, Noon at ~0.5, Sunset at ~0.75
-    const dayPortion = 0.5; // Sun is up for half the cycle
-    const sunAngle = (timeNormalized - 0.25) * Math.PI / dayPortion; // Angle from -PI/2 (sunrise) to PI/2 (sunset)
+    // Sun visible roughly from 0.25 (sunrise) to 0.75 (sunset)
+    const dayPortionStart = 0.25; // Sunrise
+    const dayPortionEnd = 0.75;   // Sunset
+    const dayDuration = dayPortionEnd - dayPortionStart;
 
-    this.renderData.isVisible = timeNormalized >= 0.25 && timeNormalized <= 0.75;
+    this.renderData.isVisible = timeNormalized >= dayPortionStart && timeNormalized <= dayPortionEnd;
 
     if (this.renderData.isVisible) {
-      // Position for a typical east-to-west sun path
-      this.renderData.position.x = Math.cos(sunAngle) * this.orbitalPathRadius;
-      this.renderData.position.y = Math.sin(sunAngle) * this.orbitalPathRadius * 0.7; // Make path less high
-      this.renderData.position.z = 0; // Simple east-west path for now, adjust if needed
-      
-      // Make sun appear to be around the camera
-      this.renderData.position.add(cameraPosition);
-      this.renderData.position.y = Math.max(cameraPosition.y - this.orbitalPathRadius*0.2 , this.renderData.position.y); // ensure sun is not too low relative to cam
+      // Calculate sun's angle from -PI/2 (sunrise) to PI/2 (sunset)
+      const sunAngleProgress = (timeNormalized - dayPortionStart) / dayDuration;
+      const sunAngle = (sunAngleProgress - 0.5) * Math.PI; // -PI/2 to PI/2
 
-      // Update light position and target
+      // Position for a typical east-to-west sun path, rising in east (+X), setting in west (-X)
+      this.renderData.position.x = Math.cos(sunAngle) * this.orbitalPathRadius; // Check: cos( PI/2) = 0 (noon), cos(-PI/2)=0(rise/set edge Z based)
+                                                                            // Should be sin for X if 0 is east. Or adjust angle.
+                                                                            // Let's make angle 0 at noon. Sun rises at -PI/2, sets at PI/2.
+      const noonAngle = (timeNormalized - 0.5) * 2 * Math.PI; // Angle where 0 = noon, PI = midnight
+
+      this.renderData.position.x = -Math.sin(noonAngle) * this.orbitalPathRadius; // -sin(0)=0 (noon), -sin(-PI/2)=1 (sunrise, +X), -sin(PI/2)=-1 (sunset, -X)
+      this.renderData.position.y = Math.cos(noonAngle) * this.orbitalPathRadius * 0.6; // cos(0)=1 (noon, high), cos(PI/2)=0 (horizon)
+      this.renderData.position.z = Math.sin(noonAngle) * Math.cos(noonAngle) * this.orbitalPathRadius * 0.2; // Slight wobble for less linear path
+
+      
+      this.renderData.position.add(cameraPosition);
+      this.renderData.position.y = Math.max(cameraPosition.y - this.orbitalPathRadius*0.1 , this.renderData.position.y);
+
       this.light.position.copy(this.renderData.position);
-      this.light.target.position.set(cameraPosition.x, 0, cameraPosition.z); // Light targets origin relative to camera xz
+      this.light.target.position.set(cameraPosition.x, Math.max(0, cameraPosition.y - 50), cameraPosition.z); 
       this.light.target.updateMatrixWorld();
 
+      const noonTime = 0.5; // Midday
+      const peakVisualIntensity = 1.0;
+      const horizonVisualIntensity = 0.3;
+      const peakLightIntensity = 0.9; // Max intensity for the directional light
+      const horizonLightIntensity = 0.2;
 
-      // Intensity based on height (simple model)
-      const noonTime = 0.5;
-      const peakIntensity = 1.0;
-      const horizonIntensity = 0.3;
-      let sunUpDownFactor = Math.sin(sunAngle); // 0 at horizon, 1 at noon, 0 at horizon
-      sunUpDownFactor = Math.max(0, sunUpDownFactor);
+      // Factor based on sun's height in sky (0 at horizon, 1 at noon)
+      let sunHeightFactor = Math.cos(noonAngle); // cos(0)=1 (noon), cos(PI/2 or -PI/2)=0 (horizon)
+      sunHeightFactor = Math.max(0, sunHeightFactor); // Clamp to positive
 
-      this.renderData.intensity = horizonIntensity + (peakIntensity - horizonIntensity) * sunUpDownFactor;
-      this.light.intensity = this.renderData.intensity * 0.8; // Light intensity tied to sun's visual intensity
+      this.renderData.intensity = horizonVisualIntensity + (peakVisualIntensity - horizonVisualIntensity) * sunHeightFactor;
+      this.light.intensity = horizonLightIntensity + (peakLightIntensity - horizonLightIntensity) * sunHeightFactor;
       
-      const morningColor = new THREE.Color(0xFFEBCD); // BlanchedAlmond
+      const morningColor = new THREE.Color(0xFFEBCD); // BlanchedAlmond for light
       const noonColor = new THREE.Color(0xFFFFFF);
-      const eveningColor = new THREE.Color(0xFFDAB9); // PeachPuff
+      const eveningColor = new THREE.Color(0xFFDAB9); // PeachPuff for light
+
+      const visualMorningColor = new THREE.Color(0xffccaa);
+      const visualNoonColor = new THREE.Color(0xffffee);
+      const visualEveningColor = new THREE.Color(0xffaa88);
+
 
       if (timeNormalized < noonTime) { // Morning to Noon
-          const t = (timeNormalized - 0.25) / (noonTime - 0.25);
+          const t = (timeNormalized - dayPortionStart) / (noonTime - dayPortionStart); // t from 0 to 1
           this.light.color.lerpColors(morningColor, noonColor, t);
+          this.renderData.color.lerpColors(visualMorningColor, visualNoonColor, t);
       } else { // Noon to Evening
-          const t = (timeNormalized - noonTime) / (0.75 - noonTime);
+          const t = (timeNormalized - noonTime) / (dayPortionEnd - noonTime); // t from 0 to 1
           this.light.color.lerpColors(noonColor, eveningColor, t);
+          this.renderData.color.lerpColors(visualNoonColor, visualEveningColor, t);
       }
 
 
@@ -110,8 +128,9 @@ export class Sun implements ICelestialBody {
 
   dispose(): void {
     this.texture?.dispose();
-    // Light is managed by the scene, but if we added it, we should consider removing it or detaching
-    this.light.dispose(); // DirectionalLight doesn't have a dispose method that cleans up everything.
-                         // Its removal from scene is handled by the main Sky system if needed.
+    // Light is managed by the scene, but if we added it, we should consider removing it
+    if(this.light.parent) this.light.parent.remove(this.light);
+    if(this.light.target && this.light.target.parent) this.light.target.parent.remove(this.light.target);
+    // Note: DirectionalLight itself doesn't have a .dispose() method for GPU resources like materials/geometries
   }
 }

@@ -16,8 +16,8 @@ export class Moon implements ICelestialBody {
     textureLoader.load('https://placehold.co/128x128/E0E0E0/E0E0E0.png?text=.', (tex) => {
       this.texture = tex;
       if (this.renderData) this.renderData.texture = this.texture;
+      (this.texture as any)['data-ai-hint'] = 'moon cratered';
     });
-    (this.texture as any) = {'data-ai-hint': 'moon cratered'};
 
 
     this.renderData = {
@@ -25,34 +25,47 @@ export class Moon implements ICelestialBody {
       texture: this.texture,
       size: this.size,
       color: new THREE.Color(0xf0f0ff),
-      intensity: 0,
+      intensity: 0, // Starts with 0 intensity
       isVisible: false,
     };
   }
 
   update(timeNormalized: number, cameraPosition: THREE.Vector3): void {
     // Moon is up opposite the sun. Roughly from time 0.75 (sunset) through 0.0/1.0 (midnight) to 0.25 (sunrise)
-    // Moon angle: 0 at "moonrise" (sunset time), PI at "moonset" (sunrise time)
-    let moonTimeNormalized = timeNormalized + 0.5; // Shift time so moon cycle is 0 to 1
-    if (moonTimeNormalized >= 1.0) moonTimeNormalized -= 1.0;
+    const nightPortionStart = 0.75; // Sunset
+    const nightPortionEnd = 0.25;   // Sunrise (of next day, so effectively 1.25 for calculation)
 
-    const moonAngle = (moonTimeNormalized - 0.25) * Math.PI / 0.5;
-
-    this.renderData.isVisible = moonTimeNormalized >= 0.25 && moonTimeNormalized <= 0.75; // Visible during its "day" (our night)
+    let isNightVisiblePhase1 = timeNormalized >= nightPortionStart && timeNormalized <= 1.0;
+    let isNightVisiblePhase2 = timeNormalized >= 0.0 && timeNormalized <= nightPortionEnd;
+    this.renderData.isVisible = isNightVisiblePhase1 || isNightVisiblePhase2;
 
     if (this.renderData.isVisible) {
-      this.renderData.position.x = Math.cos(moonAngle) * this.orbitalPathRadius;
-      this.renderData.position.y = Math.sin(moonAngle) * this.orbitalPathRadius * 0.6;
-      this.renderData.position.z = Math.sin(moonAngle) * this.orbitalPathRadius * 0.3; // Slight z offset for variation
+        // Moon angle, 0 at midnight, PI at "moon-midday" (which is our midday, when moon is not visible)
+        // We want angle to make it rise at sunset (0.75) and set at sunrise (0.25)
+        // Let moon's "day" start at sunset (timeNormalized = 0.75) and end at sunrise (timeNormalized = 0.25 of next day)
+        // Duration of moon's visibility = (1.0 - 0.75) + 0.25 = 0.5
+        let moonProgress;
+        if (timeNormalized >= 0.75) { // From sunset to midnight
+            moonProgress = (timeNormalized - 0.75) / 0.5;
+        } else { // From midnight to sunrise
+            moonProgress = ((1.0 - 0.75) + timeNormalized) / 0.5;
+        }
+        const moonAngle = (moonProgress - 0.5) * Math.PI; // -PI/2 at moonrise, PI/2 at moonset
 
-      this.renderData.position.add(cameraPosition);
-      this.renderData.position.y = Math.max(cameraPosition.y - this.orbitalPathRadius*0.2, this.renderData.position.y);
+        this.renderData.position.x = Math.cos(moonAngle) * this.orbitalPathRadius * 0.9; // Moon often appears a bit lower
+        this.renderData.position.y = Math.sin(moonAngle) * this.orbitalPathRadius * 0.5;
+        this.renderData.position.z = -Math.sin(moonAngle) * Math.cos(moonAngle) * this.orbitalPathRadius * 0.3; // Different wobble from sun
 
-      const peakIntensity = 0.7;
-      const horizonIntensity = 0.1;
-      let moonUpDownFactor = Math.sin(moonAngle); // 0 at horizon, 1 at moon-noon, 0 at horizon
-      moonUpDownFactor = Math.max(0, moonUpDownFactor);
-      this.renderData.intensity = horizonIntensity + (peakIntensity - horizonIntensity) * moonUpDownFactor;
+        this.renderData.position.add(cameraPosition);
+        this.renderData.position.y = Math.max(cameraPosition.y - this.orbitalPathRadius * 0.15, this.renderData.position.y);
+
+        const peakIntensity = 0.8;
+        const horizonIntensity = 0.2;
+        // moonHeightFactor: 0 at horizon, 1 at its highest point (midnight)
+        let moonHeightFactor = Math.sin(moonProgress * Math.PI); // sin(0)=0, sin(PI/2)=1, sin(PI)=0
+        moonHeightFactor = Math.max(0, moonHeightFactor);
+        
+        this.renderData.intensity = horizonIntensity + (peakIntensity - horizonIntensity) * moonHeightFactor;
     } else {
       this.renderData.intensity = 0;
     }

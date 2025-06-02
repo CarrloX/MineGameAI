@@ -6,51 +6,50 @@ export class Starfield {
   private material: THREE.MeshBasicMaterial;
   private texture: THREE.Texture | null = null;
 
-  constructor(scene: THREE.Scene, textureLoader: THREE.TextureLoader, radius: number = 800) {
-    const geometry = new THREE.SphereGeometry(radius, 32, 16); // Higher segments for smoother sphere
+  constructor(scene: THREE.Scene, textureLoader: THREE.TextureLoader, radius: number = 900) {
+    const geometry = new THREE.SphereGeometry(radius, 32, 16);
     this.material = new THREE.MeshBasicMaterial({
       side: THREE.BackSide,
       transparent: true,
       opacity: 0, // Start invisible
-      depthWrite: false, // Render behind everything without affecting depth buffer
+      depthWrite: false,
+      fog: false, // Stars should not be affected by scene fog
     });
 
-    textureLoader.load('https://placehold.co/2048x1024/000000/FFFFFF.png?text=Stars', (tex) => {
-      this.texture = tex;
-      this.texture.wrapS = THREE.RepeatWrapping; // For rotation if an equirectangular map is used
+    textureLoader.load('https://placehold.co/2048x1024/000000/FFFFFF.png?text=Stars', (loadedTexture) => {
+      this.texture = loadedTexture;
+      this.texture.wrapS = THREE.RepeatWrapping;
       this.texture.wrapT = THREE.RepeatWrapping;
+      (this.texture as any)['data-ai-hint'] = 'starry night space';
       this.material.map = this.texture;
       this.material.needsUpdate = true;
     });
-    (this.texture as any) = {'data-ai-hint': 'starry night space'};
-
 
     this.mesh = new THREE.Mesh(geometry, this.material);
     this.mesh.name = "StarfieldSphere";
-    this.mesh.renderOrder = -2; // Ensure it's drawn very early (behind skybox)
+    this.mesh.renderOrder = -2; // Render before skybox
     scene.add(this.mesh);
   }
 
   public update(cameraPosition: THREE.Vector3, intensity: number): void {
-    this.mesh.position.copy(cameraPosition); // Keep starfield centered on camera
-    this.material.opacity = intensity;
+    this.mesh.position.copy(cameraPosition);
+    this.material.opacity = Math.max(0, Math.min(1, intensity)); // Clamp intensity to [0,1]
 
-    // Optional: slow rotation
-    // this.mesh.rotation.y += 0.0001;
+    // Optional: slow rotation for a very subtle effect over long periods
+    // this.mesh.rotation.y += 0.00005;
   }
 
-  public setIntensity(intensity: number): void {
-    this.material.opacity = Math.max(0, Math.min(1, intensity));
-  }
-  
+  // Optional: if direct control over color tinting is needed later
   public setColor(color: THREE.Color): void {
-    this.material.color.copy(color); // Allow tinting stars, e.g. by milky way color
+    this.material.color.copy(color);
   }
 
   public dispose(): void {
+    if (this.mesh.parent) {
+      this.mesh.parent.remove(this.mesh);
+    }
     this.mesh.geometry.dispose();
-    this.material.map?.dispose();
+    this.material.map?.dispose(); // Dispose texture if it was loaded
     this.material.dispose();
-    // Removal from scene handled by main Sky system or AdvancedSky
   }
 }

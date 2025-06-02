@@ -2,7 +2,8 @@
 import * as THREE from 'three';
 import type { GameRefs } from './types';
 import { Block } from './Block';
-import { getBlockDefinitions, CHUNK_SIZE } from './utils'; // Assuming CHUNK_SIZE is needed for shadow camera
+import { getBlockDefinitions, CHUNK_SIZE } from './utils';
+import { AdvancedSky } from './sky/AdvancedSky'; // Import AdvancedSky
 
 export class ThreeSetup {
   constructor() {}
@@ -21,7 +22,7 @@ export class ThreeSetup {
       75,
       canvasRef.clientWidth / canvasRef.clientHeight,
       0.1,
-      1000
+      1000 // Initial far plane, will be adjusted
     );
     gameRefs.camera.rotation.order = "YXZ";
 
@@ -30,6 +31,7 @@ export class ThreeSetup {
     gameRefs.renderer.setPixelRatio(window.devicePixelRatio);
     gameRefs.renderer.setSize(canvasRef.clientWidth, canvasRef.clientHeight);
     gameRefs.renderer.shadowMap.enabled = true;
+    // renderer.setClearColor will be handled by sky system or dynamically
     canvasRef.appendChild(gameRefs.renderer.domElement);
 
     // Raycaster
@@ -38,25 +40,45 @@ export class ThreeSetup {
     // TextureLoader
     gameRefs.textureLoader = new THREE.TextureLoader();
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+    // Lighting - Ambient Light (Directional light is now handled by AdvancedSky's Sun)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); // Initial moderate intensity
     ambientLight.name = "Ambient Light";
     gameRefs.scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-    directionalLight.name = "Directional Light";
-    const shadowCameraCoverage = CHUNK_SIZE * ( (gameRefs.world?.renderDistanceInChunks || 4) + 3); // Use renderDistance or default
-    const skyHeight = gameRefs.world?.skyHeight || 256; // Use world skyHeight or default
-    directionalLight.position.set(shadowCameraCoverage / 2, skyHeight, shadowCameraCoverage / 2);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.camera = new THREE.OrthographicCamera(
-      -shadowCameraCoverage, shadowCameraCoverage, shadowCameraCoverage, -shadowCameraCoverage, 0.5, skyHeight * 2
+    // Advanced Sky System
+    // Use current render distance (8) and CHUNK_SIZE (16) as defaults
+    // gameRefs.world is not available yet to get these dynamically here.
+    const defaultWorldRenderDistanceChunks = 8; 
+    gameRefs.sky = new AdvancedSky(
+        gameRefs.scene, 
+        gameRefs.textureLoader,
+        defaultWorldRenderDistanceChunks,
+        CHUNK_SIZE
     );
-    directionalLight.shadow.mapSize = new THREE.Vector2(2048, 2048);
-    gameRefs.scene.add(directionalLight);
-    
-    gameRefs.lighting = { ambient: ambientLight, directional: directionalLight };
 
+    gameRefs.lighting = { 
+        ambient: ambientLight, 
+        directional: gameRefs.sky.getSunLight() // Get directional light from Sun
+    };
+    
+    if (gameRefs.lighting.directional && !gameRefs.lighting.directional.parent) {
+        // This check is mostly a safeguard; Sun adds its light to the scene.
+        // gameRefs.scene.add(gameRefs.lighting.directional);
+        // if (gameRefs.lighting.directional.target && !gameRefs.lighting.directional.target.parent) {
+        //     gameRefs.scene.add(gameRefs.lighting.directional.target);
+        // }
+    }
+
+
+    // Adjust camera far plane to see the sky
+    // AdvancedSky calculates its elements' radius based on worldRenderDistanceChunks * chunkSize.
+    // SkyRenderer's skybox radius is maxVisibleDistance * 1.5.
+    const skyElementsEffectiveRadius = defaultWorldRenderDistanceChunks * CHUNK_SIZE * 1.6; // A bit more than skybox
+    if (gameRefs.camera.far < skyElementsEffectiveRadius) {
+        gameRefs.camera.far = skyElementsEffectiveRadius * 1.2; // Ensure far plane is beyond the sky elements
+        gameRefs.camera.updateProjectionMatrix();
+    }
+    
 
     // Block Prototypes
     if (!gameRefs.textureLoader) {
@@ -76,9 +98,6 @@ export class ThreeSetup {
       new Block("waterBlock", blockData.waterBlock, gameRefs.textureLoader, false),
     ];
 
-    console.log("Three.js core initialized by ThreeSetup.");
+    console.log("Three.js core initialized by ThreeSetup, including AdvancedSky.");
   }
-
-  // Dispose method could be added here if ThreeSetup manages resources that RendererManager doesn't
-  // For now, RendererManager handles renderer disposal and resize listener.
 }

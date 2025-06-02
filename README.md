@@ -1,5 +1,5 @@
-# Firebase Studio
 #Puedes testear el proyecto aqui mismo
+Firebase Studio
 
 https://mine-game-ai.vercel.app/
 

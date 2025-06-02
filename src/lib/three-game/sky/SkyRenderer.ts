@@ -8,6 +8,7 @@ import type { ICelestialBodyData } from './ICelestialBody';
 
 export class SkyRenderer {
   private scene: THREE.Scene;
+  private textureLoader: THREE.TextureLoader;
   private skyColorProvider: ISkyColorProvider;
   private celestialBodyController: CelestialBodyController;
   private starfield: Starfield;
@@ -22,14 +23,16 @@ export class SkyRenderer {
     textureLoader: THREE.TextureLoader,
     skyColorProvider: ISkyColorProvider,
     celestialBodyController: CelestialBodyController,
-    starfield: Starfield
+    starfield: Starfield,
+    skyboxRadius: number // Added skyboxRadius parameter
   ) {
     this.scene = scene;
+    this.textureLoader = textureLoader; // Store textureLoader
     this.skyColorProvider = skyColorProvider;
     this.celestialBodyController = celestialBodyController;
     this.starfield = starfield;
 
-    const skyboxGeometry = new THREE.SphereGeometry(1000, 32, 16);
+    const skyboxGeometry = new THREE.SphereGeometry(skyboxRadius, 32, 16); // Use passed radius
     this.skyboxMaterial = new THREE.MeshBasicMaterial({
       side: THREE.BackSide,
       depthWrite: false,
@@ -48,15 +51,15 @@ export class SkyRenderer {
     if (!mesh) {
       const geometry = new THREE.PlaneGeometry(1, 1);
       const material = new THREE.MeshBasicMaterial({
-        map: bodyData.texture, // Assign texture at creation
+        map: bodyData.texture,
         transparent: true,
         depthWrite: false,
         fog: false,
-        // Consider THREE.AdditiveBlending for the sun if desired later
+        color: bodyData.color, // Set initial color
       });
       mesh = new THREE.Mesh(geometry, material);
       mesh.name = `CelestialBody_${bodyData.name}`;
-      mesh.renderOrder = bodyData.name === 'sun' ? -0.9 : -0.8; // Sun slightly before moon
+      mesh.renderOrder = bodyData.name === 'sun' ? -0.9 : -0.8; 
       this.scene.add(mesh);
       this.celestialBodyMeshes.set(bodyData.name, mesh);
     }
@@ -76,7 +79,6 @@ export class SkyRenderer {
     
     const activeBodyNamesThisFrame = new Set(bodiesData.map(bd => bd.name));
 
-    // Hide meshes for bodies that are no longer active or should be invisible
     this.celestialBodyMeshes.forEach((mesh, name) => {
       if (!activeBodyNamesThisFrame.has(name)) {
         mesh.visible = false;
@@ -93,11 +95,11 @@ export class SkyRenderer {
         mesh.scale.set(bodyData.size, bodyData.size, 1);
         mesh.lookAt(camera.position);
 
-        if (material.map !== bodyData.texture) { // Update texture only if it changed
+        if (material.map !== bodyData.texture && bodyData.texture) {
             material.map = bodyData.texture;
             material.needsUpdate = true;
         }
-        material.color.copy(bodyData.color); // Sun/Moon might have slight color tint
+        material.color.copy(bodyData.color);
         material.opacity = bodyData.intensity;
         
       } else {
@@ -118,11 +120,13 @@ export class SkyRenderer {
         mesh.parent.remove(mesh);
       }
       mesh.geometry.dispose();
-      (mesh.material as THREE.Material).map?.dispose(); // Dispose map if material has one
+      if ((mesh.material as THREE.Material).map) {
+        ((mesh.material as THREE.Material).map as THREE.Texture).dispose();
+      }
       (mesh.material as THREE.Material).dispose();
     });
     this.celestialBodyMeshes.clear();
 
-    this.starfield.dispose(); // Call Starfield's own dispose method
+    this.starfield.dispose();
   }
 }

@@ -87,4 +87,10 @@ body {
     /* Apply blocky font globally if desired, or scope to game container */
     /* font-family: var(--font-geist-mono), monospace; */
   }
+  .crosshair-bar-horizontal {
+    background-color: var(--crosshair-color, rgba(0,0,0,0.75));
+  }
+  .crosshair-bar-vertical {
+    background-color: var(--crosshair-color, rgba(0,0,0,0.75));
+  }
 }

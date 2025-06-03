@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
@@ -55,9 +54,20 @@ const BlockifyGame: React.FC = () => {
   const [isCameraSubmerged, setIsCameraSubmerged] = useState(false);
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
 
+  // --- FPS Sliding Window ---
+  const fpsWindowRef = useRef<number[]>([]);
+  const [fps, setFps] = useState(0);
+
   const gameLoop = useCallback(() => {
     const refs = gameRefs.current;
-    if (!refs.gameLogic || !refs.camera) { // Added camera check for deltaTime logic
+    if (errorInfo) {
+      if (refs.gameLoopId !== null) {
+        cancelAnimationFrame(refs.gameLoopId);
+        refs.gameLoopId = null;
+      }
+      return;
+    }
+    if (!refs.gameLogic || !refs.camera) {
         if (refs.gameLoopId !== null) {
           refs.gameLoopId = requestAnimationFrame(gameLoop);
         }
@@ -65,41 +75,43 @@ const BlockifyGame: React.FC = () => {
     }
 
     const now = performance.now();
-    const deltaTime = (now - lastFrameTimeRef.current) / 1000.0; // deltaTime in seconds
+    const deltaTime = (now - lastFrameTimeRef.current) / 1000.0;
     frameCountRef.current++;
-    let newFpsValue: number | undefined = undefined;
 
-    if (now >= lastFrameTimeRef.current + 1000) {
-      newFpsValue = frameCountRef.current;
-      frameCountRef.current = 0;
-      lastFrameTimeRef.current = now; // Only update lastFrameTimeRef here if calculating FPS over 1s
-    }
-    // Always update lastFrameTimeRef for deltaTime calculation if not doing 1s FPS updates
-    if (newFpsValue === undefined) { // If FPS wasn't updated this frame, ensure lastFrameTimeRef is current for next deltaTime
-         // lastFrameTimeRef.current = now; // This line was the issue, it should be updated AFTER deltaTime is calculated
+    // FPS sliding window
+    if (deltaTime > 0) {
+      const currentFps = 1 / deltaTime;
+      const window = fpsWindowRef.current;
+      window.push(currentFps);
+      if (window.length > 60) window.shift();
+      const avgFps = window.reduce((a, b) => a + b, 0) / window.length;
+      setFps(Math.round(avgFps));
     }
 
+    let newFpsValue: number | undefined = undefined; // No longer used, but kept for compatibility
 
     try {
-      refs.gameLogic.update(deltaTime, newFpsValue);
+      refs.gameLogic.update(deltaTime, undefined); // newFpsValue no es necesario
     } catch (error: any) {
       console.error("Error in game loop:", error);
-      setErrorInfo({
-        title: "Game Loop Error!",
-        message: `Message: ${error.message}\n\nStack:\n${error.stack}`
-      });
+      if (!errorInfo) {
+        setErrorInfo({
+          title: "Game Loop Error!",
+          message: `Message: ${error.message}\n\nStack:\n${error.stack}`
+        });
+      }
       if (refs.gameLoopId !== null) {
         cancelAnimationFrame(refs.gameLoopId);
         refs.gameLoopId = null;
       }
       return;
     }
-    lastFrameTimeRef.current = now; // Update for next frame's deltaTime calculation
+    lastFrameTimeRef.current = now;
 
     if (refs.gameLoopId !== null) {
         refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
-  }, []);
+  }, [errorInfo]);
 
 
   const initGame = useCallback(() => {
@@ -205,17 +217,30 @@ const BlockifyGame: React.FC = () => {
 
       gameRefs.current.scene?.traverse(object => {
         if (object instanceof THREE.Mesh) {
+          // Dispose geometry
           object.geometry?.dispose();
+          // Dispose material(s) and texture(s) safely
+          const disposeMaterial = (material: THREE.Material) => {
+            const anyMat = material as any;
+            if (anyMat.map && typeof anyMat.map.dispose === 'function') anyMat.map.dispose();
+            if (anyMat.lightMap && typeof anyMat.lightMap.dispose === 'function') anyMat.lightMap.dispose();
+            if (anyMat.aoMap && typeof anyMat.aoMap.dispose === 'function') anyMat.aoMap.dispose();
+            if (anyMat.emissiveMap && typeof anyMat.emissiveMap.dispose === 'function') anyMat.emissiveMap.dispose();
+            if (anyMat.bumpMap && typeof anyMat.bumpMap.dispose === 'function') anyMat.bumpMap.dispose();
+            if (anyMat.normalMap && typeof anyMat.normalMap.dispose === 'function') anyMat.normalMap.dispose();
+            if (anyMat.displacementMap && typeof anyMat.displacementMap.dispose === 'function') anyMat.displacementMap.dispose();
+            if (anyMat.roughnessMap && typeof anyMat.roughnessMap.dispose === 'function') anyMat.roughnessMap.dispose();
+            if (anyMat.metalnessMap && typeof anyMat.metalnessMap.dispose === 'function') anyMat.metalnessMap.dispose();
+            if (anyMat.alphaMap && typeof anyMat.alphaMap.dispose === 'function') anyMat.alphaMap.dispose();
+            if (anyMat.envMap && typeof anyMat.envMap.dispose === 'function') anyMat.envMap.dispose();
+            material.dispose();
+          };
           if (Array.isArray(object.material)) {
-            object.material.forEach(material => {
-                material.map?.dispose();
-                material.dispose();
+            object.material.forEach(mat => {
+              if (mat) disposeMaterial(mat);
             });
-          } else if ((object.material as THREE.Material)?.map) {
-             (object.material as THREE.Material).map?.dispose();
-             (object.material as THREE.Material)?.dispose();
           } else if (object.material) {
-            (object.material as THREE.Material)?.dispose();
+            disposeMaterial(object.material);
           }
         }
       });
@@ -265,6 +290,16 @@ const BlockifyGame: React.FC = () => {
     }
   }, [isCameraSubmerged, gameRefs.current.world?.renderDistanceInChunks]); // Added world.renderDistanceInChunks
 
+  useEffect(() => {
+    // Actualiza el color del crosshair usando una variable CSS
+    const root = document.documentElement;
+    if (crosshairBgColor) {
+      root.style.setProperty('--crosshair-color', crosshairBgColor);
+    } else {
+      root.style.setProperty('--crosshair-color', 'rgba(0,0,0,0.75)');
+    }
+  }, [crosshairBgColor]);
+
 
   return (
     <div ref={mountRef} className="relative w-full h-screen overflow-hidden cursor-crosshair">
@@ -280,17 +315,15 @@ const BlockifyGame: React.FC = () => {
       {crosshairBgColor !== undefined && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none w-5 h-5 z-10">
           <div
-            className="w-full h-[2px] absolute top-1/2 left-0 transform -translate-y-1/2 rounded-sm"
-            style={{ backgroundColor: crosshairBgColor }}
+            className={"w-full h-[2px] absolute top-1/2 left-0 transform -translate-y-1/2 rounded-sm crosshair-bar-horizontal"}
           ></div>
           <div
-            className="w-[2px] h-full absolute top-0 left-1/2 transform -translate-x-1/2 rounded-sm"
-            style={{ backgroundColor: crosshairBgColor }}
+            className={"w-[2px] h-full absolute top-0 left-1/2 transform -translate-x-1/2 rounded-sm crosshair-bar-vertical"}
           ></div>
         </div>
       )}
       <div className="absolute top-2 right-2 text-foreground bg-background/50 p-1 rounded-md text-sm pointer-events-none z-10">
-        <div>FPS: {debugInfo.fps}</div>
+        <div>FPS: {fps}</div>
         <div>{debugInfo.playerPosition}</div>
         <div>{debugInfo.playerChunk}</div>
         <div>{debugInfo.raycastTarget}</div>
@@ -305,4 +338,4 @@ const BlockifyGame: React.FC = () => {
 };
 
 export default BlockifyGame;
-    
+

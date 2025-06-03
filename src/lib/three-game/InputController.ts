@@ -132,9 +132,9 @@ export class InputController {
         break;
       case controlConfig.boost:
         if (this.player.flying) {
-            this.player.isBoosting = !this.player.isBoosting;
+            this.player.isBoosting = !this.player.isBoosting; // toggle en vuelo
         } else {
-            this.player.isRunning = !this.player.isRunning;
+            this.player.isRunning = true; // mantener para correr
         }
         break;
     }
@@ -155,6 +155,11 @@ export class InputController {
         break;
       case controlConfig.flyDown:
         this.player.isFlyingDescending = false;
+        break;
+      case controlConfig.boost:
+        if (!this.player.flying) {
+          this.player.isRunning = false; // dejar de correr al soltar boost
+        }
         break;
     }
   }

@@ -1,4 +1,3 @@
-
 import * as THREE from 'three';
 import type { GameRefs, DebugInfoState, PlayerWorldService, PlayerCameraService, PlayerSceneService, PlayerRaycasterService } from './types';
 import { CHUNK_SIZE } from './utils';
@@ -76,7 +75,7 @@ export class GameLogic {
 
     refs.sky.update(deltaTime, refs.camera);
 
-    refs.player.updatePosition();
+    refs.player.updatePosition(deltaTime);
     refs.player.highlightBlock();
     refs.world.updateChunks(refs.player.mesh.position); 
     if (refs.camera) {

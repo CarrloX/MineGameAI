@@ -1,4 +1,3 @@
-
 import * as THREE from 'three';
 import type { GameRefs } from './types';
 import { Block } from './Block';
@@ -46,22 +45,29 @@ export class ThreeSetup {
     gameRefs.scene.add(ambientLight);
 
     // Advanced Sky System
-    // Use current render distance (8) and CHUNK_SIZE (16) as defaults
-    // gameRefs.world is not available yet to get these dynamically here.
+    // Parámetros de configuración avanzados para el cielo
     const defaultWorldRenderDistanceChunks = 8; 
+    const skyOptions = {
+      dayDurationMinutes: 12, // Ejemplo: día de 12 minutos
+      sunOrbitalRadiusFactor: 1.0,
+      moonOrbitalRadiusFactor: 0.85,
+      sunSizeFactor: 1.1,
+      moonSizeFactor: 0.9
+    };
     gameRefs.sky = new AdvancedSky(
         gameRefs.scene, 
         gameRefs.textureLoader,
         defaultWorldRenderDistanceChunks,
-        CHUNK_SIZE
+        CHUNK_SIZE,
+        skyOptions
     );
 
     gameRefs.lighting = { 
         ambient: ambientLight, 
-        directional: gameRefs.sky.getSunLight() // Get directional light from Sun
+        directional: gameRefs.sky.getSunLight() ?? new THREE.DirectionalLight(0xffffff, 0.5) // fallback para evitar error de tipo
     };
     
-    if (gameRefs.lighting.directional && !gameRefs.lighting.directional.parent) {
+    if (gameRefs.lighting && gameRefs.lighting.directional && !gameRefs.lighting.directional.parent) {
         // This check is mostly a safeguard; Sun adds its light to the scene.
         // gameRefs.scene.add(gameRefs.lighting.directional);
         // if (gameRefs.lighting.directional.target && !gameRefs.lighting.directional.target.parent) {

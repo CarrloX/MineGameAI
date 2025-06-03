@@ -1,4 +1,3 @@
-
 import type { GameRefs, PlayerCameraService } from './types';
 import type { Player } from './Player';
 
@@ -90,6 +89,7 @@ export class InputController {
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
+    if (e.repeat) return; // IGNORA eventos repetidos por mantener la tecla
     const { controlConfig } = this.gameRefs;
     if (!controlConfig || !this.player) return;
 

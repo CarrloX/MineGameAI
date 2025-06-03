@@ -1,4 +1,3 @@
-
 import * as THREE from 'three';
 import { TimeOfDayManager } from './TimeOfDayManager';
 import { SkyColorController } from './SkyColorController';
@@ -9,6 +8,14 @@ import { Starfield } from './Starfield';
 import { SkyRenderer } from './SkyRenderer';
 import type { ITimeProvider } from './ITimeProvider';
 import type { ISkyColorProvider } from './ISkyColorProvider';
+
+export interface AdvancedSkyOptions {
+  dayDurationMinutes?: number;
+  sunOrbitalRadiusFactor?: number;
+  moonOrbitalRadiusFactor?: number;
+  sunSizeFactor?: number;
+  moonSizeFactor?: number;
+}
 
 export class AdvancedSky {
   private scene: THREE.Scene;
@@ -24,16 +31,20 @@ export class AdvancedSky {
   private moon: Moon;
 
 
+  /**
+ * AdvancedSky permite configurar el ciclo día/noche y los factores de tamaño/orbita de sol y luna.
+ * @param scene Escena de Three.js
+ * @param textureLoader Loader de texturas
+ * @param worldRenderDistanceChunks Distancia de renderizado en chunks
+ * @param chunkSize Tamaño de chunk
+ * @param options Opciones avanzadas para la configuración del cielo
+ */
   constructor(
     scene: THREE.Scene,
     textureLoader: THREE.TextureLoader,
     worldRenderDistanceChunks: number, 
     chunkSize: number,
-    dayDurationMinutes?: number,
-    sunOrbitalRadiusFactor?: number,
-    moonOrbitalRadiusFactor?: number,
-    sunSizeFactor?: number,
-    moonSizeFactor?: number
+    options: AdvancedSkyOptions = {}
   ) {
     this.scene = scene;
     this.textureLoader = textureLoader;
@@ -41,13 +52,13 @@ export class AdvancedSky {
     const maxVisibleDistance = worldRenderDistanceChunks * chunkSize; 
     const skyElementsBaseRadius = Math.max(500, maxVisibleDistance * 1.5); 
 
-    // Determine final orbital radii and sizes using factors or defaults
-    const finalSunOrbitalRadius = skyElementsBaseRadius * (sunOrbitalRadiusFactor ?? 0.8);
-    const finalMoonOrbitalRadius = skyElementsBaseRadius * (moonOrbitalRadiusFactor ?? 0.75);
-    const finalSunSize = skyElementsBaseRadius * 0.05 * (sunSizeFactor ?? 1.0);
-    const finalMoonSize = skyElementsBaseRadius * 0.04 * (moonSizeFactor ?? 1.0);
+    // Usar opciones o valores por defecto
+    const finalSunOrbitalRadius = skyElementsBaseRadius * (options.sunOrbitalRadiusFactor ?? 0.8);
+    const finalMoonOrbitalRadius = skyElementsBaseRadius * (options.moonOrbitalRadiusFactor ?? 0.75);
+    const finalSunSize = skyElementsBaseRadius * 0.05 * (options.sunSizeFactor ?? 1.0);
+    const finalMoonSize = skyElementsBaseRadius * 0.04 * (options.moonSizeFactor ?? 1.0);
 
-    this.timeManager = new TimeOfDayManager(dayDurationMinutes ?? 20, 0.25); 
+    this.timeManager = new TimeOfDayManager(options.dayDurationMinutes ?? 20, 0.25); 
     this.skyColorController = new SkyColorController(this.timeManager);
     this.celestialBodyController = new CelestialBodyController(this.timeManager);
 

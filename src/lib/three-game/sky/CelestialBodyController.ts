@@ -1,4 +1,3 @@
-
 import type * as THREE from 'three';
 import type { ICelestialBody, ICelestialBodyData } from './ICelestialBody';
 import type { ITimeProvider } from './ITimeProvider';
@@ -26,7 +25,7 @@ export class CelestialBodyController {
   public getRenderableBodiesData(): ICelestialBodyData[] {
     return this.celestialBodies
       .map(body => body.getRenderData())
-      .filter(data => data.isVisible && data.texture); // Ensure texture is loaded before trying to render
+      .filter(data => data.isVisible); // Mostrar cuerpos visibles aunque no tengan textura
   }
   
   public getBodyByName(name: string): ICelestialBody | undefined {

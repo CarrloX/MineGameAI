@@ -1,9 +1,9 @@
-
 import * as THREE from 'three';
 import type { Block } from './Block';
 // World import no longer needed directly by Player
 import { CHUNK_SIZE } from './utils';
 import type { LookingAtInfo, PlayerWorldService, PlayerCameraService, PlayerSceneService, PlayerRaycasterService } from './types';
+import { CONTROL_CONFIG } from './CONTROL_CONFIG';
 
 
 export class Player {
@@ -37,16 +37,16 @@ export class Player {
   private raycasterService: PlayerRaycasterService;
 
   public flying: boolean = false;
-  public flySpeed: number = 0.1;
+  public flySpeed: number = CONTROL_CONFIG.FLY_SPEED;
   public lastSpacePressTime: number = 0;
-  public flyToggleDelay: number = 300;
+  public flyToggleDelay: number = CONTROL_CONFIG.FLY_TOGGLE_DELAY;
   public isFlyingAscending: boolean = false;
   public isFlyingDescending: boolean = false;
 
   public isRunning: boolean = false;
-  public runSpeedMultiplier: number = 1.4;
+  public runSpeedMultiplier: number = CONTROL_CONFIG.RUN_SPEED_MULTIPLIER;
   public isBoosting: boolean = false;
-  public boostSpeedMultiplier: number = 3.0;
+  public boostSpeedMultiplier: number = CONTROL_CONFIG.BOOST_SPEED_MULTIPLIER;
 
 
   constructor(
@@ -67,20 +67,20 @@ export class Player {
     this.x = x;
     this.y = y;
     this.z = z;
-    this.height = 1.7;
-    this.width = 0.6;
-    this.depth = 0.6;
+    this.height = CONTROL_CONFIG.PLAYER_HEIGHT;
+    this.width = CONTROL_CONFIG.PLAYER_WIDTH;
+    this.depth = CONTROL_CONFIG.PLAYER_DEPTH;
 
     this.pitch = 0; // Initial pitch
     this.yaw = 0;   // Initial yaw
 
-    this.speed = 0.065;
+    this.speed = CONTROL_CONFIG.WALK_SPEED;
     this.velocity = 0;
-    this.jumpSpeed = 0.11;
+    this.jumpSpeed = CONTROL_CONFIG.JUMP_SPEED;
     this.jumpVelocity = 0;
     this.xdir = "";
     this.zdir = "";
-    this.attackRange = 5;
+    this.attackRange = CONTROL_CONFIG.ATTACK_RANGE;
     this.lookingAt = null;
     this.jumping = false;
     this.onGround = false;
@@ -255,24 +255,26 @@ export class Player {
     this.onGround = false;
   }
 
-  updatePosition(): void {
+  updatePosition(deltaTime: number): void {
     let dY = 0;
 
     if (this.flying) {
       this.jumpVelocity = 0;
       this.onGround = false;
-      if (this.isFlyingAscending) dY += this.flySpeed;
-      if (this.isFlyingDescending) dY -= this.flySpeed;
+      if (this.isFlyingAscending) dY += CONTROL_CONFIG.FLY_SPEED * deltaTime;
+      if (this.isFlyingDescending) dY -= CONTROL_CONFIG.FLY_SPEED * deltaTime;
     } else {
       if (this.jumping && this.onGround) {
-        this.jumpVelocity = this.jumpSpeed;
+        this.jumpVelocity = CONTROL_CONFIG.JUMP_SPEED;
         this.onGround = false;
+        this.jumping = false; // Reset jumping state after initiating jump
       }
-      this.jumpVelocity -= this.worldService.gravity;
-      if (this.jumpVelocity < -this.jumpSpeed * 2.5) {
-          this.jumpVelocity = -this.jumpSpeed * 2.5;
+      this.jumpVelocity -= CONTROL_CONFIG.GRAVITY * deltaTime; // Apply gravity with deltaTime
+      // Limit falling speed
+      if (this.jumpVelocity < -CONTROL_CONFIG.JUMP_SPEED * 2.5) {
+          this.jumpVelocity = -CONTROL_CONFIG.JUMP_SPEED * 2.5;
       }
-      dY += this.jumpVelocity;
+      dY = this.jumpVelocity; // dY is now just the jumpVelocity
     }
 
     let moveX = 0;
@@ -306,12 +308,12 @@ export class Player {
     if (moveMagnitude > 0) {
         const normalizedMoveX = moveX / moveMagnitude;
         const normalizedMoveZ = moveZ / moveMagnitude;
-        nextPlayerX += normalizedMoveX * currentEffectiveSpeed;
-        nextPlayerZ += normalizedMoveZ * currentEffectiveSpeed;
+        nextPlayerX += normalizedMoveX * currentEffectiveSpeed * deltaTime; // Apply deltaTime to horizontal movement
+        nextPlayerZ += normalizedMoveZ * currentEffectiveSpeed * deltaTime; // Apply deltaTime to horizontal movement
     }
 
     let correctedX = nextPlayerX;
-    let correctedY = this.y + dY;
+    let correctedY = this.y + dY; // dY already incorporates deltaTime for flying or is jumpVelocity
     let correctedZ = nextPlayerZ;
     let landedOnGroundThisFrame = false;
 

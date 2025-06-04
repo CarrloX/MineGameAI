@@ -1,4 +1,3 @@
-
 import * as THREE from 'three';
 import type { World } from './World';
 import type { Block } from './Block';
@@ -17,6 +16,8 @@ export class Chunk {
   private worldSeed: number;
   public wasGenerated: boolean = false;
 
+  public boundingBox: THREE.Box3; // Propiedad para almacenar el bounding box del chunk
+
   constructor(world: World, worldX: number, worldZ: number, blockPrototypes: Map<string, Block>, initialBlockData?: string[][][], worldSeed?: number) {
     this.world = world;
     this.worldX = worldX;
@@ -27,6 +28,20 @@ export class Chunk {
     this.chunkRoot = new THREE.Group();
     this.chunkRoot.name = `ChunkRoot_${worldX}_${worldZ}`;
     this.chunkRoot.position.set(this.worldX * CHUNK_SIZE, this.worldY, this.worldZ * CHUNK_SIZE);
+
+    // Calcular el bounding box para este chunk
+    const minX = this.worldX * CHUNK_SIZE;
+    const minY = 0; // Asumiendo que los chunks van desde Y=0
+    const minZ = this.worldZ * CHUNK_SIZE;
+
+    const maxX = (this.worldX + 1) * CHUNK_SIZE;
+    const maxY = this.world.layers; // La altura total del mundo obtenida de la instancia de World
+    const maxZ = (this.worldZ + 1) * CHUNK_SIZE;
+
+    this.boundingBox = new THREE.Box3(
+        new THREE.Vector3(minX, minY, minZ),
+        new THREE.Vector3(maxX, maxY, maxZ)
+    );
 
     if (initialBlockData) {
       this.blocks = initialBlockData;

@@ -47,6 +47,7 @@ const BlockifyGame: React.FC = () => {
     isFlying: 'Flying: No',
     isRunning: 'Running: No',
     isBoosting: 'Boosting: No',
+    lookDirection: 'Look: N/A', // <-- Añadido para mostrar dirección de mirada
   });
   const [crosshairBgColor, setCrosshairBgColor] = useState<string | undefined>(undefined);
   const lastFrameTimeRef = useRef(performance.now());
@@ -332,6 +333,7 @@ const BlockifyGame: React.FC = () => {
         <div>{debugInfo.isFlying}</div>
         <div>{debugInfo.isRunning}</div>
         <div>{debugInfo.isBoosting}</div>
+        <div>{debugInfo.lookDirection}</div> {/* Muestra la dirección de la mirada */}
       </div>
     </div>
   );

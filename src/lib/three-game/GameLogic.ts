@@ -2,12 +2,17 @@ import * as THREE from 'three';
 import type { GameRefs, DebugInfoState, PlayerWorldService, PlayerCameraService, PlayerSceneService, PlayerRaycasterService } from './types';
 import { CHUNK_SIZE } from './utils';
 import { Player } from './Player';
+import { AudioManager, SOUND_PATHS } from './AudioManager';
 
 export class GameLogic {
   private gameRefs: GameRefs;
   private setDebugInfo: (updateFn: (prevState: DebugInfoState) => DebugInfoState) => void;
   private setIsCameraSubmerged: React.Dispatch<React.SetStateAction<boolean>>;
   private isCameraSubmerged_internal: boolean = false;
+  private audioManager: AudioManager;
+
+  private frustum: THREE.Frustum = new THREE.Frustum();
+  private projectionMatrixInverse: THREE.Matrix4 = new THREE.Matrix4(); // Aunque no la usaremos directamente para el frustum aquí, es una buena práctica tenerla cerca.
 
   public destroyBlockDelay: number = 0.2; // segundos entre destrucciones continuas
   public initialHoldDelay: number = 0.35; // retardo inicial antes de destrucción continua
@@ -20,6 +25,12 @@ export class GameLogic {
     this.gameRefs = gameRefs;
     this.setDebugInfo = setDebugInfo;
     this.setIsCameraSubmerged = setIsCameraSubmerged;
+    this.audioManager = new AudioManager();
+    // Cargar sonidos comunes
+    this.audioManager.loadSound('blockBreak', SOUND_PATHS.blockBreak);
+    this.audioManager.loadSound('blockPlace', SOUND_PATHS.blockPlace);
+    this.audioManager.loadSound('jump', SOUND_PATHS.jump);
+    this.audioManager.loadSound('land', SOUND_PATHS.land);
     this.initializePlayer();
   }
 
@@ -43,9 +54,7 @@ export class GameLogic {
         }
     }
 
-    let spawnY = refs.world.getSpawnHeight(initialPlayerX, initialPlayerZ);
-
-    refs.player = new Player(
+    let spawnY = refs.world.getSpawnHeight(initialPlayerX, initialPlayerZ);    refs.player = new Player(
       "Player",
       refs.world as PlayerWorldService,
       refs.camera as PlayerCameraService,
@@ -53,7 +62,9 @@ export class GameLogic {
       refs.raycaster as PlayerRaycasterService,
       initialPlayerX,
       spawnY,
-      initialPlayerZ
+      initialPlayerZ,
+      false,
+      this.audioManager
     );
 
     if (refs.inputController) {
@@ -77,12 +88,36 @@ export class GameLogic {
     }
     refs.sky.update(deltaTime, refs.camera, this.isCameraSubmerged_internal);
 
+    // Asegura que la matriz de transformación mundial de la cámara esté actualizada.
+    refs.camera.updateMatrixWorld();
+
+    // Actualiza el frustum con la matriz combinada de proyección y vista de la cámara
+    this.frustum.setFromProjectionMatrix(
+        new THREE.Matrix4().multiplyMatrices(
+            refs.camera.projectionMatrix,
+            refs.camera.matrixWorldInverse
+        )
+    );
+
+    // Frustum culling de chunks
+    let visibleChunksCount = 0;
+    refs.world.activeChunks.forEach(chunk => {
+      if (chunk && chunk.chunkRoot && chunk.boundingBox) {
+        const isVisible = this.frustum.intersectsBox(chunk.boundingBox);
+        chunk.chunkRoot.visible = isVisible;
+        if (isVisible) visibleChunksCount++;
+      } else {
+        // Si el chunk no tiene boundingBox o chunkRoot, lo ocultamos por seguridad
+        if (chunk && chunk.chunkRoot) chunk.chunkRoot.visible = false;
+      }
+    });
+
     refs.player.updatePosition(deltaTime);
     refs.player.highlightBlock();
-    refs.world.updateChunks(refs.player.mesh.position); 
-    if (refs.camera) {
-      refs.world.updateChunkVisibility(refs.camera);
-    }
+    refs.world.updateChunks(refs.player.mesh.position);
+    // if (refs.camera) {
+    //   refs.world.updateChunkVisibility(refs.camera, this.frustum); // Esta línea es ahora redundante
+    // }
     refs.world.processRemeshQueue(1);
 
     const playerForDebug = refs.player;
@@ -108,10 +143,9 @@ export class GameLogic {
     }
     const highlightStr = `HL: ${highlightFaceDir}`;
 
-    let visibleChunksCount = 0;
-    refs.world.activeChunks.forEach(chunk => {
-      if(chunk.chunkRoot.visible) visibleChunksCount++;
-    });
+    const yawDeg = (THREE.MathUtils.radToDeg(playerForDebug.yaw) % 360).toFixed(1);
+    const pitchDeg = (THREE.MathUtils.radToDeg(playerForDebug.pitch) % 360).toFixed(1);
+    const lookDirStr = `Look: Yaw ${yawDeg}°, Pitch ${pitchDeg}°`;
 
     this.setDebugInfo(prev => ({
       fps: newFpsValue !== undefined ? newFpsValue : prev.fps,
@@ -119,11 +153,12 @@ export class GameLogic {
       playerChunk: playerChunkStr,
       raycastTarget: rayTargetStr,
       highlightStatus: highlightStr,
-      visibleChunks: visibleChunksCount,
+      visibleChunks: visibleChunksCount, // ¡Actualiza esto!
       totalChunks: refs.world!.activeChunks.size,
       isFlying: `Flying: ${playerForDebug.flying ? 'Yes' : 'No'}`,
       isRunning: `Running: ${playerForDebug.isRunning ? 'Yes' : 'No'}`,
       isBoosting: `Boosting: ${playerForDebug.isBoosting ? 'Yes' : 'No'}`,
+      lookDirection: lookDirStr, // <-- Nueva línea para mostrar dirección de mirada
     }));
 
     if (refs.player && refs.world && refs.camera) {
@@ -187,20 +222,19 @@ export class GameLogic {
       }
 
       safeRespawnY = Math.max(1, safeRespawnY); 
-      safeRespawnY = Math.min(safeRespawnY, refs.world.layers - Math.ceil(refs.player.height) -1); 
+      safeRespawnY = Math.min(safeRespawnY, refs.world.layers - Math.ceil(refs.player.height) - 1); 
 
 
       const currentPitch = refs.camera!.rotation.x;
-      const currentYaw = refs.camera!.rotation.y;
-
-      refs.player = new Player(
+      const currentYaw = refs.camera!.rotation.y;      refs.player = new Player(
         refs.player!['name'],
         refs.world as PlayerWorldService,
         refs.camera as PlayerCameraService,
         refs.scene as PlayerSceneService,
         refs.raycaster as PlayerRaycasterService,
         respawnX, safeRespawnY, respawnZ,
-        true 
+        true,
+        this.audioManager
       );
 
       if (refs.inputController) {

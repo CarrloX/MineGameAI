@@ -35,6 +35,7 @@ export class Player {
   private cameraService: PlayerCameraService;
   private sceneService: PlayerSceneService;
   private raycasterService: PlayerRaycasterService;
+  private audioManager: any; // AudioManager
 
   public flying: boolean = false;
   public flySpeed: number = CONTROL_CONFIG.FLY_SPEED;
@@ -56,13 +57,15 @@ export class Player {
     sceneService: PlayerSceneService,
     raycasterService: PlayerRaycasterService,
     x: number = 0, y: number = 0, z: number = 0,
-    preserveCam: boolean = false // This flag might be less relevant if pitch/yaw are restored externally
+    preserveCam: boolean = false,
+    audioManager?: any // AudioManager opcional para compatibilidad
   ) {
     this.name = name;
     this.worldService = worldService;
     this.cameraService = cameraService;
     this.sceneService = sceneService;
     this.raycasterService = raycasterService;
+    this.audioManager = audioManager;
 
     this.x = x;
     this.y = y;
@@ -211,6 +214,7 @@ export class Player {
           const currentBlock = this.worldService.getBlock(x,y,z);
           if (currentBlock !== 'waterBlock') { // Cannot destroy water
             this.worldService.setBlock(x, y, z, 'air');
+            if (this.audioManager) this.audioManager.playSound('blockBreak');
           }
       } else {
           console.warn("Invalid block coordinates for destruction:", this.lookingAt.blockWorldCoords);
@@ -236,6 +240,7 @@ export class Player {
 
         if(blockToPlaceNameKey && blockToPlaceNameKey !== 'air') {
           this.worldService.setBlock(placeX, placeY, placeZ, blockToPlaceNameKey);
+          if (this.audioManager) this.audioManager.playSound('blockPlace');
         } else {
           console.warn("Attempted to place an invalid block type:", blockToPlaceNameKey);
         }
@@ -267,9 +272,10 @@ export class Player {
       if (this.jumping && this.onGround) {
         this.jumpVelocity = CONTROL_CONFIG.JUMP_SPEED;
         this.onGround = false;
-        this.jumping = false; // Reset jumping state after initiating jump
+        this.jumping = false;
+        if (this.audioManager) this.audioManager.playSound('jump');
       }
-      this.jumpVelocity -= CONTROL_CONFIG.GRAVITY * deltaTime; // Apply gravity with deltaTime
+      this.jumpVelocity -= CONTROL_CONFIG.GRAVITY * deltaTime;
       // Limit falling speed
       if (this.jumpVelocity < -CONTROL_CONFIG.JUMP_SPEED * 2.5) {
           this.jumpVelocity = -CONTROL_CONFIG.JUMP_SPEED * 2.5;

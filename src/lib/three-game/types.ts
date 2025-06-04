@@ -52,6 +52,7 @@ export interface DebugInfoState {
   isFlying: string;
   isRunning: string;
   isBoosting: string;
+  lookDirection: string; // Dirección de la mirada (yaw/pitch)
 }
 
 export interface ErrorInfo {

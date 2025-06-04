@@ -1,4 +1,3 @@
-
 import * as THREE from 'three';
 import type { Block } from './Block';
 import { Chunk } from './Chunk';
@@ -21,8 +20,6 @@ export class World {
   public renderDistanceInChunks: number = 8; // Cambiado de 4 a 8
   private remeshQueue: Set<string>;
 
-  private frustum = new THREE.Frustum();
-  private projScreenMatrix = new THREE.Matrix4();
   public worldSeed: number;
 
   constructor(gameRefs: GameRefs, worldSeed: number) {
@@ -123,28 +120,22 @@ export class World {
     chunksToUnloadKeys.forEach(key => this.unloadChunkByKey(key));
   }
 
- public updateChunkVisibility(camera: THREE.PerspectiveCamera): void {
-    if (!camera) return;
+ public updateChunkVisibility(camera: THREE.PerspectiveCamera, frustum: THREE.Frustum): void {
+    if (!camera || !frustum) return; // Asegurarse de que el frustum también esté presente
 
-    camera.updateMatrixWorld(true);
-    this.projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-    this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
+    // The frustum is now updated in GameLogic.update, so we don't need to do it here.
+    // camera.updateMatrixWorld(true);
+    // this.projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    // this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
 
     this.activeChunks.forEach(chunk => {
         if (!chunk.chunkRoot) return;
 
-        const chunkCenterX = chunk.worldX * CHUNK_SIZE + CHUNK_SIZE / 2;
-        const chunkCenterY = chunk.worldY + this.layers / 2;
-        const chunkCenterZ = chunk.worldZ * CHUNK_SIZE + CHUNK_SIZE / 2;
-
-        const chunkCenterVec = new THREE.Vector3(chunkCenterX, chunkCenterY, chunkCenterZ);
-        const chunkSizeVec = new THREE.Vector3(CHUNK_SIZE, this.layers, CHUNK_SIZE);
-        const chunkBox = new THREE.Box3().setFromCenterAndSize(chunkCenterVec, chunkSizeVec);
-
-        if (!this.frustum.intersectsBox(chunkBox)) {
-            chunk.chunkRoot.visible = false;
-        } else {
+        // Use the isChunkInFrustum method with the passed-in frustum
+        if (this.isChunkInFrustum(frustum, chunk)) {
             chunk.chunkRoot.visible = true;
+        } else {
+            chunk.chunkRoot.visible = false;
         }
     });
   }
@@ -304,6 +295,23 @@ export class World {
 
   public getRemeshQueueSize(): number {
     return this.remeshQueue.size;
+  }
+
+  public isChunkInFrustum(frustum: THREE.Frustum, chunk: Chunk): boolean {
+    if (!chunk.chunkRoot || !chunk.chunkRoot.children) {
+      return false; // Cannot check frustum if chunk root or children are missing
+    }
+
+    // Check if any mesh within the chunk intersects the frustum
+    for (const child of chunk.chunkRoot.children) {
+      if (child instanceof THREE.Mesh) {
+        if (frustum.intersectsObject(child)) {
+          return true; // At least one mesh is visible
+        }
+      }
+    }
+
+    return false; // No meshes in the chunk are visible within the frustum
   }
 }
 

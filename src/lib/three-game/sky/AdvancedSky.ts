@@ -10,13 +10,42 @@ import type { ITimeProvider } from './ITimeProvider';
 import type { ISkyColorProvider } from './ISkyColorProvider';
 
 export interface AdvancedSkyOptions {
+  /**
+   * Duración del día en minutos (por defecto: 20)
+   */
   dayDurationMinutes?: number;
+  /**
+   * Factor para el radio orbital del sol (por defecto: 0.8)
+   */
   sunOrbitalRadiusFactor?: number;
+  /**
+   * Factor para el radio orbital de la luna (por defecto: 0.75)
+   */
   moonOrbitalRadiusFactor?: number;
+  /**
+   * Factor para el tamaño del sol (por defecto: 1.0)
+   */
   sunSizeFactor?: number;
+  /**
+   * Factor para el tamaño de la luna (por defecto: 1.0)
+   */
   moonSizeFactor?: number;
 }
 
+/**
+ * AdvancedSky permite configurar el ciclo día/noche y los factores de tamaño/orbita de sol y luna.
+ * Ejemplo de uso:
+ *
+ *   const sky = new AdvancedSky(scene, loader, 8, 32, {
+ *     dayDurationMinutes: 10, // Día más corto
+ *     sunOrbitalRadiusFactor: 1.0, // Sol más lejano
+ *     moonOrbitalRadiusFactor: 0.7, // Luna más cercana
+ *     sunSizeFactor: 1.2, // Sol más grande
+ *     moonSizeFactor: 0.8 // Luna más pequeña
+ *   });
+ *
+ * Si no se pasan opciones, se usan los valores por defecto.
+ */
 export class AdvancedSky {
   private scene: THREE.Scene;
   private textureLoader: THREE.TextureLoader;
@@ -31,14 +60,6 @@ export class AdvancedSky {
   private moon: Moon;
 
 
-  /**
- * AdvancedSky permite configurar el ciclo día/noche y los factores de tamaño/orbita de sol y luna.
- * @param scene Escena de Three.js
- * @param textureLoader Loader de texturas
- * @param worldRenderDistanceChunks Distancia de renderizado en chunks
- * @param chunkSize Tamaño de chunk
- * @param options Opciones avanzadas para la configuración del cielo
- */
   constructor(
     scene: THREE.Scene,
     textureLoader: THREE.TextureLoader,
@@ -62,6 +83,7 @@ export class AdvancedSky {
     this.skyColorController = new SkyColorController(this.timeManager);
     this.celestialBodyController = new CelestialBodyController(this.timeManager);
 
+    // El sol y la luna siempre serán visibles con los valores por defecto
     this.sun = new Sun(this.textureLoader, this.scene, finalSunOrbitalRadius, finalSunSize);
     this.celestialBodyController.addBody(this.sun);
 
@@ -80,7 +102,7 @@ export class AdvancedSky {
     );
   }
 
-  public update(deltaTime: number, camera: THREE.Camera): void {
+  public update(deltaTime: number, camera: THREE.Camera, isCameraSubmerged: boolean = false): void {
     this.timeManager.update(deltaTime);
     this.skyColorController.updateColors(); 
     this.celestialBodyController.update(camera.position); 
@@ -91,9 +113,7 @@ export class AdvancedSky {
         ambientLight.color.copy(this.skyColorController.getAmbientLightColor());
         ambientLight.intensity = this.skyColorController.getAmbientLightIntensity();
     }
-    
-    const playerIsNotSubmerged = true; 
-    if (this.scene.fog instanceof THREE.Fog && playerIsNotSubmerged) {
+      if (this.scene.fog instanceof THREE.Fog && !isCameraSubmerged) {
         this.scene.fog.color.copy(this.skyColorController.getFogColor());
     }
   }

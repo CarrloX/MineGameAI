@@ -1,4 +1,3 @@
-
 import type * as THREE from 'three';
 import type { Player } from './Player';
 import type { World } from './World';
@@ -27,6 +26,8 @@ export interface CursorState {
   holding: boolean;
   holdTime: number;
   triggerHoldTime: number;
+  _lastDestroyTime?: number; // Para control de destrucción continua
+  buttonPressed?: number; // 0=izquierdo, 2=derecho
 }
 
 export interface LookingAtInfo {

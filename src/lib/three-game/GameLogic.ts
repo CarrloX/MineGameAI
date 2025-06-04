@@ -9,6 +9,9 @@ export class GameLogic {
   private setIsCameraSubmerged: React.Dispatch<React.SetStateAction<boolean>>;
   private isCameraSubmerged_internal: boolean = false;
 
+  public destroyBlockDelay: number = 0.2; // segundos entre destrucciones continuas
+  public initialHoldDelay: number = 0.35; // retardo inicial antes de destrucción continua
+
   constructor(
     gameRefs: GameRefs,
     setDebugInfo: (updateFn: (prevState: DebugInfoState) => DebugInfoState) => void,
@@ -72,8 +75,7 @@ export class GameLogic {
       console.warn("GameLogic.update: Critical refs missing (incl. sky), stopping loop.", refs);
       return;
     }
-
-    refs.sky.update(deltaTime, refs.camera);
+    refs.sky.update(deltaTime, refs.camera, this.isCameraSubmerged_internal);
 
     refs.player.updatePosition(deltaTime);
     refs.player.highlightBlock();
@@ -212,11 +214,20 @@ export class GameLogic {
       refs.camera.position.set(refs.player.x, refs.player.y + refs.player.height * 0.9, refs.player.z);
     }
 
+    // Interacción continua con bloques
     if (refs.cursor.holding) {
-      refs.cursor.holdTime++;
-      if (refs.cursor.holdTime === refs.cursor.triggerHoldTime) {
-        if (refs.player) refs.player.interactWithBlock(false); 
+      refs.cursor.holdTime = (refs.cursor.holdTime || 0) + deltaTime;
+      if (refs.cursor.holdTime >= this.initialHoldDelay) {
+        // Destruir o colocar bloque cada destroyBlockDelay segundos
+        if (!refs.cursor._lastDestroyTime || (refs.cursor.holdTime - refs.cursor._lastDestroyTime) >= this.destroyBlockDelay) {
+          const destroy = refs.cursor.buttonPressed === 0;
+          refs.player.interactWithBlock(destroy);
+          refs.cursor._lastDestroyTime = refs.cursor.holdTime;
+        }
       }
+    } else {
+      refs.cursor.holdTime = 0;
+      refs.cursor._lastDestroyTime = 0;
     }
 
     refs.rendererManager.render();

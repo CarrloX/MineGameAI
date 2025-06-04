@@ -15,6 +15,7 @@ export class InputController {
   private boundHandleTouchStart: (e: TouchEvent) => void;
   private boundHandleTouchMove: (e: TouchEvent) => void;
   private boundHandleTouchEnd: (e: TouchEvent) => void;
+  private boundHandleMouseUp: (e: MouseEvent) => void; // Agregado
 
 
   constructor(gameRefs: GameRefs, initialPlayer?: Player) { // Player is now optional
@@ -30,6 +31,7 @@ export class InputController {
     this.boundHandleTouchStart = this.handleTouchStart.bind(this);
     this.boundHandleTouchMove = this.handleTouchMove.bind(this);
     this.boundHandleTouchEnd = this.handleTouchEnd.bind(this);
+    this.boundHandleMouseUp = this.handleMouseUp.bind(this); // Agregado
   }
 
   public setPlayer(player: Player | null) { // Allow setting player to null
@@ -41,13 +43,16 @@ export class InputController {
 
     window.addEventListener("keydown", this.boundHandleKeyDown);
     window.addEventListener("keyup", this.boundHandleKeyUp);
-    document.addEventListener('pointerlockchange', this.boundHandlePointerLockChange, false);
-    this.gameRefs.canvasRef.addEventListener("mousedown", this.boundHandleMouseDown);
+    document.addEventListener('pointerlockchange', this.boundHandlePointerLockChange, false);    this.gameRefs.canvasRef.addEventListener("mousedown", this.boundHandleMouseDown);
+    this.gameRefs.canvasRef.addEventListener("mouseup", this.handleMouseUp.bind(this));
     this.gameRefs.canvasRef.addEventListener("click", this.boundHandleCanvasClick);
 
     this.gameRefs.canvasRef.addEventListener("touchstart", this.boundHandleTouchStart, { passive: false });
     this.gameRefs.canvasRef.addEventListener("touchmove", this.boundHandleTouchMove, { passive: false });
     this.gameRefs.canvasRef.addEventListener("touchend", this.boundHandleTouchEnd);
+
+    // Agregado
+    this.gameRefs.canvasRef.addEventListener("mouseup", this.boundHandleMouseUp);
   }
 
   public removeEventListeners(): void {
@@ -56,13 +61,16 @@ export class InputController {
     window.removeEventListener("keydown", this.boundHandleKeyDown);
     window.removeEventListener("keyup", this.boundHandleKeyUp);
     // mousemove is added/removed in handlePointerLockChange
-    document.removeEventListener('pointerlockchange', this.boundHandlePointerLockChange, false);
-    this.gameRefs.canvasRef.removeEventListener("mousedown", this.boundHandleMouseDown);
+    document.removeEventListener('pointerlockchange', this.boundHandlePointerLockChange, false);    this.gameRefs.canvasRef.removeEventListener("mousedown", this.boundHandleMouseDown);
+    this.gameRefs.canvasRef.removeEventListener("mouseup", this.handleMouseUp.bind(this));
     this.gameRefs.canvasRef.removeEventListener("click", this.boundHandleCanvasClick);
 
     this.gameRefs.canvasRef.removeEventListener("touchstart", this.boundHandleTouchStart);
     this.gameRefs.canvasRef.removeEventListener("touchmove", this.boundHandleTouchMove);
     this.gameRefs.canvasRef.removeEventListener("touchend", this.boundHandleTouchEnd);
+
+    // Agregado
+    this.gameRefs.canvasRef.removeEventListener("mouseup", this.boundHandleMouseUp);
   }
 
   private handleCanvasClick(): void {
@@ -174,9 +182,30 @@ export class InputController {
   }
 
   private handleMouseDown(e: MouseEvent): void {
-    if (this.gameRefs.cursor?.inWindow && this.player) {
-      if (e.button === 0) this.player.interactWithBlock(true); // Left click - destroy
-      if (e.button === 2) this.player.interactWithBlock(false); // Right click - place
+    const { cursor } = this.gameRefs;
+    if (cursor?.inWindow && this.player) {
+      cursor.buttonPressed = e.button;
+      if (e.button === 0) {
+        cursor.holding = true;
+        if (!cursor.holdTime || cursor.holdTime < 0) cursor.holdTime = 0;
+        // Click instantáneo: destruir
+        this.player.interactWithBlock(true);
+      }
+      if (e.button === 2) {
+        cursor.holding = true;
+        if (!cursor.holdTime || cursor.holdTime < 0) cursor.holdTime = 0;
+        // Click instantáneo: colocar
+        this.player.interactWithBlock(false);
+      }
+    }
+  }
+
+  private handleMouseUp(e: MouseEvent): void {
+    const { cursor } = this.gameRefs;
+    if (cursor?.inWindow) {
+      cursor.holding = false;
+      cursor.holdTime = 0;
+      cursor.buttonPressed = undefined;
     }
   }
 

@@ -15,8 +15,26 @@ export class WorldController {
    */
   update(frustum?: THREE.Frustum) {
     if (!this.refs.world || !this.refs.player) return 0;
+    // Actualiza los chunks activos (carga/descarga)
     this.refs.world.updateChunks(this.refs.player.mesh.position);
-    this.refs.world.processRemeshQueue(1);
+
+    // Llama al remallado asíncrono en todos los chunks que lo necesiten
+    this.refs.world.activeChunks.forEach(chunk => {
+      chunk.updateMeshIfNeededAsync();
+    });
+
+    // Limita el número de remallados asíncronos por frame
+    const MAX_REMESH_PER_FRAME = 2; // Puedes ajustar este valor según el rendimiento deseado
+    let remeshesThisFrame = 0;
+    for (const chunk of this.refs.world.activeChunks.values()) {
+      if (remeshesThisFrame >= MAX_REMESH_PER_FRAME) break;
+      if (chunk.needsMeshUpdate && !(chunk as any).isRemeshing) {
+        chunk.updateMeshIfNeededAsync();
+        remeshesThisFrame++;
+      }
+    }
+
+    // Frustum culling y visibilidad
     let visibleChunksCount = 0;
     if (frustum) {
       this.refs.world.activeChunks.forEach(chunk => {

@@ -18,6 +18,8 @@ export class Chunk {
 
   public boundingBox: THREE.Box3; // Propiedad para almacenar el bounding box del chunk
 
+  private isRemeshing: boolean = false; // Bandera para evitar remallados concurrentes
+
   constructor(world: World, worldX: number, worldZ: number, blockPrototypes: Map<string, Block>, initialBlockData?: string[][][], worldSeed?: number) {
     this.world = world;
     this.worldX = worldX;
@@ -350,12 +352,17 @@ export class Chunk {
         child.geometry.dispose();
         if (Array.isArray(child.material)) {
           child.material.forEach(m => {
-            m.map?.dispose();
+            if ('map' in m && m.map) {
+              m.map.dispose();
+            }
             m.dispose();
           });
         } else if (child.material) {
-          (child.material as THREE.Material).map?.dispose();
-          (child.material as THREE.Material).dispose();
+          const mat = child.material as THREE.Material;
+          if ('map' in mat && (mat as any).map) {
+            (mat as any).map.dispose();
+          }
+          mat.dispose();
         }
       }
     }
@@ -472,6 +479,49 @@ export class Chunk {
     this.needsMeshUpdate = false;
   }
   
+  /**
+   * Genera la malla del chunk usando un Web Worker.
+   * @param onMeshReady Callback que recibe los datos serializados para reconstruir la geometría
+   */
+  buildMeshAsync(onMeshReady: (meshData: any) => void) {
+    const worker = new Worker(new URL('./workers/meshWorker.js', import.meta.url));
+    worker.onmessage = (e) => {
+      const { meshData } = e.data;
+      onMeshReady(meshData);
+      worker.terminate();
+    };
+    worker.postMessage({
+      chunkData: this.blocks,
+      chunkX: this.worldX,
+      chunkZ: this.worldZ,
+      worldSeed: this.worldSeed,
+      // blockPrototypes: ... // Si necesitas pasar info de materiales, simplifícalo aquí
+    });
+  }
+
+  /**
+   * Reconstruye la geometría de Three.js a partir de los datos serializados del worker.
+   */
+  static meshDataToGeometry(meshData: any): THREE.BufferGeometry {
+    const geometry = new THREE.BufferGeometry();
+    const vertices = [];
+    const indices = [];
+    // Añadir vértices
+    for (const v of meshData.vertices) {
+      vertices.push(v[0], v[1], v[2]);
+    }
+    // Añadir índices para cada cara (asumimos cuadriláteros, los convertimos a dos triángulos)
+    for (const face of meshData.faces) {
+      // [a, b, c, d] => triángulos (a, b, c) y (a, c, d)
+      indices.push(face.indices[0], face.indices[1], face.indices[2]);
+      indices.push(face.indices[0], face.indices[2], face.indices[3]);
+    }
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
+  }
+
   dispose(): void {
     while (this.chunkRoot.children.length > 0) {
       const child = this.chunkRoot.children[0];
@@ -480,14 +530,86 @@ export class Chunk {
         child.geometry.dispose();
         if (Array.isArray(child.material)) {
           child.material.forEach(m => {
-            m.map?.dispose();
+            if ('map' in m && m.map) {
+              m.map.dispose();
+            }
             m.dispose();
           });
         } else if (child.material) {
-          (child.material as THREE.Material).map?.dispose();
-          (child.material as THREE.Material).dispose();
+          const mat = child.material as THREE.Material;
+          if ('map' in mat && (mat as any).map) {
+            (mat as any).map.dispose();
+          }
+          mat.dispose();
         }
       }
     }
+  }
+
+  /**
+   * Llama a remeshAsync solo si needsMeshUpdate es true y no hay remallado en curso.
+   * Devuelve una promesa que se resuelve cuando el remallado termina.
+   */
+  public async updateMeshIfNeededAsync(material?: THREE.Material): Promise<void> {
+    if (this.needsMeshUpdate && !this.isRemeshing) {
+      this.isRemeshing = true;
+      await new Promise<void>((resolve) => {
+        this.remeshAsync(material, () => {
+          this.isRemeshing = false;
+          resolve();
+        });
+      });
+    }
+  }
+
+  /**
+   * Genera y añade automáticamente el mesh del chunk usando el worker y la geometría reconstruida.
+   * El material puede ser personalizado según el tipo de bloque principal, aquí se usa uno por defecto.
+   * Ahora acepta un callback opcional para integración asíncrona.
+   */
+  remeshAsync(material?: THREE.Material, onComplete?: () => void) {
+    // Elimina los meshes previos
+    while (this.chunkRoot.children.length > 0) {
+      const child = this.chunkRoot.children[0];
+      this.chunkRoot.remove(child);
+      if (child instanceof THREE.Mesh) {
+        child.geometry.dispose();
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => {
+            if ('map' in m && m.map) {
+              m.map.dispose();
+            }
+            m.dispose();
+          });
+        } else if (child.material) {
+          const mat = child.material as THREE.Material;
+          if ('map' in mat && (mat as any).map) {
+            (mat as any).map.dispose();
+          }
+          mat.dispose();
+        }
+      }
+    }
+    // Llama al worker y añade el mesh cuando esté listo
+    this.buildMeshAsync((meshData) => {
+      const geometry = Chunk.meshDataToGeometry(meshData);
+      // Selección de material: usa el proporcionado o uno por defecto
+      const meshMaterial = material || new THREE.MeshStandardMaterial({ color: 0xaaaaaa, flatShading: true });
+      const mesh = new THREE.Mesh(geometry, meshMaterial);
+      mesh.name = `AsyncChunkMesh_${this.worldX}_${this.worldZ}`;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.chunkRoot.add(mesh);
+      // Ordena para transparencia si es necesario
+      this.chunkRoot.children.sort((a, b) => {
+        const matAIsTransparent = (a as THREE.Mesh).material && ((a as THREE.Mesh).material as THREE.Material).transparent;
+        const matBIsTransparent = (b as THREE.Mesh).material && ((b as THREE.Mesh).material as THREE.Material).transparent;
+        if (matAIsTransparent && !matBIsTransparent) return 1;
+        if (!matAIsTransparent && matBIsTransparent) return -1;
+        return 0;
+      });
+      this.needsMeshUpdate = false;
+      if (onComplete) onComplete();
+    });
   }
 }

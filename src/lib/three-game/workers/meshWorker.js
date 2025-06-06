@@ -3,12 +3,16 @@
 
 // Utilidad para generar una malla serializable a partir de los datos del chunk
 function generateMeshData(chunkData, blockPrototypes) {
-  const CHUNK_SIZE = chunkData.length;
+  const CHUNK_SIZE_X = chunkData.length;
+  const CHUNK_SIZE_Z = chunkData[0]?.[0]?.length || chunkData[0]?.length || 0;
+  // Calcular la altura máxima por columna (puede variar por x,z)
+  const getColumnHeight = (x, z) => (chunkData[x] && chunkData[x][0] && chunkData[x][0].length > 0) ? chunkData[x].length : 0;
   const vertices = [];
   const faces = [];
+  const vertexMap = new Map(); // key: "x,y,z", value: index
+
   // Caras de un cubo (6 caras, cada una con 4 vértices)
   const cubeFaces = [
-    // [offsetX, offsetY, offsetZ, normalX, normalY, normalZ]
     [ [0,0,0], [1,0,0], [1,1,0], [0,1,0], [0,0,-1] ], // back
     [ [0,0,1], [1,0,1], [1,1,1], [0,1,1], [0,0,1] ],  // front
     [ [0,0,0], [0,0,1], [0,1,1], [0,1,0], [-1,0,0] ], // left
@@ -16,23 +20,62 @@ function generateMeshData(chunkData, blockPrototypes) {
     [ [0,1,0], [1,1,0], [1,1,1], [0,1,1], [0,1,0] ],  // top
     [ [0,0,0], [1,0,0], [1,0,1], [0,0,1], [0,-1,0] ]  // bottom
   ];
-  for (let x = 0; x < CHUNK_SIZE; x++) {
-    for (let y = 0; y < chunkData[x].length; y++) {
-      for (let z = 0; z < CHUNK_SIZE; z++) {
+  // Direcciones para vecinos: [dx, dy, dz]
+  const neighborOffsets = [
+    [0, 0, -1], // back
+    [0, 0, 1],  // front
+    [-1, 0, 0], // left
+    [1, 0, 0],  // right
+    [0, 1, 0],  // top
+    [0, -1, 0], // bottom
+  ];
+
+  function getVertexIndex(x, y, z) {
+    const key = `${x},${y},${z}`;
+    if (vertexMap.has(key)) {
+      return vertexMap.get(key);
+    } else {
+      const idx = vertices.length;
+      vertices.push([x, y, z]);
+      vertexMap.set(key, idx);
+      return idx;
+    }
+  }
+
+  for (let x = 0; x < CHUNK_SIZE_X; x++) {
+    const maxY = chunkData[x]?.length || 0;
+    for (let y = 0; y < maxY; y++) {
+      for (let z = 0; z < CHUNK_SIZE_Z; z++) {
         const blockType = chunkData[x][y][z];
         if (blockType && blockType !== 'air') {
-          // Para cada cara, podrías comprobar si el bloque vecino es 'air' y solo agregar la cara si es visible
           for (let f = 0; f < cubeFaces.length; f++) {
-            // Aquí deberías comprobar el bloque vecino, pero para el ejemplo agregamos todas las caras
-            const face = cubeFaces[f];
-            const vIdx = vertices.length;
-            // Añadir los 4 vértices de la cara
-            for (let i = 0; i < 4; i++) {
-              const [ox, oy, oz] = face[i];
-              vertices.push([x + ox, y + oy, z + oz]);
+            // Culling: solo agrega la cara si el vecino es 'air' o está fuera del chunk
+            const [dx, dy, dz] = neighborOffsets[f];
+            const nx = x + dx;
+            const ny = y + dy;
+            const nz = z + dz;
+            let neighborType = null;
+            if (
+              nx >= 0 && nx < CHUNK_SIZE_X &&
+              ny >= 0 && ny < (chunkData[nx]?.length || 0) &&
+              nz >= 0 && nz < CHUNK_SIZE_Z
+            ) {
+              neighborType = chunkData[nx][ny][nz];
             }
-            // Añadir la cara (índices de los 4 vértices y normal)
-            faces.push({ indices: [vIdx, vIdx+1, vIdx+2, vIdx+3], normal: face[4] });
+            if (!neighborType || neighborType === 'air') {
+              const face = cubeFaces[f];
+              // Comprimir vértices: usar getVertexIndex para cada uno
+              const idx0 = getVertexIndex(x + face[0][0], y + face[0][1], z + face[0][2]);
+              const idx1 = getVertexIndex(x + face[1][0], y + face[1][1], z + face[1][2]);
+              const idx2 = getVertexIndex(x + face[2][0], y + face[2][1], z + face[2][2]);
+              const idx3 = getVertexIndex(x + face[3][0], y + face[3][1], z + face[3][2]);
+              faces.push({ 
+                indices: [idx0, idx1, idx2, idx3], 
+                normal: face[4],
+                blockType: blockType,
+                faceIndex: f // 0=back, 1=front, 2=left, 3=right, 4=top, 5=bottom
+              });
+            }
           }
         }
       }

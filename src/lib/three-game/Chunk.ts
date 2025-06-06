@@ -484,6 +484,7 @@ export class Chunk {
    * @param onMeshReady Callback que recibe los datos serializados para reconstruir la geometría
    */
   buildMeshAsync(onMeshReady: (meshData: any) => void) {
+    // Para Next.js/Turbopack: usar import.meta.url para el worker
     const worker = new Worker(new URL('./workers/meshWorker.js', import.meta.url));
     worker.onmessage = (e) => {
       const { meshData } = e.data;
@@ -501,25 +502,92 @@ export class Chunk {
 
   /**
    * Reconstruye la geometría de Three.js a partir de los datos serializados del worker.
+   * Ahora también devuelve un array de materiales y grupos para soportar materiales/texturas avanzadas por cara.
    */
-  static meshDataToGeometry(meshData: any): THREE.BufferGeometry {
+  static meshDataToGeometry(meshData: any, blockPrototypes?: Map<string, Block>): { geometry: THREE.BufferGeometry, materials: THREE.Material[], groups: { start: number, count: number, materialIndex: number }[] } {
     const geometry = new THREE.BufferGeometry();
-    const vertices = [];
-    const indices = [];
-    // Añadir vértices
-    for (const v of meshData.vertices) {
-      vertices.push(v[0], v[1], v[2]);
+    let vertices: number[] | Float32Array = [];
+    let indices: number[] | Int32Array = [];
+    const faceMaterialMap = new Map<string, number>();
+    const materials: THREE.Material[] = [];
+    const groups: { start: number, count: number, materialIndex: number }[] = [];
+    const colors: number[] = [];
+    const hasLight = meshData.faces.length > 0 && 'light' in meshData.faces[0];
+
+    // Usar buffers transferidos si existen
+    if (meshData.vertices instanceof Float32Array) {
+      vertices = meshData.vertices;
+    } else {
+      for (const v of meshData.vertices) vertices.push(v[0], v[1], v[2]);
     }
-    // Añadir índices para cada cara (asumimos cuadriláteros, los convertimos a dos triángulos)
+    if (meshData.indices instanceof Int32Array) {
+      indices = meshData.indices;
+    } else if (meshData.faces && meshData.faces.length > 0 && meshData.faces[0].indices) {
+      for (const face of meshData.faces) {
+        indices.push(face.indices[0], face.indices[1], face.indices[2]);
+        indices.push(face.indices[0], face.indices[2], face.indices[3]);
+      }
+    }
+    // Reconstruir grupos y materiales
+    let faceIdx = 0;
     for (const face of meshData.faces) {
-      // [a, b, c, d] => triángulos (a, b, c) y (a, c, d)
-      indices.push(face.indices[0], face.indices[1], face.indices[2]);
-      indices.push(face.indices[0], face.indices[2], face.indices[3]);
+      let matKey = 'default';
+      if (blockPrototypes && face.blockType && blockPrototypes.has(face.blockType)) {
+        const proto = blockPrototypes.get(face.blockType)!;
+        if (proto.multiTexture && Array.isArray(proto.mesh.material)) {
+          matKey = face.blockType + '_' + face.faceIndex;
+        } else {
+          matKey = face.blockType;
+        }
+      } else if (face.blockType) {
+        matKey = face.blockType;
+      }
+      if (!faceMaterialMap.has(matKey)) {
+        let mat: THREE.Material;
+        if (blockPrototypes && face.blockType && blockPrototypes.has(face.blockType)) {
+          const proto = blockPrototypes.get(face.blockType)!;
+          if (proto.multiTexture && Array.isArray(proto.mesh.material)) {
+            mat = proto.mesh.material[face.faceIndex] || proto.mesh.material[0];
+          } else {
+            mat = Array.isArray(proto.mesh.material) ? proto.mesh.material[0] : proto.mesh.material;
+          }
+        } else {
+          mat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, flatShading: true });
+        }
+        if (hasLight && 'vertexColors' in mat) {
+          (mat as any).vertexColors = true;
+        }
+        faceMaterialMap.set(matKey, materials.length);
+        materials.push(mat);
+      }
+      const materialIndex = faceMaterialMap.get(matKey)!;
+      groups.push({ start: faceIdx * 6, count: 6, materialIndex });
+      if (hasLight && face.light !== undefined && meshData.indices) {
+        // Asignar color por vértice (mismo valor para los 4 vértices de la cara)
+        // Recuperar los índices de la cara (ya no están en face.indices, así que los calculamos)
+        const base = faceIdx * 4;
+        for (let i = 0; i < 4; i++) {
+          colors[(meshData.indices[base + i] ?? 0) * 3 + 0] = face.light;
+          colors[(meshData.indices[base + i] ?? 0) * 3 + 1] = face.light;
+          colors[(meshData.indices[base + i] ?? 0) * 3 + 2] = face.light;
+        }
+      }
+      faceIdx++;
     }
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.setIndex(indices);
+    if (indices instanceof Int32Array || indices instanceof Uint16Array || indices instanceof Uint32Array) {
+      geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+    } else {
+      geometry.setIndex(indices);
+    }
+    for (const group of groups) {
+      geometry.addGroup(group.start, group.count, group.materialIndex);
+    }
+    if (hasLight && colors.length > 0) {
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    }
     geometry.computeVertexNormals();
-    return geometry;
+    return { geometry, materials, groups };
   }
 
   dispose(): void {
@@ -592,10 +660,9 @@ export class Chunk {
     }
     // Llama al worker y añade el mesh cuando esté listo
     this.buildMeshAsync((meshData) => {
-      const geometry = Chunk.meshDataToGeometry(meshData);
-      // Selección de material: usa el proporcionado o uno por defecto
-      const meshMaterial = material || new THREE.MeshStandardMaterial({ color: 0xaaaaaa, flatShading: true });
-      const mesh = new THREE.Mesh(geometry, meshMaterial);
+      // Usar materiales avanzados por cara si hay blockPrototypes
+      const { geometry, materials } = Chunk.meshDataToGeometry(meshData, this.blockPrototypes);
+      const mesh = new THREE.Mesh(geometry, materials.length > 0 ? materials : (material || new THREE.MeshStandardMaterial({ color: 0xaaaaaa, flatShading: true })));
       mesh.name = `AsyncChunkMesh_${this.worldX}_${this.worldZ}`;
       mesh.castShadow = true;
       mesh.receiveShadow = true;

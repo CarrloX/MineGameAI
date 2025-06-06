@@ -81,7 +81,17 @@ function generateMeshData(chunkData, blockPrototypes) {
       }
     }
   }
-  return { vertices, faces };
+  // Convertir a buffers planos para transferencia eficiente
+  const flatVertices = new Float32Array(vertices.flat());
+  // Cada cara es un quad (4 índices), pero para Three.js se necesitan dos triángulos (6 índices por cara)
+  const flatIndices = new Int32Array(faces.length * 6);
+  for (let i = 0; i < faces.length; i++) {
+    const idx = faces[i].indices;
+    // Dos triángulos: 0-1-2 y 0-2-3
+    flatIndices.set([idx[0], idx[1], idx[2], idx[0], idx[2], idx[3]], i * 6);
+  }
+  // Si necesitas transferir info extra por cara, puedes hacerlo aquí (ej: materiales, luz)
+  return { vertices: flatVertices, indices: flatIndices, faces };
 }
 
 self.onmessage = function(e) {
@@ -93,5 +103,5 @@ self.onmessage = function(e) {
     chunkZ,
     meshData,
     status: 'done'
-  });
+  }, [meshData.vertices.buffer, meshData.indices.buffer]); // Transferencia eficiente
 };

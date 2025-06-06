@@ -239,8 +239,8 @@ export class Player {
         const blockToPlaceNameKey = "stoneBlock"; // Example: always place stone
 
         if(blockToPlaceNameKey && blockToPlaceNameKey !== 'air') {
-          this.worldService.setBlock(placeX, placeY, placeZ, blockToPlaceNameKey);
-          if (this.audioManager) this.audioManager.playSound('blockPlace');
+          const placed = this.worldService.setBlock(placeX, placeY, placeZ, blockToPlaceNameKey);
+          if (placed && this.audioManager) this.audioManager.playSound('blockPlace');
         } else {
           console.warn("Attempted to place an invalid block type:", blockToPlaceNameKey);
         }

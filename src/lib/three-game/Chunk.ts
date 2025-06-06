@@ -3,6 +3,9 @@ import type { World } from './World';
 import type { Block } from './Block';
 import { CHUNK_SIZE } from './utils';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+// Instancia global del pool para todos los chunks
+import { MeshWorkerPool } from './workers/MeshWorkerPool';
+const meshWorkerPoolSingleton: { pool: MeshWorkerPool | null } = { pool: null };
 
 export class Chunk {
   public worldX: number;
@@ -74,24 +77,79 @@ export class Chunk {
     return this.blocks[localX][localY][localZ];
   }
 
-  setBlock(localX: number, localY: number, localZ: number, blockType: string): void {
+  setBlock(localX: number, localY: number, localZ: number, blockType: string): boolean {
     if (localX < 0 || localX >= CHUNK_SIZE ||
         localY < 0 || localY >= this.world.layers ||
         localZ < 0 || localZ >= CHUNK_SIZE) {
       console.warn(`Attempted to set block out of chunk bounds: ${localX},${localY},${localZ} in chunk ${this.worldX},${this.worldZ}`);
-      return;
+      return false;
     }
-    if (this.blocks[localX][localY][localZ] !== blockType) {
+    const currentBlock = this.blocks[localX][localY][localZ];
+    // Si el bloque actual es aire, revisa si debajo hay agua superficial
+    if (currentBlock === 'air') {
+      if (blockType === 'air') return false;
+      if (localY > 0) {
+        const below = this.blocks[localX][localY - 1][localZ];
+        const below2 = localY > 1 ? this.blocks[localX][localY - 2][localZ] : null;
+        if (below === 'waterBlock') {
+          if (below2 !== 'waterBlock') {
+            // Agua superficial: reemplazar el agua
+            return this.setBlock(localX, localY - 1, localZ, blockType);
+          } else {
+            // Agua profunda: no permitir
+            console.warn('No se puede colocar un bloque sólido sobre agua profunda.');
+            return false;
+          }
+        }
+      }
+      // No hay agua debajo, colocar en el aire
       this.blocks[localX][localY][localZ] = blockType;
       this.needsMeshUpdate = true;
       this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
       this.world.queueChunkRemesh(this.worldX, this.worldZ);
-
       if (localX === 0) this.world.queueChunkRemesh(this.worldX - 1, this.worldZ);
       if (localX === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX + 1, this.worldZ);
       if (localZ === 0) this.world.queueChunkRemesh(this.worldX, this.worldZ - 1);
       if (localZ === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX, this.worldZ + 1);
+      return true;
     }
+    // Si el bloque actual es agua, aplicar la lógica de reemplazo de agua superficial/profunda
+    if (currentBlock === 'waterBlock' && blockType !== 'air' && blockType !== 'waterBlock' && localY > 0) {
+      const below = this.blocks[localX][localY - 1][localZ];
+      const below2 = localY > 1 ? this.blocks[localX][localY - 2][localZ] : null;
+      if (below === 'waterBlock' && below2 !== 'waterBlock') {
+        // Reemplazar el agua superficial
+        return this.setBlock(localX, localY - 1, localZ, blockType);
+      }
+      if (below === 'waterBlock' && below2 === 'waterBlock') {
+        console.warn('No se puede colocar un bloque sólido sobre agua profunda.');
+        return false;
+      }
+      // Si solo hay una capa de agua (agua superficial), reemplazar aquí
+      this.blocks[localX][localY][localZ] = blockType;
+      this.needsMeshUpdate = true;
+      this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
+      this.world.queueChunkRemesh(this.worldX, this.worldZ);
+      if (localX === 0) this.world.queueChunkRemesh(this.worldX - 1, this.worldZ);
+      if (localX === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX + 1, this.worldZ);
+      if (localZ === 0) this.world.queueChunkRemesh(this.worldX, this.worldZ - 1);
+      if (localZ === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX, this.worldZ + 1);
+      return true;
+    }
+    // Si el bloque actual ya es del tipo solicitado, no hacer nada
+    if (currentBlock === blockType) {
+      return false;
+    }
+    // Para cualquier otro caso (bloque sólido, etc.)
+    this.blocks[localX][localY][localZ] = blockType;
+    this.needsMeshUpdate = true;
+    this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
+    this.world.queueChunkRemesh(this.worldX, this.worldZ);
+    if (localX === 0) this.world.queueChunkRemesh(this.worldX - 1, this.worldZ);
+    if (localX === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX + 1, this.worldZ);
+    if (localZ === 0) this.world.queueChunkRemesh(this.worldX, this.worldZ - 1);
+    if (localZ === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX, this.worldZ + 1);
+    return true;
   }
 
   private lerp(a: number, b: number, t: number): number {
@@ -484,19 +542,17 @@ export class Chunk {
    * @param onMeshReady Callback que recibe los datos serializados para reconstruir la geometría
    */
   buildMeshAsync(onMeshReady: (meshData: any) => void) {
-    // Para Next.js/Turbopack: usar import.meta.url para el worker
-    const worker = new Worker(new URL('./workers/meshWorker.js', import.meta.url));
-    worker.onmessage = (e) => {
-      const { meshData } = e.data;
-      onMeshReady(meshData);
-      worker.terminate();
-    };
-    worker.postMessage({
+    // Usar pool de workers en vez de crear uno nuevo cada vez
+    if (!meshWorkerPoolSingleton.pool) {
+      meshWorkerPoolSingleton.pool = new MeshWorkerPool();
+    }
+    meshWorkerPoolSingleton.pool.enqueueTask({
       chunkData: this.blocks,
       chunkX: this.worldX,
       chunkZ: this.worldZ,
       worldSeed: this.worldSeed,
       // blockPrototypes: ... // Si necesitas pasar info de materiales, simplifícalo aquí
+      onComplete: onMeshReady
     });
   }
 
@@ -506,28 +562,22 @@ export class Chunk {
    */
   static meshDataToGeometry(meshData: any, blockPrototypes?: Map<string, Block>): { geometry: THREE.BufferGeometry, materials: THREE.Material[], groups: { start: number, count: number, materialIndex: number }[] } {
     const geometry = new THREE.BufferGeometry();
-    let vertices: number[] | Float32Array = [];
-    let indices: number[] | Int32Array = [];
+    let vertices: Float32Array = meshData.vertices;
+    let indices: Int32Array = meshData.indices;
     const faceMaterialMap = new Map<string, number>();
     const materials: THREE.Material[] = [];
     const groups: { start: number, count: number, materialIndex: number }[] = [];
     const colors: number[] = [];
-    const hasLight = meshData.faces.length > 0 && 'light' in meshData.faces[0];
+    const hasColor = meshData.faces.length > 0 && 'color' in meshData.faces[0];
+    const materialIds: number[] = [];
+    const animationIds: number[] = [];
+    const hasMaterial = meshData.faces.length > 0 && 'materialId' in meshData.faces[0];
+    const hasAnimation = meshData.faces.length > 0 && 'animationId' in meshData.faces[0];
 
-    // Usar buffers transferidos si existen
-    if (meshData.vertices instanceof Float32Array) {
-      vertices = meshData.vertices;
-    } else {
-      for (const v of meshData.vertices) vertices.push(v[0], v[1], v[2]);
-    }
-    if (meshData.indices instanceof Int32Array) {
-      indices = meshData.indices;
-    } else if (meshData.faces && meshData.faces.length > 0 && meshData.faces[0].indices) {
-      for (const face of meshData.faces) {
-        indices.push(face.indices[0], face.indices[1], face.indices[2]);
-        indices.push(face.indices[0], face.indices[2], face.indices[3]);
-      }
-    }
+    // Usar buffers transferidos (ya son Float32Array/Int32Array)
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+
     // Reconstruir grupos y materiales
     let faceIdx = 0;
     for (const face of meshData.faces) {
@@ -544,7 +594,52 @@ export class Chunk {
       }
       if (!faceMaterialMap.has(matKey)) {
         let mat: THREE.Material;
-        if (blockPrototypes && face.blockType && blockPrototypes.has(face.blockType)) {
+        // FORZAR MATERIAL DE AGUA ANIMADO PARA 'waterBlock'
+        if (face.blockType === 'waterBlock') {
+          mat = new THREE.MeshStandardMaterial({
+            color: 0x2196f3, // Azul fuerte
+            transparent: true,
+            opacity: 0.65,
+            roughness: 0.2,
+            metalness: 0.1,
+            depthWrite: false,
+            flatShading: false
+          });
+          mat.onBeforeCompile = (shader) => {
+            shader.uniforms.time = { value: 0 };
+            shader.vertexShader = `
+              attribute float animationId;
+              varying float vAnimationId;
+              varying vec2 vUvAnim;
+              uniform float time;
+              // ...existing code...
+            ` + shader.vertexShader.replace(
+              'void main() {',
+              `void main() {
+                vAnimationId = animationId;
+                vUvAnim = uv + vec2(
+                  sin(time * 1.5 + animationId * 2.0) * 0.08,
+                  cos(time * 2.0 + animationId * 3.0) * 0.08
+                );`
+            );
+            shader.fragmentShader = `
+              varying float vAnimationId;
+              varying vec2 vUvAnim;
+              uniform float time;
+              // ...existing code...
+            ` + shader.fragmentShader.replace(
+              'vec4 diffuseColor = vec4( diffuse, opacity );',
+              `vec4 diffuseColor = vec4( diffuse, opacity );
+                // Olas animadas muy visibles
+                float wave = 0.5 + 0.5 * sin(time * 2.5 + vAnimationId * 2.0 + vUvAnim.x * 16.0 + vUvAnim.y * 16.0);
+                diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.1,0.5,1.0), 0.35 * wave);
+                diffuseColor.a *= 0.85 + 0.15 * wave;
+              `
+            );
+            mat.userData._waterAnim = true;
+            mat.userData._shader = shader;
+          };
+        } else if (blockPrototypes && face.blockType && blockPrototypes.has(face.blockType)) {
           const proto = blockPrototypes.get(face.blockType)!;
           if (proto.multiTexture && Array.isArray(proto.mesh.material)) {
             mat = proto.mesh.material[face.faceIndex] || proto.mesh.material[0];
@@ -554,7 +649,7 @@ export class Chunk {
         } else {
           mat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, flatShading: true });
         }
-        if (hasLight && 'vertexColors' in mat) {
+        if (hasColor && 'vertexColors' in mat) {
           (mat as any).vertexColors = true;
         }
         faceMaterialMap.set(matKey, materials.length);
@@ -562,29 +657,35 @@ export class Chunk {
       }
       const materialIndex = faceMaterialMap.get(matKey)!;
       groups.push({ start: faceIdx * 6, count: 6, materialIndex });
-      if (hasLight && face.light !== undefined && meshData.indices) {
-        // Asignar color por vértice (mismo valor para los 4 vértices de la cara)
-        // Recuperar los índices de la cara (ya no están en face.indices, así que los calculamos)
+      if (hasColor && face.color && meshData.indices) {
+        // Asignar color RGB por vértice (mismo valor para los 4 vértices de la cara)
         const base = faceIdx * 4;
         for (let i = 0; i < 4; i++) {
-          colors[(meshData.indices[base + i] ?? 0) * 3 + 0] = face.light;
-          colors[(meshData.indices[base + i] ?? 0) * 3 + 1] = face.light;
-          colors[(meshData.indices[base + i] ?? 0) * 3 + 2] = face.light;
+          colors[(indices[base + i] ?? 0) * 3 + 0] = face.color[0];
+          colors[(indices[base + i] ?? 0) * 3 + 1] = face.color[1];
+          colors[(indices[base + i] ?? 0) * 3 + 2] = face.color[2];
         }
       }
+      if (hasMaterial) {
+        materialIds[faceIdx] = face.materialId ?? 0;
+      }
+      if (hasAnimation) {
+        animationIds[faceIdx] = face.animationId ?? 0;
+      }
       faceIdx++;
-    }
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    if (indices instanceof Int32Array || indices instanceof Uint16Array || indices instanceof Uint32Array) {
-      geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-    } else {
-      geometry.setIndex(indices);
     }
     for (const group of groups) {
       geometry.addGroup(group.start, group.count, group.materialIndex);
     }
-    if (hasLight && colors.length > 0) {
+    if (hasColor && colors.length > 0) {
       geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    }
+    // Adjuntar buffers de material y animación como atributos de la geometría (por grupo/cara)
+    if (hasMaterial && materialIds.length > 0) {
+      geometry.setAttribute('materialId', new THREE.Uint8BufferAttribute(materialIds, 1));
+    }
+    if (hasAnimation && animationIds.length > 0) {
+      geometry.setAttribute('animationId', new THREE.Uint8BufferAttribute(animationIds, 1));
     }
     geometry.computeVertexNormals();
     return { geometry, materials, groups };
@@ -680,3 +781,19 @@ export class Chunk {
     });
   }
 }
+
+// Si hay materiales de agua, animar el shader en el render loop
+// Esto requiere que el usuario actualice el tiempo en el render loop principal
+// Ejemplo: en el render loop, recorrer todos los materiales y actualizar el uniform time
+// Puedes poner este ejemplo en tu BlockifyGame.tsx o donde hagas el render:
+//
+// function animateWaterMaterials(materials, time) {
+//   for (const mat of materials) {
+//     if (mat.userData && mat.userData._waterAnim && mat.userData._shader) {
+//       mat.userData._shader.uniforms.time.value = time;
+//     }
+//   }
+// }
+//
+// Y en tu loop principal:
+// animateWaterMaterials(chunk.materials, performance.now() * 0.001);

@@ -55,6 +55,10 @@ const BlockifyGame: React.FC = () => {
   const [isCameraSubmerged, setIsCameraSubmerged] = useState(false);
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
 
+  const [systemStats, setSystemStats] = useState({
+    memory: null as null | { usedMB: number; totalMB: number },
+  });
+
   // --- FPS Sliding Window ---
   const fpsWindowRef = useRef<number[]>([]);
   const [fps, setFps] = useState(0);
@@ -302,6 +306,56 @@ const BlockifyGame: React.FC = () => {
   }, [crosshairBgColor]);
 
 
+  // --- System Stats Polling ---
+  useEffect(() => {
+    // RAM (JS heap) via performance.memory (solo Chrome)
+    function pollMemory() {
+      if ((window.performance as any).memory) {
+        const mem = (window.performance as any).memory;
+        setSystemStats(prev => ({
+          ...prev,
+          memory: {
+            usedMB: Math.round(mem.usedJSHeapSize / 1048576),
+            totalMB: Math.round(mem.totalJSHeapSize / 1048576)
+          }
+        }));
+      }
+    }
+    pollMemory();
+    const interval = setInterval(pollMemory, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // --- Animación de agua tipo Minecraft: actualiza uniform 'time' en materiales de agua ---
+  useEffect(() => {
+    let animId: number | null = null;
+    function animateWater() {
+      const refs = gameRefs.current;
+      if (refs.world && refs.world.activeChunks) {
+        const now = performance.now() * 0.001;
+        refs.world.activeChunks.forEach(chunk => {
+          if (chunk && chunk.chunkRoot) {
+            chunk.chunkRoot.traverse(obj => {
+              if (obj instanceof THREE.Mesh) {
+                const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+                for (const mat of mats) {
+                  if (mat && mat.userData && mat.userData._waterAnim && mat.userData._shader) {
+                    mat.userData._shader.uniforms.time.value = now;
+                  }
+                }
+              }
+            });
+          }
+        });
+      }
+      animId = requestAnimationFrame(animateWater);
+    }
+    animateWater();
+    return () => { if (animId !== null) cancelAnimationFrame(animId); };
+  }, []);
+
+
+
   return (
     <div ref={mountRef} className="relative w-full h-screen overflow-hidden cursor-crosshair">
       {errorInfo && (
@@ -333,7 +387,9 @@ const BlockifyGame: React.FC = () => {
         <div>{debugInfo.isFlying}</div>
         <div>{debugInfo.isRunning}</div>
         <div>{debugInfo.isBoosting}</div>
-        <div>{debugInfo.lookDirection}</div> {/* Muestra la dirección de la mirada */}
+        <div>{debugInfo.lookDirection}</div>
+        {/* Estadísticas del sistema */}
+        <div>RAM: {systemStats.memory ? `${systemStats.memory.usedMB} / ${systemStats.memory.totalMB} MB` : 'N/A'}</div>
       </div>
     </div>
   );

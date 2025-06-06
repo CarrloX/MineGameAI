@@ -86,13 +86,42 @@ function generateMeshData(chunkData, blockPrototypes) {
                   }
                 }
               }
-              const light = ambient + sunIntensity * dot * sky;
+              // Iluminación avanzada: color RGB por vértice (efecto atardecer/cueva)
+              // Parámetros de color: puedes parametrizar según hora del día, aquí ejemplo simple
+              let sunColor = [1.0, 0.95, 0.8]; // Luz solar (amarillo cálido)
+              let ambientColor = [0.3, 0.4, 0.6]; // Luz ambiente (azul tenue)
+              // Puedes modificar sunColor dinámicamente según hora del día
+              let light = ambient + sunIntensity * dot * sky;
+              // Clamp
+              light = Math.min(1, Math.max(0, light));
+              // Color final = mezcla de luz solar y ambiente
+              let r = ambientColor[0] * ambient + sunColor[0] * sunIntensity * dot * sky;
+              let g = ambientColor[1] * ambient + sunColor[1] * sunIntensity * dot * sky;
+              let b = ambientColor[2] * ambient + sunColor[2] * sunIntensity * dot * sky;
+              // Clamp
+              r = Math.min(1, Math.max(0, r));
+              g = Math.min(1, Math.max(0, g));
+              b = Math.min(1, Math.max(0, b));
+              // Material/animación avanzado: asignar ID de material/animación por cara
+              let materialId = 0;
+              let animationId = 0;
+              if (blockPrototypes && blockPrototypes[blockType]) {
+                // Ejemplo: blockPrototypes[blockType].materialId, .animationId
+                materialId = blockPrototypes[blockType].materialId ?? 0;
+                animationId = blockPrototypes[blockType].animationId ?? 0;
+              } else {
+                // Por defecto: agua=1, lava=2, etc. Puedes personalizar
+                if (blockType === 'waterBlock') materialId = 1;
+                if (blockType === 'lavaBlock') materialId = 2;
+              }
               faces.push({ 
                 indices: [idx0, idx1, idx2, idx3], 
                 normal: face[4],
                 blockType: blockType,
                 faceIndex: f,
-                light: Math.min(1, Math.max(0, light))
+                color: [r, g, b],
+                materialId,
+                animationId
               });
             }
           }

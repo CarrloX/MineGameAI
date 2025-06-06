@@ -22,6 +22,8 @@ export class World {
 
   public worldSeed: number;
 
+  public debugMaterialMode: 'none' | 'light' | 'materialId' = 'none';
+
   constructor(gameRefs: GameRefs, worldSeed: number) {
     this.gameRefs = gameRefs;
     this.worldSeed = worldSeed;
@@ -201,14 +203,14 @@ export class World {
     return 'air';
   }
 
-  public setBlock(worldX: number, worldY: number, worldZ: number, blockType: string): void {
+  public setBlock(worldX: number, worldY: number, worldZ: number, blockType: string): boolean {
     const cX = Math.floor(worldX / CHUNK_SIZE);
     const cZ = Math.floor(worldZ / CHUNK_SIZE);
     const lY = Math.floor(worldY);
 
     if (lY < 0 || lY >= this.layers) {
         console.warn(`Attempted to set block out of Y bounds: ${worldX},${worldY},${worldZ}`);
-        return;
+        return false;
     }
 
     const key = `${cX},${cZ}`;
@@ -240,14 +242,15 @@ export class World {
           if (lX === CHUNK_SIZE - 1) this.queueChunkRemesh(cX + 1, cZ);
           if (lZ === 0) this.queueChunkRemesh(cX, cZ - 1);
           if (lZ === CHUNK_SIZE - 1) this.queueChunkRemesh(cX, cZ + 1);
+          return true;
       }
-      return;
+      return false;
     }
 
     // If chunk is active, just call its setBlock method
     const localX = ((Math.floor(worldX) % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const localZ = ((Math.floor(worldZ) % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    chunk.setBlock(localX, lY, localZ, blockType); // This will handle its own remesh and notify World
+    return chunk.setBlock(localX, lY, localZ, blockType);
   }
 
   public notifyChunkUpdate(chunkX: number, chunkZ: number, updatedBlockData: string[][][]): void {
@@ -273,9 +276,24 @@ export class World {
     }
   }
 
-  public processRemeshQueue(maxPerFrame: number = 1): void {
+  public processRemeshQueue(maxPerFrame: number = 1, playerPosition?: THREE.Vector3): void {
     let processedCount = 0;
-    const queueArray = Array.from(this.remeshQueue);
+    let queueArray = Array.from(this.remeshQueue);
+
+    // Si se pasa la posición del jugador, ordenar por distancia al centro del chunk
+    if (playerPosition) {
+      queueArray.sort((a, b) => {
+        const [ax, az] = a.split(',').map(Number);
+        const [bx, bz] = b.split(',').map(Number);
+        const acx = (ax + 0.5) * CHUNK_SIZE;
+        const acz = (az + 0.5) * CHUNK_SIZE;
+        const bcx = (bx + 0.5) * CHUNK_SIZE;
+        const bcz = (bz + 0.5) * CHUNK_SIZE;
+        const da = (acx - playerPosition.x) ** 2 + (acz - playerPosition.z) ** 2;
+        const db = (bcx - playerPosition.x) ** 2 + (bcz - playerPosition.z) ** 2;
+        return da - db;
+      });
+    }
 
     for (const key of queueArray) {
       if (processedCount >= maxPerFrame) break;
@@ -284,10 +302,6 @@ export class World {
       if (chunk && chunk.needsMeshUpdate) {
         chunk.buildMesh(); // buildMesh sets needsMeshUpdate to false
       }
-      // If the chunk is not active but was queued (e.g., by setBlock on inactive data),
-      // it will be meshed when it becomes active and loadChunk calls queueChunkRemesh.
-      // Or, if we modify processRemeshQueue to handle inactive chunks, it would load them here.
-      // For now, removing from queue if active and updated, or if it was never active.
       this.remeshQueue.delete(key);
       processedCount++;
     }
@@ -312,6 +326,15 @@ export class World {
     }
 
     return false; // No meshes in the chunk are visible within the frustum
+  }
+
+  public setDebugMaterialMode(mode: 'none' | 'light' | 'materialId') {
+    this.debugMaterialMode = mode;
+    // Forzar remallado de todos los chunks activos para aplicar el material debug
+    for (const [key, chunk] of this.activeChunks) {
+      chunk.needsMeshUpdate = true;
+      this.remeshQueue.add(key);
+    }
   }
 }
 

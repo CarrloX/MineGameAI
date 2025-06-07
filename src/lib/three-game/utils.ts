@@ -1,4 +1,3 @@
-
 import type { ControlConfig, CursorState } from './types';
 
 export const randomInt = (min: number, max: number): number => Math.round(Math.random() * (max - min)) + min;
@@ -26,11 +25,11 @@ export const CURSOR_STATE: CursorState = {
 };
 
 // Using specific hex colors to avoid any text/watermarks from placehold.co
-const GRASS_TOP_URL = "https://placehold.co/16x16/228B22/228B22.png"; // ForestGreen
-const GRASS_SIDE_URL = "https://placehold.co/16x16/90EE90/90EE90.png"; // LightGreen
-const DIRT_URL = "https://placehold.co/16x16/A0522D/A0522D.png"; // Sienna
-const STONE_URL = "https://placehold.co/16x16/808080/808080.png"; // Gray
-const SAND_URL = "https://placehold.co/16x16/F0E68C/F0E68C.png"; // Khaki
+const GRASS_TOP_URL = "/textures/blocks/grass_block_top.png";
+const GRASS_SIDE_URL = "/textures/blocks/grass_block_side.png";
+const DIRT_URL = "/textures/blocks/dirt.png"; // Sienna
+const STONE_URL = "/textures/blocks/stone.png"; // Gray
+const SAND_URL = "/textures/blocks/sand.png"; // Khaki
 const WOOD_LOG_SIDE_URL = "https://placehold.co/16x16/8B4513/8B4513.png"; // SaddleBrown
 const WOOD_LOG_END_URL = "https://placehold.co/16x16/DEB887/DEB887.png"; // BurlyWood
 const REDSTONE_BLOCK_URL = "https://placehold.co/16x16/FF0000/FF0000.png"; // Red

@@ -51,6 +51,7 @@ export class EventBus {
 export enum GameEvents {
     PLAYER_MOVE = 'player:move',
     PLAYER_JUMP = 'player:jump',
+    PLAYER_LAND = 'player:land',
     PLAYER_FLY_TOGGLE = 'player:fly_toggle',
     PLAYER_DEATH = 'player:death',
     PLAYER_RESPAWN = 'player:respawn',

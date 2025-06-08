@@ -1,4 +1,3 @@
-**Puedes testear el proyecto aqui mismo**
+# Puedes testear el proyecto aqui mismo
 
-
-https://mine-game-ai.vercel.app/
+<https://mine-game-ai.vercel.app/>

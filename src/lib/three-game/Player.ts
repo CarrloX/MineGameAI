@@ -113,7 +113,7 @@ export class Player {
   }
 
   highlightBlock(): void {
-    this.raycasterService.setFromCamera({ x: 0, y: 0 }, this.cameraService);
+    this.raycasterService.setFromCamera(new THREE.Vector2(0, 0), this.cameraService);
 
     const chunkMeshesToTest: THREE.Object3D[] = [];
     // Access activeChunks through the worldService
@@ -138,7 +138,8 @@ export class Player {
       const hitObject = intersection.object as THREE.Mesh;
 
       const hitPointWorld = intersection.point.clone();
-      const hitNormalLocal = intersection.face.normal.clone();
+      const hitNormalLocal = intersection.face?.normal.clone();
+      if (!hitNormalLocal) return; // Protección extra
 
       const hitNormalWorld = hitNormalLocal.clone().transformDirection(hitObject.matrixWorld).normalize();
 
@@ -158,7 +159,7 @@ export class Player {
         object: hitObject,
         point: intersection.point,
         worldPoint: hitPointWorld,
-        face: intersection.face,
+        face: intersection.face ?? null,
         blockWorldCoords: calculatedBlockWorldCoords,
         placeBlockWorldCoords: calculatedPlaceBlockWorldCoords,
         worldFaceNormal: hitNormalWorld,
@@ -169,18 +170,22 @@ export class Player {
         this.sceneService.add(this.blockFaceHL.mesh);
       }
 
-      this.blockFaceHL.mesh.position.set(
-        this.lookingAt.blockWorldCoords.x + 0.5,
-        this.lookingAt.blockWorldCoords.y + 0.5,
-        this.lookingAt.blockWorldCoords.z + 0.5
-      );
+      if (this.lookingAt && this.lookingAt.blockWorldCoords) {
+        this.blockFaceHL.mesh.position.set(
+          this.lookingAt.blockWorldCoords.x + 0.5,
+          this.lookingAt.blockWorldCoords.y + 0.5,
+          this.lookingAt.blockWorldCoords.z + 0.5
+        );
+      }
       this.blockFaceHL.mesh.rotation.set(0,0,0);
 
-      const currentHitNormalWorld = this.lookingAt.worldFaceNormal;
-      if (Math.abs(currentHitNormalWorld.x) > 0.5) this.blockFaceHL.dir = currentHitNormalWorld.x > 0 ? 'East (+X)' : 'West (-X)';
-      else if (Math.abs(currentHitNormalWorld.y) > 0.5) this.blockFaceHL.dir = currentHitNormalWorld.y > 0 ? 'Top (+Y)' : 'Bottom (-Y)';
-      else if (Math.abs(currentHitNormalWorld.z) > 0.5) this.blockFaceHL.dir = currentHitNormalWorld.z > 0 ? 'South (+Z)' : 'North (-Z)';
-      else this.blockFaceHL.dir = 'Unknown Face';
+      const currentHitNormalWorld = this.lookingAt?.worldFaceNormal;
+      if (currentHitNormalWorld) {
+        if (Math.abs(currentHitNormalWorld.x) > 0.5) this.blockFaceHL.dir = currentHitNormalWorld.x > 0 ? 'East (+X)' : 'West (-X)';
+        else if (Math.abs(currentHitNormalWorld.y) > 0.5) this.blockFaceHL.dir = currentHitNormalWorld.y > 0 ? 'Top (+Y)' : 'Bottom (-Y)';
+        else if (Math.abs(currentHitNormalWorld.z) > 0.5) this.blockFaceHL.dir = currentHitNormalWorld.z > 0 ? 'South (+Z)' : 'North (-Z)';
+        else this.blockFaceHL.dir = 'Unknown Face';
+      }
 
     } else {
       if (this.lookingAt !== null) {
@@ -238,12 +243,9 @@ export class Player {
       if (placeY >= 0 && placeY < this.worldService.layers) {
         const blockToPlaceNameKey = "stoneBlock"; // Example: always place stone
 
-        if(blockToPlaceNameKey && blockToPlaceNameKey !== 'air') {
-          const placed = this.worldService.setBlock(placeX, placeY, placeZ, blockToPlaceNameKey);
-          if (placed && this.audioManager) this.audioManager.playSound('blockPlace');
-        } else {
-          console.warn("Attempted to place an invalid block type:", blockToPlaceNameKey);
-        }
+        // No es necesario comparar con 'air' porque blockToPlaceNameKey es un string literal
+        const placed = this.worldService.setBlock(placeX, placeY, placeZ, blockToPlaceNameKey);
+        if (placed && this.audioManager) this.audioManager.playSound('blockPlace');
       }
     }
   }

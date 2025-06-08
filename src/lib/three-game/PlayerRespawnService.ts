@@ -4,10 +4,16 @@ import type { GameRefs } from './types';
 
 export class PlayerRespawnService {
   static respawnPlayer(refs: GameRefs) {
+    console.log('Iniciando respawn del jugador');
     if (!refs.world || !refs.player || !refs.camera || !refs.scene || !refs.raycaster) {
       console.error("PlayerRespawnService: Required refs not available for respawn.");
       return;
     }
+
+    // Verificar el estado del AudioManager antes del respawn
+    const audioManagerBeforeRespawn = refs.player.getAudioManager();
+    console.log('Estado del AudioManager antes del respawn:', 
+        audioManagerBeforeRespawn ? audioManagerBeforeRespawn.getStatus() : 'No disponible');
 
     const respawnX = 0.5;
     const respawnZ = 0.5;
@@ -39,6 +45,7 @@ export class PlayerRespawnService {
     const currentPitch = refs.player.getPitch();
     const currentYaw = refs.player.getYaw();
 
+    console.log('Creando nueva instancia de Player con AudioManager preservado');
     refs.player = new Player(
       refs.player.getName(),
       refs.world,
@@ -51,6 +58,11 @@ export class PlayerRespawnService {
       true,
       refs.player.getAudioManager()
     );
+
+    // Verificar el estado del AudioManager después del respawn
+    const audioManagerAfterRespawn = refs.player.getAudioManager();
+    console.log('Estado del AudioManager después del respawn:', 
+        audioManagerAfterRespawn ? audioManagerAfterRespawn.getStatus() : 'No disponible');
 
     if (refs.inputController) {
       refs.inputController.setPlayer(refs.player);

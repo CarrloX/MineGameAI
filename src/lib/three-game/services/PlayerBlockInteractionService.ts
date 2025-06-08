@@ -1,23 +1,43 @@
 import * as THREE from 'three';
-import type { PlayerWorldService, PlayerSceneService, PlayerRaycasterService, LookingAtInfo, PlayerCameraService } from '../types';
-import { CONTROL_CONFIG } from '../CONTROL_CONFIG';
+import type { 
+    IWorldService, 
+    ISceneService, 
+    IRaycasterService, 
+    ICameraService,
+    IBlockInteraction,
+    LookingAtInfo 
+} from '../types';
+import { EventBus, GameEvents, BlockInteractionEvent } from '../events/EventBus';
+import { GameConfig } from '../config/GameConfig';
+import { Container } from '../di/Container';
 
-export class PlayerBlockInteractionService {
-    private worldService: PlayerWorldService;
-    private sceneService: PlayerSceneService;
-    private raycasterService: PlayerRaycasterService;
-    private cameraService: PlayerCameraService;
-    private player: any; // Referencia al jugador
-    private blockFaceHL: { mesh: THREE.LineSegments; dir: string };
+export class PlayerBlockInteractionService implements IBlockInteraction {
+    private readonly worldService: IWorldService;
+    private readonly sceneService: ISceneService;
+    private readonly raycasterService: IRaycasterService;
+    private readonly cameraService: ICameraService;
+    private readonly eventBus: EventBus;
+    private readonly config: GameConfig;
+    private readonly player: any; // TODO: Crear interfaz IPlayer
+
+    private blockFaceHL: { mesh: THREE.LineSegments; dir: string } = {
+        mesh: new THREE.LineSegments(),
+        dir: ""
+    };
     private lookingAt: LookingAtInfo | null;
 
     constructor(
-        worldService: PlayerWorldService,
-        sceneService: PlayerSceneService,
-        raycasterService: PlayerRaycasterService,
-        cameraService: PlayerCameraService,
+        worldService: IWorldService,
+        sceneService: ISceneService,
+        raycasterService: IRaycasterService,
+        cameraService: ICameraService,
         player: any
     ) {
+        // Obtener instancias de servicios singleton
+        this.eventBus = EventBus.getInstance();
+        this.config = GameConfig.getInstance();
+
+        // Inyectar dependencias
         this.worldService = worldService;
         this.sceneService = sceneService;
         this.raycasterService = raycasterService;
@@ -25,16 +45,25 @@ export class PlayerBlockInteractionService {
         this.player = player;
         this.lookingAt = null;
 
-        console.log('Inicializando PlayerBlockInteractionService');
+        // Inicializar el resaltado de bloques
+        this.initializeBlockHighlight();
         
-        // Crear geometría y material del resaltado
-        const highlightBoxGeo = new THREE.BoxGeometry(1.002, 1.002, 1.002); // Ligeramente más grande que el bloque
+        // Suscribirse a eventos relevantes
+        this.setupEventListeners();
+    }
+
+    private initializeBlockHighlight(): void {
+        const playerConfig = this.config.get('player') as {
+            attackRange: number;
+            height: number;
+        };
+        const highlightBoxGeo = new THREE.BoxGeometry(1.002, 1.002, 1.002);
         const highlightEdgesGeo = new THREE.EdgesGeometry(highlightBoxGeo);
         const highlightMaterial = new THREE.LineBasicMaterial({ 
-            color: 0x000000,  // Color negro como en Minecraft
-            linewidth: 2,     // Línea más fina para mejor definición
-            depthTest: true,  // Permitir que se oculte detrás de otros objetos
-            transparent: true // Permitir transparencia
+            color: 0x000000,
+            linewidth: 2,
+            depthTest: true,
+            transparent: true
         });
 
         this.blockFaceHL = {
@@ -42,15 +71,24 @@ export class PlayerBlockInteractionService {
             dir: "",
         };
         this.blockFaceHL.mesh.name = "Block_Wireframe_Highlight_Mesh";
-        this.blockFaceHL.mesh.renderOrder = 999; // Asegurar que se renderice por encima de todo
+        this.blockFaceHL.mesh.renderOrder = 999;
         
-        // Añadir el mesh a la escena inmediatamente
-        console.log('Añadiendo mesh de resaltado a la escena');
         this.sceneService.add(this.blockFaceHL.mesh);
-        
-        // Verificar que se añadió correctamente
-        const addedMesh = this.sceneService.getObjectByName("Block_Wireframe_Highlight_Mesh");
-        console.log('Mesh de resaltado añadido:', addedMesh ? 'Sí' : 'No');
+    }
+
+    private setupEventListeners(): void {
+        // Escuchar eventos de cambio de estado del juego
+        this.eventBus.on(GameEvents.GAME_STATE_CHANGE, (event) => {
+            if (event.state === 'paused') {
+                this.clearHighlight();
+            }
+        });
+
+        // Escuchar eventos de actualización de chunks
+        this.eventBus.on(GameEvents.CHUNK_LOAD, () => {
+            // Forzar actualización del resaltado cuando se cargan nuevos chunks
+            this.highlightBlock();
+        });
     }
 
     public highlightBlock(): void {
@@ -59,22 +97,9 @@ export class PlayerBlockInteractionService {
             return;
         }
 
-        console.log('highlightBlock llamado');
-        
-        // Actualizar el raycaster con la posición actual de la cámara
-        const camera = this.cameraService;
-        const raycaster = this.raycasterService;
-        
-        // Usar el centro de la pantalla para el raycaster
         const center = new THREE.Vector2(0, 0);
-        console.log('Configurando raycaster desde cámara:', {
-            cameraPosition: camera.position,
-            cameraRotation: camera.rotation
-        });
-        
-        raycaster.setFromCamera(center, camera);
+        this.raycasterService.setFromCamera(center, this.cameraService);
 
-        // Obtener los chunks activos para el raycaster
         const chunkMeshesToTest: THREE.Object3D[] = [];
         this.worldService.activeChunks.forEach(chunk => {
             if (chunk && chunk.chunkRoot && chunk.chunkRoot.children) {
@@ -82,31 +107,133 @@ export class PlayerBlockInteractionService {
             }
         });
 
-        console.log('Chunks a testear:', chunkMeshesToTest.length);
-        
-        // Realizar la intersección
-        const intersects = raycaster.intersectObjects(chunkMeshesToTest, false);
-        console.log('Intersecciones encontradas:', intersects.length);
+        const intersects = this.raycasterService.intersectObjects(chunkMeshesToTest, false);
+        const playerConfig = this.config.get('player') as {
+            attackRange: number;
+            height: number;
+        };
 
-        // Buscar la primera intersección válida
         const firstValidIntersect = intersects.find(
             intersect => intersect.object instanceof THREE.Mesh &&
                         intersect.object.name.startsWith("MergedChunkMesh_") &&
                         intersect.distance > 0.1 &&
-                        intersect.distance < this.player.attackRange &&
+                        intersect.distance < playerConfig.attackRange &&
                         intersect.face
         );
 
         if (firstValidIntersect && firstValidIntersect.face) {
-            console.log('Intersección válida encontrada:', {
-                point: firstValidIntersect.point,
-                distance: firstValidIntersect.distance,
-                object: firstValidIntersect.object.name
-            });
             this.handleValidIntersection(firstValidIntersect);
+            
+            // Emitir evento de resaltado
+            this.eventBus.emit(GameEvents.BLOCK_HIGHLIGHT, {
+                position: firstValidIntersect.point,
+                blockType: this.getBlockTypeAt(firstValidIntersect.point),
+                playerPosition: {
+                    x: this.player.x,
+                    y: this.player.y,
+                    z: this.player.z
+                }
+            });
         } else {
-            console.log('No se encontró intersección válida');
             this.clearHighlight();
+        }
+    }
+
+    private getBlockTypeAt(point: THREE.Vector3): string {
+        const x = Math.floor(point.x);
+        const y = Math.floor(point.y);
+        const z = Math.floor(point.z);
+        return this.worldService.getBlock(x, y, z);
+    }
+
+    public interactWithBlock(destroy: boolean): void {
+        if (!this.lookingAt) return;
+
+        const { blockWorldCoords, placeBlockWorldCoords } = this.lookingAt;
+        const playerConfig = this.config.get('player');
+
+        if (destroy) {
+            if (this.canBreakBlock(blockWorldCoords)) {
+                const blockType = this.worldService.getBlock(
+                    blockWorldCoords.x,
+                    blockWorldCoords.y,
+                    blockWorldCoords.z
+                ) || 'air'; // Si es null, usar 'air' como valor por defecto
+                
+                this.worldService.setBlock(
+                    blockWorldCoords.x,
+                    blockWorldCoords.y,
+                    blockWorldCoords.z,
+                    'air'
+                );
+
+                // Emitir evento de destrucción
+                this.eventBus.emit(GameEvents.BLOCK_BREAK, {
+                    position: blockWorldCoords,
+                    blockType,
+                    playerPosition: {
+                        x: this.player.x,
+                        y: this.player.y,
+                        z: this.player.z
+                    }
+                });
+            }
+        } else {
+            if (this.canPlaceBlock(placeBlockWorldCoords)) {
+                // Usar stoneBlock como bloque por defecto
+                const blockType = 'stoneBlock';
+                
+                this.worldService.setBlock(
+                    placeBlockWorldCoords.x,
+                    placeBlockWorldCoords.y,
+                    placeBlockWorldCoords.z,
+                    blockType
+                );
+
+                // Emitir evento de colocación
+                this.eventBus.emit(GameEvents.BLOCK_PLACE, {
+                    position: placeBlockWorldCoords,
+                    blockType,
+                    playerPosition: {
+                        x: this.player.x,
+                        y: this.player.y,
+                        z: this.player.z
+                    }
+                });
+            }
+        }
+    }
+
+    private canBreakBlock(coords: THREE.Vector3): boolean {
+        const blockType = this.worldService.getBlock(coords.x, coords.y, coords.z);
+        return blockType !== 'air' && blockType !== 'waterBlock';
+    }
+
+    private canPlaceBlock(coords: THREE.Vector3): boolean {
+        const blockType = this.worldService.getBlock(coords.x, coords.y, coords.z);
+        return blockType === 'air' && !this.wouldPlaceBlockInsidePlayer(coords.x, coords.y, coords.z);
+    }
+
+    private wouldPlaceBlockInsidePlayer(placeX: number, placeY: number, placeZ: number): boolean {
+        const playerConfig = this.config.get('player') as {
+            height: number;
+        };
+        const playerHeadY = Math.floor(this.player.y + playerConfig.height - 0.1);
+        const playerFeetY = Math.floor(this.player.y + 0.1);
+
+        return (Math.floor(placeX) === Math.floor(this.player.x) && 
+                Math.floor(placeZ) === Math.floor(this.player.z)) &&
+               (Math.floor(placeY) === playerFeetY || 
+                Math.floor(placeY) === playerHeadY);
+    }
+
+    public clearHighlight(): void {
+        if (this.lookingAt !== null) {
+            if (this.sceneService.getObjectByName(this.blockFaceHL.mesh.name)) {
+                this.blockFaceHL.mesh.visible = false;
+            }
+            this.lookingAt = null;
+            this.blockFaceHL.dir = "";
         }
     }
 
@@ -148,15 +275,10 @@ export class PlayerBlockInteractionService {
     }
 
     private updateHighlightMesh(): void {
-        if (!this.blockFaceHL.mesh) {
-            console.error('Mesh de resaltado no existe');
-            return;
-        }
+        if (!this.blockFaceHL.mesh) return;
 
-        // Verificar si el mesh está en la escena
         const meshInScene = this.sceneService.getObjectByName(this.blockFaceHL.mesh.name);
         if (!meshInScene) {
-            console.log('Mesh de resaltado no está en la escena, añadiéndolo...');
             this.sceneService.add(this.blockFaceHL.mesh);
         }
 
@@ -166,104 +288,27 @@ export class PlayerBlockInteractionService {
                 y: this.lookingAt.blockWorldCoords.y + 0.5,
                 z: this.lookingAt.blockWorldCoords.z + 0.5
             };
-            console.log('Actualizando posición del resaltado:', pos);
             this.blockFaceHL.mesh.position.set(pos.x, pos.y, pos.z);
             this.blockFaceHL.mesh.visible = true;
-            
-            // Verificar la visibilidad del mesh
-            console.log('Estado del mesh de resaltado:', {
-                visible: this.blockFaceHL.mesh.visible,
-                position: this.blockFaceHL.mesh.position,
-                inScene: !!this.sceneService.getObjectByName(this.blockFaceHL.mesh.name)
-            });
         } else {
-            console.log('Ocultando mesh de resaltado');
             this.blockFaceHL.mesh.visible = false;
         }
         this.blockFaceHL.mesh.rotation.set(0, 0, 0);
     }
 
     private updateHighlightDirection(): void {
-        const currentHitNormalWorld = this.lookingAt?.worldFaceNormal;
-        if (currentHitNormalWorld) {
-            if (Math.abs(currentHitNormalWorld.x) > 0.5) {
-                this.blockFaceHL.dir = currentHitNormalWorld.x > 0 ? 'East (+X)' : 'West (-X)';
-            } else if (Math.abs(currentHitNormalWorld.y) > 0.5) {
-                this.blockFaceHL.dir = currentHitNormalWorld.y > 0 ? 'Top (+Y)' : 'Bottom (-Y)';
-            } else if (Math.abs(currentHitNormalWorld.z) > 0.5) {
-                this.blockFaceHL.dir = currentHitNormalWorld.z > 0 ? 'South (+Z)' : 'North (-Z)';
-            } else {
-                this.blockFaceHL.dir = 'Unknown Face';
-            }
-        }
-    }
+        if (!this.lookingAt?.worldFaceNormal) return;
 
-    private clearHighlight(): void {
-        if (this.lookingAt !== null) {
-            console.log('Limpiando resaltado');
-            if (this.sceneService.getObjectByName(this.blockFaceHL.mesh.name)) {
-                this.blockFaceHL.mesh.visible = false;
-            }
-            this.lookingAt = null;
-            this.blockFaceHL.dir = "";
-        }
-    }
-
-    public interactWithBlock(destroy: boolean): void {
-        if (!this.lookingAt) return;
-
-        if (destroy) {
-            this.destroyBlock();
+        const normal = this.lookingAt.worldFaceNormal;
+        if (Math.abs(normal.x) > 0.5) {
+            this.blockFaceHL.dir = normal.x > 0 ? 'East (+X)' : 'West (-X)';
+        } else if (Math.abs(normal.y) > 0.5) {
+            this.blockFaceHL.dir = normal.y > 0 ? 'Top (+Y)' : 'Bottom (-Y)';
+        } else if (Math.abs(normal.z) > 0.5) {
+            this.blockFaceHL.dir = normal.z > 0 ? 'South (+Z)' : 'North (-Z)';
         } else {
-            this.placeBlock();
+            this.blockFaceHL.dir = 'Unknown Face';
         }
-    }
-
-    private destroyBlock(): void {
-        if (!this.lookingAt) return;
-        const { x, y, z } = this.lookingAt.blockWorldCoords;
-        if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
-            const currentBlock = this.worldService.getBlock(x, y, z);
-            if (currentBlock !== 'waterBlock') {
-                this.worldService.setBlock(x, y, z, 'air');
-                if (this.player.audioManager) {
-                    this.player.audioManager.playSound('blockBreak');
-                }
-            }
-        } else {
-            console.warn("Invalid block coordinates for destruction:", this.lookingAt.blockWorldCoords);
-        }
-    }
-
-    private placeBlock(): void {
-        if (!this.lookingAt) return;
-        const { x: placeX, y: placeY, z: placeZ } = this.lookingAt.placeBlockWorldCoords;
-        if (!Number.isFinite(placeX) || !Number.isFinite(placeY) || !Number.isFinite(placeZ)) {
-            console.warn("Invalid block coordinates for placement:", this.lookingAt.placeBlockWorldCoords);
-            return;
-        }
-
-        if (this.wouldPlaceBlockInsidePlayer(placeX, placeY, placeZ)) {
-            return;
-        }
-
-        if (placeY >= 0 && placeY < this.worldService.layers) {
-            const blockToPlaceNameKey = "stoneBlock";
-            const placed = this.worldService.setBlock(placeX, placeY, placeZ, blockToPlaceNameKey);
-            if (placed && this.player.audioManager) {
-                this.player.audioManager.playSound('blockPlace');
-            }
-        }
-    }
-
-    private wouldPlaceBlockInsidePlayer(placeX: number, placeY: number, placeZ: number): boolean {
-        const playerHeadY = Math.floor(this.player.y + this.player.height - 0.1);
-        const playerFeetY = Math.floor(this.player.y + 0.1);
-
-        return (Math.floor(placeX) === Math.floor(this.player.x) && 
-                Math.floor(placeZ) === Math.floor(this.player.z)) &&
-               (Math.floor(placeY) === playerFeetY || 
-                Math.floor(placeY) === playerHeadY);
     }
 
     public getLookingAt(): LookingAtInfo | null {

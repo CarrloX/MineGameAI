@@ -3,6 +3,7 @@ import type { GameRefs, DebugInfoState, PlayerWorldService, PlayerCameraService,
 import { CHUNK_SIZE } from './utils';
 import { Player } from './Player';
 import { AudioManager, SOUND_PATHS } from './AudioManager';
+import { GameEvents } from './events/EventBus';
 
 export class GameLogic {
   private gameRefs: GameRefs;
@@ -22,19 +23,41 @@ export class GameLogic {
     setDebugInfo: (updateFn: (prevState: DebugInfoState) => DebugInfoState) => void,
     setIsCameraSubmerged: React.Dispatch<React.SetStateAction<boolean>>
   ) {
+    console.log('Inicializando GameLogic');
     this.gameRefs = gameRefs;
     this.setDebugInfo = setDebugInfo;
     this.setIsCameraSubmerged = setIsCameraSubmerged;
+    
+    console.log('Creando AudioManager');
     this.audioManager = new AudioManager();
+    
     // Cargar sonidos comunes
-    this.audioManager.loadSound('blockBreak', SOUND_PATHS.blockBreak);
-    this.audioManager.loadSound('blockPlace', SOUND_PATHS.blockPlace);
-    this.audioManager.loadSound('jump', SOUND_PATHS.jump);
-    this.audioManager.loadSound('land', SOUND_PATHS.land);
+    console.log('Cargando sonidos del juego');
+    Object.entries(SOUND_PATHS).forEach(([name, path]) => {
+        console.log(`Cargando sonido: ${name} desde ${path}`);
+        this.audioManager.loadSound(name, path);
+    });
+
+    // Verificar estado del AudioManager después de cargar los sonidos
+    const audioStatus = this.audioManager.getStatus();
+    console.log('Estado del AudioManager después de cargar sonidos:', audioStatus);
+
+    // Configurar listeners de eventos para sonidos
+    gameRefs.eventBus.on(GameEvents.BLOCK_BREAK, () => {
+        console.log('Reproduciendo sonido de romper bloque');
+        this.audioManager.playSound('blockBreak');
+    });
+
+    gameRefs.eventBus.on(GameEvents.BLOCK_PLACE, () => {
+        console.log('Reproduciendo sonido de colocar bloque');
+        this.audioManager.playSound('blockPlace');
+    });
+
     this.initializePlayer();
   }
 
   private initializePlayer(): void {
+    console.log('Inicializando jugador');
     const refs = this.gameRefs;
     if (!refs.world || !refs.camera || !refs.scene || !refs.raycaster) {
       console.error("GameLogic: Core refs not available for player initialization.");
@@ -66,6 +89,11 @@ export class GameLogic {
       false,
       this.audioManager
     );
+
+    // Verificar que el AudioManager se pasó correctamente al jugador
+    const playerAudioManager = refs.player.getAudioManager();
+    console.log('Estado del AudioManager en el jugador:', 
+        playerAudioManager ? playerAudioManager.getStatus() : 'No disponible');
 
     if (refs.inputController) {
       refs.inputController.setPlayer(refs.player);

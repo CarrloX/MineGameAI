@@ -11,6 +11,7 @@ import { CONTROL_CONFIG, CURSOR_STATE, CHUNK_SIZE } from '@/lib/three-game/utils
 import type { GameRefs, DebugInfoState, ErrorInfo } from '@/lib/three-game/types';
 import ErrorBoundaryDisplay from './ErrorBoundaryDisplay';
 import { Player } from '@/lib/three-game/Player'; // Player needed for GameLogic init
+import { EventBus } from '@/lib/three-game/events/EventBus';
 
 const BlockifyGame: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -34,6 +35,7 @@ const BlockifyGame: React.FC = () => {
     canvasRef: null,
     worldSeed: null,
     sky: null,
+    eventBus: EventBus.getInstance(),
   });
 
   const [debugInfo, setDebugInfo] = useState<DebugInfoState>({

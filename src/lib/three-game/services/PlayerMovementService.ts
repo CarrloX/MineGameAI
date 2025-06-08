@@ -197,7 +197,7 @@ export class PlayerMovementService {
             } else if (overlapX <= overlapY && overlapX <= overlapZ) {
                 if (!this.player.flying && this.player.isRunning && 
                     blockType !== 'air' && blockType !== 'waterBlock') {
-                    this.player.isRunning = false;
+                    this.player.stateService.toggleRunning();
                 }
                 if ((pMaxX - bMinX) < (bMaxX - pMinX)) {
                     correctedX = bMinX - this.player.width / 2 - 0.001;
@@ -207,7 +207,7 @@ export class PlayerMovementService {
             } else {
                 if (!this.player.flying && this.player.isRunning && 
                     blockType !== 'air' && blockType !== 'waterBlock') {
-                    this.player.isRunning = false;
+                    this.player.stateService.toggleRunning();
                 }
                 if ((pMaxZ - bMinZ) < (bMaxZ - pMinZ)) {
                     correctedZ = bMinZ - this.player.depth / 2 - 0.001;
@@ -253,7 +253,7 @@ export class PlayerMovementService {
         const blockAtFeet = this.worldService.getBlock(playerFeetBlockX, playerFeetBlockY, playerFeetBlockZ);
 
         if (!this.player.flying && this.player.isRunning && blockAtFeet === 'waterBlock') {
-            this.player.isRunning = false;
+            this.player.stateService.toggleRunning();
         }
 
         if (this.player.y < -this.worldService.voidHeight && !this.player.dead) {

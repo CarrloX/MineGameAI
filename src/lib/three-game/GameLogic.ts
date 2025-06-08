@@ -225,8 +225,9 @@ export class GameLogic {
       safeRespawnY = Math.min(safeRespawnY, refs.world.layers - Math.ceil(refs.player.height) - 1); 
 
 
-      const currentPitch = refs.camera!.rotation.x;
-      const currentYaw = refs.camera!.rotation.y;      refs.player = new Player(
+      const currentPitch = refs.player.getPitch();
+      const currentYaw = refs.player.getYaw();
+      refs.player = new Player(
         refs.player!['name'],
         refs.world as PlayerWorldService,
         refs.camera as PlayerCameraService,
@@ -241,8 +242,8 @@ export class GameLogic {
         refs.inputController.setPlayer(refs.player);
       }
 
-      refs.player.pitch = currentPitch;
-      refs.player.yaw = currentYaw;
+      refs.player.setPitch(currentPitch);
+      refs.player.setYaw(currentYaw);
       refs.player.lookAround(); 
 
       refs.camera.position.set(refs.player.x, refs.player.y + refs.player.height * 0.9, refs.player.z);

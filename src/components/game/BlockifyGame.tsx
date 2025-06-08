@@ -146,20 +146,28 @@ const BlockifyGame: React.FC = () => {
        refs.renderer.setClearColor(new THREE.Color(0xf1f1f1)); // Default sky color
     }
 
-
     if (refs.worldSeed === null) {
         console.error("Initialization Error: World Seed is null before World creation.");
         setErrorInfo({ title: "Initialization Error", message: "World Seed missing." });
         return;
     }
     refs.world = new World(refs, refs.worldSeed);
-     if (refs.renderer && refs.sky && refs.sky.getSkyColorProvider()) {
+    if (refs.renderer && refs.sky && refs.sky.getSkyColorProvider()) {
        refs.renderer.setClearColor(refs.sky.getSkyColorProvider().getSkyColor());
     }
 
     refs.inputController = new InputController(refs); 
     
-    refs.gameLogic = new GameLogic(refs, setDebugInfo, setIsCameraSubmerged);
+    // Crear una función estable para setDebugInfo y setIsCameraSubmerged
+    const stableSetDebugInfo = (updateFn: (prevState: DebugInfoState) => DebugInfoState) => {
+      setDebugInfo(updateFn);
+    };
+    
+    const stableSetIsCameraSubmerged = (value: boolean | ((prev: boolean) => boolean)) => {
+      setIsCameraSubmerged(value);
+    };
+    
+    refs.gameLogic = new GameLogic(refs, stableSetDebugInfo, stableSetIsCameraSubmerged);
     
     if (refs.inputController && refs.player) {
       refs.inputController.setPlayer(refs.player);
@@ -168,14 +176,13 @@ const BlockifyGame: React.FC = () => {
     }
     refs.inputController.setupEventListeners();
 
-
     console.log("Game initialized by BlockifyGame.");
     if (refs.gameLoopId === null) {
       console.log("Starting game loop from initGame");
       lastFrameTimeRef.current = performance.now(); // Initialize lastFrameTimeRef before first gameLoop call
       refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
-  }, [gameLoop, setDebugInfo, setIsCameraSubmerged]);
+  }, [gameLoop]); // Removemos setDebugInfo y setIsCameraSubmerged de las dependencias
 
 
   useEffect(() => {
@@ -261,7 +268,7 @@ const BlockifyGame: React.FC = () => {
       
       console.log("Cleanup complete for BlockifyGame.");
     };
-  }, [initGame]);
+  }, []); // Removemos initGame de las dependencias
 
 
   useEffect(() => {

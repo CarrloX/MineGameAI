@@ -17,6 +17,8 @@ export class InputController {
   private boundHandleTouchEnd: (e: TouchEvent) => void;
   private boundHandleMouseUp: (e: MouseEvent) => void; // Agregado
 
+  private lastSpacePressTime: number = 0;
+  private readonly FLY_TOGGLE_DELAY: number = 300; // ms
 
   constructor(gameRefs: GameRefs, initialPlayer?: Player) { // Player is now optional
     this.gameRefs = gameRefs;
@@ -97,9 +99,11 @@ export class InputController {
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
-    if (e.repeat) return; // IGNORA eventos repetidos por mantener la tecla
+    if (e.repeat) return;
     const { controlConfig } = this.gameRefs;
     if (!controlConfig || !this.player) return;
+
+    console.log('KeyDown:', e.code);
 
     switch (e.code) {
       case controlConfig.left: this.player.xdir = "left"; break;
@@ -107,77 +111,65 @@ export class InputController {
       case controlConfig.forwards: this.player.zdir = "forwards"; break;
       case controlConfig.backwards: this.player.zdir = "backwards"; break;
       case controlConfig.respawn: this.player.die(); break;
-      case controlConfig.jump:
-        const now = performance.now();
-        if (now - this.player.lastSpacePressTime < this.player.flyToggleDelay && this.player.lastSpacePressTime !== 0) {
-            this.player.flying = !this.player.flying;
-            this.player.isFlyingAscending = false;
-            this.player.isFlyingDescending = false;
-            this.player.lastSpacePressTime = 0;
-            if (this.player.flying) {
-                this.player.jumping = false;
-                this.player.jumpVelocity = 0;
-                this.player.onGround = false;
-                this.player.isRunning = false;
-                this.player.isBoosting = false;
-            } else {
-                this.player.isBoosting = false;
-                this.player.onGround = false; // Player might be falling
-            }
-        } else {
-            if (this.player.flying) {
-                this.player.isFlyingAscending = true;
-            } else {
-                this.player.jumping = true;
-            }
-            this.player.lastSpacePressTime = now;
-        }
+      case controlConfig.jump: 
+        console.log('Tecla de salto presionada');
+        this.player.toggleFlying();
         break;
-      case controlConfig.flyDown:
-        if (this.player.flying) {
-          this.player.isFlyingDescending = true;
-        }
+      case controlConfig.flyDown: 
+        console.log('Tecla de descenso presionada');
+        this.player.startFlyingDown(); 
         break;
-      case controlConfig.boost:
+      case controlConfig.boost: 
         if (this.player.flying) {
-            this.player.isBoosting = !this.player.isBoosting; // toggle en vuelo
+          this.player.toggleBoosting();
         } else {
-            this.player.isRunning = true; // mantener para correr
+          this.player.toggleRunning();
         }
         break;
     }
   }
 
   private handleKeyUp(e: KeyboardEvent): void {
+    if (!this.player) return;
     const { controlConfig } = this.gameRefs;
-    if (!controlConfig || !this.player) return;
+    if (!controlConfig) return;
+
+    console.log('KeyUp:', e.code);
 
     switch (e.code) {
-      case controlConfig.left: if (this.player.xdir === "left") this.player.xdir = ""; break;
-      case controlConfig.right: if (this.player.xdir === "right") this.player.xdir = ""; break;
-      case controlConfig.forwards: if (this.player.zdir === "forwards") this.player.zdir = ""; break;
-      case controlConfig.backwards: if (this.player.zdir === "backwards") this.player.zdir = ""; break;
+      case controlConfig.left: 
+        if (this.player.xdir === "left") this.player.xdir = ""; 
+        break;
+      case controlConfig.right: 
+        if (this.player.xdir === "right") this.player.xdir = ""; 
+        break;
+      case controlConfig.forwards: 
+        if (this.player.zdir === "forwards") this.player.zdir = ""; 
+        break;
+      case controlConfig.backwards: 
+        if (this.player.zdir === "backwards") this.player.zdir = ""; 
+        break;
       case controlConfig.jump:
-        this.player.jumping = false;
-        this.player.isFlyingAscending = false;
-        break;
-      case controlConfig.flyDown:
-        this.player.isFlyingDescending = false;
-        break;
-      case controlConfig.boost:
-        if (!this.player.flying) {
-          this.player.isRunning = false; // dejar de correr al soltar boost
+        console.log('Tecla de salto liberada');
+        if (this.player.flying) {
+          console.log('Deteniendo ascenso');
+          this.player.stopFlyingUp();
         }
+        break;
+      case controlConfig.flyDown: 
+        console.log('Tecla de descenso liberada');
+        this.player.stopFlyingDown(); 
         break;
     }
   }
 
   private handleMouseMove(e: MouseEvent): void {
     if (this.gameRefs.cursor?.inWindow && this.player) {
-        const sensitivity = 0.002;
-        this.player.yaw -= e.movementX * sensitivity;
-        this.player.pitch -= e.movementY * sensitivity;
-        this.player.lookAround(); // Player applies its pitch/yaw to its cameraService
+      const sensitivity = 0.002;
+      const newYaw = this.player.getYaw() - e.movementX * sensitivity;
+      const newPitch = this.player.getPitch() - e.movementY * sensitivity;
+      this.player.setYaw(newYaw);
+      this.player.setPitch(newPitch);
     }
   }
 

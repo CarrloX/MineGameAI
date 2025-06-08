@@ -4,6 +4,11 @@ import type { GameRefs } from './types';
 
 export class PlayerRespawnService {
   static respawnPlayer(refs: GameRefs) {
+    if (!refs.world || !refs.player || !refs.camera || !refs.scene || !refs.raycaster) {
+      console.error("PlayerRespawnService: Required refs not available for respawn.");
+      return;
+    }
+
     const respawnX = 0.5;
     const respawnZ = 0.5;
     refs.world.updateChunks(new THREE.Vector3(respawnX, refs.player.y, respawnZ));
@@ -30,16 +35,29 @@ export class PlayerRespawnService {
     if (attempts >= maxAttempts) {
       console.warn("Could not find a perfectly safe respawn Y after " + maxAttempts + " attempts. Player collision logic should resolve.");
     }
-    const currentPitch = refs.camera!.rotation.x;
-    const currentYaw = refs.camera!.rotation.y;
-    refs.player = new Player(refs.player!['name'], refs, respawnX, safeRespawnY, respawnZ, true);
-    if (refs.inputHandler) {
-      refs.inputHandler['player'] = refs.player;
+
+    const currentPitch = refs.player.getPitch();
+    const currentYaw = refs.player.getYaw();
+
+    refs.player = new Player(
+      refs.player.getName(),
+      refs.world,
+      refs.camera,
+      refs.scene,
+      refs.raycaster,
+      respawnX,
+      safeRespawnY,
+      respawnZ,
+      true,
+      refs.player.getAudioManager()
+    );
+
+    if (refs.inputController) {
+      refs.inputController.setPlayer(refs.player);
     }
-    if (refs.camera && refs.player) {
-      refs.player.pitch = currentPitch;
-      refs.player.yaw = currentYaw;
-      refs.player.lookAround();
-    }
+
+    refs.player.setPitch(currentPitch);
+    refs.player.setYaw(currentYaw);
+    refs.player.lookAround();
   }
 }

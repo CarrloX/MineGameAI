@@ -478,7 +478,7 @@ export class World {
       // For now, let's assume processRemeshQueue only acts on activeChunks.
       // So if a non-active chunk is modified, it will remesh when it becomes active.
       // To force remesh on inactive, it would need to be loaded first.
-      // However, setBlock on inactive chunks now also queues neighbors, which is good.
+      // Sin embargo, setBlock en los chunks inactivos ahora también pone en cola a los vecinos, lo cual es bueno.
       this.remeshQueue.add(key); // Add to queue regardless, processRemeshQueue will check if active
     }
   }
@@ -584,6 +584,30 @@ export class World {
         if (adjacentChunk) {
           this.queueChunkRemesh(adjacentX, adjacentZ);
         }
+      }
+    }
+  }
+
+  /**
+   * Precarga inteligente de chunks: predice y comienza a cargar en segundo plano los chunks hacia donde se mueve el jugador.
+   * Llama a esto después de mover al jugador, pasando la dirección de movimiento.
+   * @param playerPosition Posición actual del jugador
+   * @param moveDirection Vector de dirección de movimiento (normalizado)
+   * @param prefetchRadius Número de chunks a predecir adelante (por defecto 2)
+   */
+  public smartPrefetchChunks(playerPosition: THREE.Vector3, moveDirection: THREE.Vector3, prefetchRadius: number = 2) {
+    const playerChunkX = Math.floor(playerPosition.x / CHUNK_SIZE);
+    const playerChunkZ = Math.floor(playerPosition.z / CHUNK_SIZE);
+    // Predecir los próximos N chunks en la dirección de movimiento
+    for (let i = 1; i <= prefetchRadius; i++) {
+      const predX = playerPosition.x + moveDirection.x * CHUNK_SIZE * i;
+      const predZ = playerPosition.z + moveDirection.z * CHUNK_SIZE * i;
+      const chunkX = Math.floor(predX / CHUNK_SIZE);
+      const chunkZ = Math.floor(predZ / CHUNK_SIZE);
+      const key = `${chunkX},${chunkZ}`;
+      if (!this.activeChunks.has(key)) {
+        // Si el chunk no está activo, inicia su carga en background (baja prioridad)
+        this.loadChunk(chunkX, chunkZ, false);
       }
     }
   }

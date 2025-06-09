@@ -93,4 +93,18 @@ body {
   .crosshair-bar-vertical {
     background-color: var(--crosshair-color, rgba(0,0,0,0.75));
   }
+  .chart-indicator {
+    border: var(--color-border);
+    background: var(--color-bg);
+  }
+  .chart-indicator-base {
+    border-width: 1px;
+  }
+  .chart-legend-color {
+    /* Puedes agregar estilos comunes aquí si lo necesitas */
+  }
+  .sidebar-wrapper {
+    --sidebar-width: 16rem;
+    --sidebar-width-icon: 3rem;
+  }
 }

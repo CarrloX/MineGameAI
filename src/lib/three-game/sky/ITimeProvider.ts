@@ -1,4 +1,3 @@
-
 export interface ITimeProvider {
   /**
    * Gets the current time of day, normalized between 0.0 (midnight) and 1.0 (next midnight).

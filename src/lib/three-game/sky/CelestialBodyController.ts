@@ -1,6 +1,6 @@
-import type * as THREE from 'three';
-import type { ICelestialBody, ICelestialBodyData } from './ICelestialBody';
-import type { ITimeProvider } from './ITimeProvider';
+import type * as THREE from "three";
+import type { ICelestialBody, ICelestialBodyData } from "./ICelestialBody";
+import type { ITimeProvider } from "./ITimeProvider";
 
 export class CelestialBodyController {
   private timeProvider: ITimeProvider;
@@ -24,12 +24,12 @@ export class CelestialBodyController {
 
   public getRenderableBodiesData(): ICelestialBodyData[] {
     return this.celestialBodies
-      .map(body => body.getRenderData())
-      .filter(data => data.isVisible); // Mostrar cuerpos visibles aunque no tengan textura
+      .map((body) => body.getRenderData())
+      .filter((data) => data.isVisible); // Mostrar cuerpos visibles aunque no tengan textura
   }
-  
+
   public getBodyByName(name: string): ICelestialBody | undefined {
-    return this.celestialBodies.find(body => (body as any).name === name);
+    return this.celestialBodies.find((body) => (body as any).name === name);
   }
 
   public dispose(): void {

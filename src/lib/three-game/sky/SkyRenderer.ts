@@ -1,10 +1,8 @@
-
-import * as THREE from 'three';
-import type { ISkyColorProvider } from './ISkyColorProvider';
-import type { CelestialBodyController } from './CelestialBodyController';
-import type { Starfield } from './Starfield';
-import type { ICelestialBodyData } from './ICelestialBody';
-
+import * as THREE from "three";
+import type { ISkyColorProvider } from "./ISkyColorProvider";
+import type { CelestialBodyController } from "./CelestialBodyController";
+import type { Starfield } from "./Starfield";
+import type { ICelestialBodyData } from "./ICelestialBody";
 
 export class SkyRenderer {
   private scene: THREE.Scene;
@@ -24,15 +22,15 @@ export class SkyRenderer {
     skyColorProvider: ISkyColorProvider,
     celestialBodyController: CelestialBodyController,
     starfield: Starfield,
-    skyboxRadius: number 
+    skyboxRadius: number
   ) {
     this.scene = scene;
-    this.textureLoader = textureLoader; 
+    this.textureLoader = textureLoader;
     this.skyColorProvider = skyColorProvider;
     this.celestialBodyController = celestialBodyController;
     this.starfield = starfield;
 
-    const skyboxGeometry = new THREE.SphereGeometry(skyboxRadius, 32, 16); 
+    const skyboxGeometry = new THREE.SphereGeometry(skyboxRadius, 32, 16);
     this.skyboxMaterial = new THREE.MeshBasicMaterial({
       side: THREE.BackSide,
       depthWrite: false,
@@ -40,13 +38,15 @@ export class SkyRenderer {
     });
     this.skyboxMesh = new THREE.Mesh(skyboxGeometry, this.skyboxMaterial);
     this.skyboxMesh.name = "SkyboxSphere";
-    this.skyboxMesh.renderOrder = -1; 
+    this.skyboxMesh.renderOrder = -1;
     this.scene.add(this.skyboxMesh);
 
     this.celestialBodyMeshes = new Map();
   }
 
-  private getOrCreateCelestialBodyMesh(bodyData: ICelestialBodyData): THREE.Mesh {
+  private getOrCreateCelestialBodyMesh(
+    bodyData: ICelestialBodyData
+  ): THREE.Mesh {
     let mesh = this.celestialBodyMeshes.get(bodyData.name);
     if (!mesh) {
       const geometry = new THREE.PlaneGeometry(1, 1);
@@ -55,16 +55,16 @@ export class SkyRenderer {
         transparent: true,
         depthWrite: false,
         fog: false,
-        color: bodyData.color, 
+        color: bodyData.color,
       });
 
-      if (bodyData.name === 'sun') {
+      if (bodyData.name === "sun") {
         material.blending = THREE.AdditiveBlending;
       }
 
       mesh = new THREE.Mesh(geometry, material);
       mesh.name = `CelestialBody_${bodyData.name}`;
-      mesh.renderOrder = bodyData.name === 'sun' ? -0.9 : -0.8; 
+      mesh.renderOrder = bodyData.name === "sun" ? -0.9 : -0.8;
       this.scene.add(mesh);
       this.celestialBodyMeshes.set(bodyData.name, mesh);
     }
@@ -75,11 +75,14 @@ export class SkyRenderer {
     this.skyboxMaterial.color.copy(this.skyColorProvider.getSkyColor());
     this.skyboxMesh.position.copy(camera.position);
 
-    this.starfield.update(camera.position, this.skyColorProvider.getStarfieldIntensity());
+    this.starfield.update(
+      camera.position,
+      this.skyColorProvider.getStarfieldIntensity()
+    );
 
     const bodiesData = this.celestialBodyController.getRenderableBodiesData();
-    
-    const activeBodyNamesThisFrame = new Set(bodiesData.map(bd => bd.name));
+
+    const activeBodyNamesThisFrame = new Set(bodiesData.map((bd) => bd.name));
 
     this.celestialBodyMeshes.forEach((mesh, name) => {
       if (!activeBodyNamesThisFrame.has(name)) {
@@ -98,12 +101,11 @@ export class SkyRenderer {
         mesh.lookAt(camera.position);
 
         if (material.map !== bodyData.texture && bodyData.texture) {
-            material.map = bodyData.texture;
-            material.needsUpdate = true;
+          material.map = bodyData.texture;
+          material.needsUpdate = true;
         }
         material.color.copy(bodyData.color);
         material.opacity = bodyData.intensity;
-        
       } else {
         mesh.visible = false;
       }

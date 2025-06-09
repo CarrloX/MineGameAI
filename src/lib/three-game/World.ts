@@ -20,13 +20,13 @@ export class World {
   public renderDistanceInChunks: number = 8; // Cambiado de 4 a 8
   private remeshQueue: Set<string>;
 
-  public worldSeed: number;
+  public worldSeed: string;
 
   public debugMaterialMode: "none" | "light" | "materialId" = "none";
 
-  constructor(gameRefs: GameRefs, worldSeed: number) {
-    this.gameRefs = gameRefs;
-    this.worldSeed = worldSeed;
+  constructor(refs: GameRefs, seed: string) {
+    this.gameRefs = refs;
+    this.worldSeed = seed;
     this.size = 128;
     this.layers = 128;
     this.skyHeight = this.layers * 2;
@@ -44,7 +44,7 @@ export class World {
         "World: Block prototypes not found in gameRefs. Ensure ThreeSetup populates gameRefs.blocks."
       );
     } else {
-      this.gameRefs.blocks.forEach((block) => {
+      this.gameRefs.blocks.forEach((block: Block) => {
         const blockNameKey = block.mesh.name.startsWith("Block_")
           ? block.mesh.name.substring(6)
           : block.mesh.name;
@@ -76,7 +76,7 @@ export class World {
           chunkZ,
           this.blockPrototypes,
           undefined,
-          this.worldSeed
+          parseInt(this.worldSeed)
         );
         blockData = tempChunk.blocks;
         // DO NOT store tempChunk.blocks in chunkDataStore here for getSpawnHeight if it's just a temporary read
@@ -187,7 +187,7 @@ export class World {
       chunkZ,
       this.blockPrototypes,
       existingBlockData,
-      this.worldSeed
+      parseInt(this.worldSeed)
     );
 
     if (!existingBlockData && newChunk.wasGenerated) {
@@ -286,7 +286,7 @@ export class World {
           cZ,
           this.blockPrototypes,
           undefined,
-          this.worldSeed
+          parseInt(this.worldSeed)
         );
         blockData = tempChunkGen.blocks;
         wasChunkGenerated = tempChunkGen.wasGenerated;

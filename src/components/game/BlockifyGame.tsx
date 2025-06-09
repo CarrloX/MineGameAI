@@ -1,27 +1,27 @@
 "use client";
 
-import React, { useEffect, useRef, useCallback, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import * as THREE from "three";
-import { World } from "@/lib/three-game/World";
-import { InputController } from "@/lib/three-game/InputController";
-import { RendererManager } from "@/lib/three-game/RendererManager";
-import { GameLogic } from "@/lib/three-game/GameLogic";
-import { ThreeSetup } from "@/lib/three-game/ThreeSetup";
-import {
-  CONTROL_CONFIG,
-  CURSOR_STATE,
-  CHUNK_SIZE,
-} from "@/lib/three-game/utils";
-import type {
-  GameRefs,
-  DebugInfoState,
-  ErrorInfo,
-} from "@/lib/three-game/types";
-import ErrorBoundaryDisplay from "./ErrorBoundaryDisplay";
-import { Player } from "@/lib/three-game/Player"; // Player needed for GameLogic init
+import dynamic from 'next/dynamic';
+import type { GameRefs, DebugInfoState, ErrorInfo } from "@/lib/three-game/types";
+import { CONTROL_CONFIG, CURSOR_STATE, CHUNK_SIZE } from "@/lib/three-game/utils";
 import { EventBus } from "@/lib/three-game/events/EventBus";
+import { useGameLoop } from "@/hooks/game/useGameLoop";
+import { useGameInitialization } from "@/hooks/game/useGameInitialization";
+import { GameDebugOverlay } from "./GameDebugOverlay";
+import { GameCrosshair } from "./GameCrosshair";
+import ErrorBoundaryDisplay from "./ErrorBoundaryDisplay";
+import { useFog } from '@/hooks/game/useFog';
+
+// Componente de carga
+const LoadingComponent = () => (
+  <div className="w-full h-screen flex items-center justify-center bg-black text-white">
+    <div className="text-xl">Cargando juego...</div>
+  </div>
+);
 
 const BlockifyGame: React.FC = () => {
+  const [isClient, setIsClient] = useState(false);
   const mountRef = useRef<HTMLDivElement>(null);
   const gameRefs = useRef<GameRefs>({
     scene: null,
@@ -44,6 +44,8 @@ const BlockifyGame: React.FC = () => {
     worldSeed: null,
     sky: null,
     eventBus: EventBus.getInstance(),
+    controls: null,
+    clock: null,
   });
 
   const [debugInfo, setDebugInfo] = useState<DebugInfoState>({
@@ -57,453 +59,195 @@ const BlockifyGame: React.FC = () => {
     isFlying: "Flying: No",
     isRunning: "Running: No",
     isBoosting: "Boosting: No",
-    lookDirection: "Look: N/A", // <-- Añadido para mostrar dirección de mirada
+    lookDirection: "Look: N/A",
   });
-  const [crosshairBgColor, setCrosshairBgColor] = useState<string | undefined>(
-    undefined
-  );
-  const lastFrameTimeRef = useRef(performance.now());
-  const frameCountRef = useRef(0);
+
+  const [crosshairBgColor, setCrosshairBgColor] = useState<string>("rgba(0, 0, 0, 0.75)");
+  const lastUpdateTimeRef = useRef(0);
+  const UPDATE_INTERVAL = 100; // Actualizar cada 100ms
   const [isCameraSubmerged, setIsCameraSubmerged] = useState(false);
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
-
   const [systemStats, setSystemStats] = useState({
     memory: null as null | { usedMB: number; totalMB: number },
   });
 
-  // --- FPS Sliding Window ---
-  const fpsWindowRef = useRef<number[]>([]);
-  const [fps, setFps] = useState(0);
+  // Marcar que estamos en el cliente
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
-  const gameLoop = useCallback(() => {
-    const refs = gameRefs.current;
-    if (errorInfo) {
-      if (refs.gameLoopId !== null) {
-        cancelAnimationFrame(refs.gameLoopId);
-        refs.gameLoopId = null;
-      }
-      return;
-    }
-    if (!refs.gameLogic || !refs.camera) {
-      if (refs.gameLoopId !== null) {
-        refs.gameLoopId = requestAnimationFrame(gameLoop);
-      }
-      return;
-    }
+  const { gameLoop } = useGameLoop({
+    gameRefs,
+    setDebugInfo,
+    errorInfo,
+    setErrorInfo,
+  });
 
-    const now = performance.now();
-    const deltaTime = (now - lastFrameTimeRef.current) / 1000.0;
-    frameCountRef.current++;
-
-    // FPS sliding window
-    if (deltaTime > 0) {
-      const currentFps = 1 / deltaTime;
-      const window = fpsWindowRef.current;
-      window.push(currentFps);
-      if (window.length > 60) window.shift();
-      const avgFps = window.reduce((a, b) => a + b, 0) / window.length;
-      setFps(Math.round(avgFps));
-    }
-
-    let newFpsValue: number | undefined = undefined; // No longer used, but kept for compatibility
-
-    try {
-      refs.gameLogic.update(deltaTime, undefined); // newFpsValue no es necesario
-    } catch (error: any) {
-      console.error("Error in game loop:", error);
-      if (!errorInfo) {
-        setErrorInfo({
-          title: "Game Loop Error!",
-          message: `Message: ${error.message}\n\nStack:\n${error.stack}`,
-        });
-      }
-      if (refs.gameLoopId !== null) {
-        cancelAnimationFrame(refs.gameLoopId);
-        refs.gameLoopId = null;
-      }
-      return;
-    }
-    lastFrameTimeRef.current = now;
-
-    if (refs.gameLoopId !== null) {
-      refs.gameLoopId = requestAnimationFrame(gameLoop);
-    }
-  }, [errorInfo]);
-
-  const initGame = useCallback(() => {
-    console.log("Initializing game...");
-    const refs = gameRefs.current;
-    if (!mountRef.current) return;
-    refs.canvasRef = mountRef.current;
-
-    setErrorInfo(null);
-
-    refs.worldSeed = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
-    console.log("Generated World Seed:", refs.worldSeed);
-
-    refs.threeSetup = new ThreeSetup();
-    refs.threeSetup.initialize(refs.canvasRef, refs); // threeSetup now populates refs.sky
-
-    if (
-      !refs.scene ||
-      !refs.camera ||
-      !refs.renderer ||
-      !refs.textureLoader ||
-      !refs.blocks ||
-      !refs.lighting ||
-      !refs.raycaster ||
-      !refs.sky
-    ) {
-      console.error(
-        "ThreeSetup did not initialize all required gameRefs properties, including AdvancedSky."
-      );
-      setErrorInfo({
-        title: "Initialization Error",
-        message:
-          "ThreeSetup failed to initialize essential Three.js or AdvancedSky components.",
-      });
-      return;
-    }
-
-    refs.rendererManager = new RendererManager(refs.canvasRef, refs);
-    if (refs.renderer && refs.sky && refs.sky.getSkyColorProvider()) {
-      refs.renderer.setClearColor(refs.sky.getSkyColorProvider().getSkyColor());
-    } else if (refs.renderer) {
-      refs.renderer.setClearColor(new THREE.Color(0xf1f1f1)); // Default sky color
-    }
-
-    if (refs.worldSeed === null) {
-      console.error(
-        "Initialization Error: World Seed is null before World creation."
-      );
-      setErrorInfo({
-        title: "Initialization Error",
-        message: "World Seed missing.",
-      });
-      return;
-    }
-    refs.world = new World(refs, refs.worldSeed);
-    if (refs.renderer && refs.sky && refs.sky.getSkyColorProvider()) {
-      refs.renderer.setClearColor(refs.sky.getSkyColorProvider().getSkyColor());
-    }
-
-    refs.inputController = new InputController(refs);
-
-    // Crear una función estable para setDebugInfo y setIsCameraSubmerged
-    const stableSetDebugInfo = (
-      updateFn: (prevState: DebugInfoState) => DebugInfoState
-    ) => {
-      setDebugInfo(updateFn);
-    };
-
-    const stableSetIsCameraSubmerged = (
-      value: boolean | ((prev: boolean) => boolean)
-    ) => {
-      setIsCameraSubmerged(value);
-    };
-
-    refs.gameLogic = new GameLogic(
-      refs,
-      stableSetDebugInfo,
-      stableSetIsCameraSubmerged
-    );
-
-    if (refs.inputController && refs.player) {
-      refs.inputController.setPlayer(refs.player);
-    } else {
-      console.warn(
-        "BlockifyGame init: InputController or Player not available to link after GameLogic init."
-      );
-    }
-    refs.inputController.setupEventListeners();
-
-    console.log("Game initialized by BlockifyGame.");
-    if (refs.gameLoopId === null) {
-      console.log("Starting game loop from initGame");
-      lastFrameTimeRef.current = performance.now(); // Initialize lastFrameTimeRef before first gameLoop call
-      refs.gameLoopId = requestAnimationFrame(gameLoop);
-    }
-  }, [gameLoop]); // Removemos setDebugInfo y setIsCameraSubmerged de las dependencias
+  const { initGame } = useGameInitialization({
+    gameRefs,
+    mountRef,
+    setErrorInfo,
+    setDebugInfo,
+    setIsCameraSubmerged,
+    gameLoop,
+  });
 
   useEffect(() => {
+    if (!isClient) return;
+
     initGame();
 
     const refs = gameRefs.current;
 
     const updateCrosshairColor = () => {
-      if (refs.player?.lookingAt) {
-        setCrosshairBgColor("rgba(255, 255, 255, 0.75)");
+      const now = performance.now();
+      // Limitar la frecuencia de actualización
+      if (now - lastUpdateTimeRef.current < UPDATE_INTERVAL) return;
+      lastUpdateTimeRef.current = now;
+
+      if (!refs.player || !refs.camera || !refs.raycaster) return;
+
+      // Obtener el punto central de la pantalla
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+
+      // Actualizar el raycaster
+      refs.raycaster.setFromCamera(
+        new THREE.Vector2(
+          (centerX / window.innerWidth) * 2 - 1,
+          -(centerY / window.innerHeight) * 2 + 1
+        ),
+        refs.camera
+      );
+
+      // Realizar el raycast
+      const intersects = refs.raycaster.intersectObjects(refs.scene!.children, true);
+
+      if (intersects.length > 0) {
+        const target = intersects[0].object;
+        // Verificar si el objeto es interactuable
+        if (target.userData?.isInteractable) {
+          setCrosshairBgColor("rgba(255, 255, 255, 0.75)");
+        } else if (target instanceof THREE.Mesh) {
+          // Si no es interactuable, usar el color opuesto al fondo
+          const material = target.material as THREE.MeshStandardMaterial;
+          if (material && material.color) {
+            const brightness = (material.color.r + material.color.g + material.color.b) / 3;
+            setCrosshairBgColor(brightness > 0.5 ? "rgba(0, 0, 0, 0.75)" : "rgba(255, 255, 255, 0.75)");
+          } else {
+            setCrosshairBgColor("rgba(0, 0, 0, 0.75)");
+          }
+        } else {
+          setCrosshairBgColor("rgba(0, 0, 0, 0.75)");
+        }
       } else {
-        setCrosshairBgColor("rgba(0, 0, 0, 0.75)");
+        // Si no hay intersección, usar el color opuesto al cielo
+        const skyColor = refs.sky?.getSkyColorProvider()?.getSkyColor();
+        if (skyColor) {
+          const brightness = (skyColor.r + skyColor.g + skyColor.b) / 3;
+          setCrosshairBgColor(brightness > 0.5 ? "rgba(0, 0, 0, 0.75)" : "rgba(255, 255, 255, 0.75)");
+        } else {
+          setCrosshairBgColor("rgba(0, 0, 0, 0.75)");
+        }
       }
     };
 
-    const intervalId = setInterval(() => {
-      if (refs.player) {
-        updateCrosshairColor();
-      }
-    }, 100);
+    // Usar requestAnimationFrame para actualizaciones más suaves
+    let animationFrameId: number;
+    const animate = () => {
+      updateCrosshairColor();
+      animationFrameId = requestAnimationFrame(animate);
+    };
+    animationFrameId = requestAnimationFrame(animate);
 
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
     document.addEventListener("contextmenu", handleContextMenu);
 
-    return () => {
-      console.log("Cleaning up BlockifyGame component...");
-      clearInterval(intervalId);
-      if (gameRefs.current.gameLoopId !== null) {
-        cancelAnimationFrame(gameRefs.current.gameLoopId);
-        gameRefs.current.gameLoopId = null;
-      }
-      document.removeEventListener("contextmenu", handleContextMenu);
-
-      gameRefs.current.inputController?.removeEventListeners();
-      gameRefs.current.rendererManager?.dispose();
-      gameRefs.current.sky?.dispose(); // Dispose AdvancedSky
-
-      gameRefs.current.world?.activeChunks.forEach((chunk) => {
-        if (chunk && typeof chunk.dispose === "function") {
-          chunk.dispose();
-        }
-      });
-
-      gameRefs.current.scene?.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
-          // Dispose geometry
-          object.geometry?.dispose();
-          // Dispose material(s) and texture(s) safely
-          const disposeMaterial = (material: THREE.Material) => {
-            const anyMat = material as any;
-            if (anyMat.map && typeof anyMat.map.dispose === "function")
-              anyMat.map.dispose();
-            if (
-              anyMat.lightMap &&
-              typeof anyMat.lightMap.dispose === "function"
-            )
-              anyMat.lightMap.dispose();
-            if (anyMat.aoMap && typeof anyMat.aoMap.dispose === "function")
-              anyMat.aoMap.dispose();
-            if (
-              anyMat.emissiveMap &&
-              typeof anyMat.emissiveMap.dispose === "function"
-            )
-              anyMat.emissiveMap.dispose();
-            if (anyMat.bumpMap && typeof anyMat.bumpMap.dispose === "function")
-              anyMat.bumpMap.dispose();
-            if (
-              anyMat.normalMap &&
-              typeof anyMat.normalMap.dispose === "function"
-            )
-              anyMat.normalMap.dispose();
-            if (
-              anyMat.displacementMap &&
-              typeof anyMat.displacementMap.dispose === "function"
-            )
-              anyMat.displacementMap.dispose();
-            if (
-              anyMat.roughnessMap &&
-              typeof anyMat.roughnessMap.dispose === "function"
-            )
-              anyMat.roughnessMap.dispose();
-            if (
-              anyMat.metalnessMap &&
-              typeof anyMat.metalnessMap.dispose === "function"
-            )
-              anyMat.metalnessMap.dispose();
-            if (
-              anyMat.alphaMap &&
-              typeof anyMat.alphaMap.dispose === "function"
-            )
-              anyMat.alphaMap.dispose();
-            if (anyMat.envMap && typeof anyMat.envMap.dispose === "function")
-              anyMat.envMap.dispose();
-            material.dispose();
-          };
-          if (Array.isArray(object.material)) {
-            object.material.forEach((mat) => {
-              if (mat) disposeMaterial(mat);
-            });
-          } else if (object.material) {
-            disposeMaterial(object.material);
-          }
-        }
-      });
-      if (gameRefs.current.lighting?.ambient)
-        gameRefs.current.scene?.remove(gameRefs.current.lighting.ambient);
-      // Directional light is managed by AdvancedSky (Sun), so it's removed when sky is disposed.
-      // if (gameRefs.current.lighting?.directional) gameRefs.current.scene?.remove(gameRefs.current.lighting.directional);
-
-      Object.keys(gameRefs.current).forEach((key) => {
-        if (
-          key !== "controlConfig" &&
-          key !== "cursor" &&
-          key !== "canvasRef" &&
-          key !== "worldSeed"
-        ) {
-          (gameRefs.current as any)[key] = null;
-        }
-      });
-
-      console.log("Cleanup complete for BlockifyGame.");
-    };
-  }, []); // Removemos initGame de las dependencias
-
-  useEffect(() => {
-    const { renderer, scene, world, sky } = gameRefs.current;
-    if (!renderer || !scene || !world || !sky?.getSkyColorProvider()) return;
-
-    const skyColorProvider = sky.getSkyColorProvider();
-
-    if (isCameraSubmerged) {
-      renderer.setClearColor(new THREE.Color(0x3a5f83)); // Dark blue for water
-      if (
-        !scene.fog ||
-        !(scene.fog instanceof THREE.Fog) ||
-        scene.fog.color.getHex() !== 0x3a5f83
-      ) {
-        scene.fog = new THREE.Fog(0x3a5f83, 0.1, CHUNK_SIZE * 1.5);
-      } else {
-        scene.fog.near = 0.1;
-        scene.fog.far = CHUNK_SIZE * 1.5;
-      }
-    } else {
-      const skyFogColor = skyColorProvider.getFogColor();
-      renderer.setClearColor(skyColorProvider.getSkyColor());
-
-      const fogNearDistance = world.renderDistanceInChunks * CHUNK_SIZE * 0.6;
-      const fogFarDistance = world.renderDistanceInChunks * CHUNK_SIZE * 1.1;
-
-      if (
-        !scene.fog ||
-        !(scene.fog instanceof THREE.Fog) ||
-        scene.fog.color.getHex() !== skyFogColor.getHex()
-      ) {
-        scene.fog = new THREE.Fog(skyFogColor, fogNearDistance, fogFarDistance);
-      } else {
-        scene.fog.color.copy(skyFogColor);
-        scene.fog.near = fogNearDistance;
-        scene.fog.far = fogFarDistance;
-      }
-    }
-  }, [isCameraSubmerged, gameRefs.current.world?.renderDistanceInChunks]); // Added world.renderDistanceInChunks
-
-  useEffect(() => {
-    // Actualiza el color del crosshair usando una variable CSS
-    const root = document.documentElement;
-    if (crosshairBgColor) {
-      root.style.setProperty("--crosshair-color", crosshairBgColor);
-    } else {
-      root.style.setProperty("--crosshair-color", "rgba(0,0,0,0.75)");
-    }
-  }, [crosshairBgColor]);
-
-  // --- System Stats Polling ---
-  useEffect(() => {
-    // RAM (JS heap) via performance.memory (solo Chrome)
-    function pollMemory() {
-      if ((window.performance as any).memory) {
-        const mem = (window.performance as any).memory;
-        setSystemStats((prev) => ({
-          ...prev,
+    // Polling de memoria
+    const memoryIntervalId = setInterval(() => {
+      if (window.performance && (window.performance as any).memory) {
+        const memory = (window.performance as any).memory;
+        setSystemStats({
           memory: {
-            usedMB: Math.round(mem.usedJSHeapSize / 1048576),
-            totalMB: Math.round(mem.totalJSHeapSize / 1048576),
+            usedMB: memory.usedJSHeapSize / (1024 * 1024),
+            totalMB: memory.jsHeapSizeLimit / (1024 * 1024),
           },
-        }));
+        });
       }
-    }
-    pollMemory();
-    const interval = setInterval(pollMemory, 2000);
-    return () => clearInterval(interval);
-  }, []);
+    }, 1000);
 
-  // --- Animación de agua tipo Minecraft: actualiza uniform 'time' en materiales de agua ---
-  useEffect(() => {
-    let animId: number | null = null;
-    function animateWater() {
-      const refs = gameRefs.current;
-      if (refs.world && refs.world.activeChunks) {
-        const now = performance.now() * 0.001;
-        refs.world.activeChunks.forEach((chunk) => {
-          if (chunk && chunk.chunkRoot) {
-            chunk.chunkRoot.traverse((obj) => {
-              if (obj instanceof THREE.Mesh) {
-                const mats = Array.isArray(obj.material)
-                  ? obj.material
-                  : [obj.material];
-                for (const mat of mats) {
-                  if (
-                    mat &&
-                    mat.userData &&
-                    mat.userData._waterAnim &&
-                    mat.userData._shader
-                  ) {
-                    mat.userData._shader.uniforms.time.value = now;
-                  }
-                }
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      clearInterval(memoryIntervalId);
+      document.removeEventListener("contextmenu", handleContextMenu);
+      
+      if (refs.gameLoopId !== null) {
+        cancelAnimationFrame(refs.gameLoopId);
+      }
+
+      // Limpieza de recursos
+      if (refs.renderer) {
+        refs.renderer.dispose();
+      }
+      if (refs.scene) {
+        refs.scene.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
+            if (object.geometry) object.geometry.dispose();
+            if (object.material) {
+              if (Array.isArray(object.material)) {
+                object.material.forEach(disposeMaterial);
+              } else {
+                disposeMaterial(object.material);
               }
-            });
+            }
           }
         });
       }
-      animId = requestAnimationFrame(animateWater);
-    }
-    animateWater();
-    return () => {
-      if (animId !== null) cancelAnimationFrame(animId);
     };
-  }, []);
+  }, [initGame, isClient]);
+
+  // Usar el hook de niebla
+  useFog({ gameRefs, isCameraSubmerged });
+
+  if (!isClient) {
+    return <LoadingComponent />;
+  }
+
+  if (errorInfo) {
+    return (
+      <ErrorBoundaryDisplay 
+        title={errorInfo.title} 
+        message={errorInfo.message} 
+        onClose={() => setErrorInfo(null)}
+      />
+    );
+  }
 
   return (
-    <div
-      ref={mountRef}
-      className="relative w-full h-screen overflow-hidden cursor-crosshair"
-    >
-      {errorInfo && (
-        <ErrorBoundaryDisplay
-          title={errorInfo.title}
-          message={errorInfo.message}
-          onClose={() => {
-            setErrorInfo(null);
-          }}
-        />
-      )}
-      {crosshairBgColor !== undefined && (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none w-5 h-5 z-10">
-          <div
-            className={
-              "w-full h-[2px] absolute top-1/2 left-0 transform -translate-y-1/2 rounded-sm crosshair-bar-horizontal"
-            }
-          ></div>
-          <div
-            className={
-              "w-[2px] h-full absolute top-0 left-1/2 transform -translate-x-1/2 rounded-sm crosshair-bar-vertical"
-            }
-          ></div>
-        </div>
-      )}
-      <div className="absolute top-2 right-2 text-foreground bg-background/50 p-1 rounded-md text-sm pointer-events-none z-10">
-        <div>FPS: {fps}</div>
-        <div>{debugInfo.playerPosition}</div>
-        <div>{debugInfo.playerChunk}</div>
-        <div>{debugInfo.raycastTarget}</div>
-        <div>{debugInfo.highlightStatus}</div>
-        <div>
-          Chunks: {debugInfo.visibleChunks} / {debugInfo.totalChunks}
-        </div>
-        <div>{debugInfo.isFlying}</div>
-        <div>{debugInfo.isRunning}</div>
-        <div>{debugInfo.isBoosting}</div>
-        <div>{debugInfo.lookDirection}</div>
-        {/* Estadísticas del sistema */}
-        <div>
-          RAM:{" "}
-          {systemStats.memory
-            ? `${systemStats.memory.usedMB} / ${systemStats.memory.totalMB} MB`
-            : "N/A"}
-        </div>
-      </div>
+    <div className="relative w-full h-screen overflow-hidden">
+      <div 
+        ref={mountRef} 
+        className="absolute inset-0 w-full h-full bg-transparent touch-none"
+      />
+      <GameDebugOverlay debugInfo={debugInfo} systemStats={systemStats} />
+      <GameCrosshair crosshairBgColor={crosshairBgColor} />
     </div>
   );
 };
 
-export default BlockifyGame;
+// Función auxiliar para limpiar materiales
+const disposeMaterial = (material: THREE.Material) => {
+  const mat = material as THREE.MeshStandardMaterial;
+  if (mat.map) mat.map.dispose();
+  if (mat.lightMap) mat.lightMap.dispose();
+  if (mat.bumpMap) mat.bumpMap.dispose();
+  if (mat.normalMap) mat.normalMap.dispose();
+  if (mat.envMap) mat.envMap.dispose();
+  material.dispose();
+};
+
+// Exportar el componente con carga dinámica
+export default dynamic(() => Promise.resolve(BlockifyGame), {
+  ssr: false,
+  loading: () => <LoadingComponent />
+});

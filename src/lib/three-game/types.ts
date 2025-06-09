@@ -8,6 +8,7 @@ import type { GameLogic } from "./GameLogic";
 import type { ThreeSetup } from "./ThreeSetup";
 import type { AdvancedSky } from "./sky/AdvancedSky"; // New import
 import { EventBus } from "./events/EventBus";
+import { CONTROL_CONFIG, CURSOR_STATE } from "./utils";
 
 export interface ControlConfig {
   backwards: string;
@@ -68,23 +69,22 @@ export interface GameRefs {
   raycaster: THREE.Raycaster | null;
   textureLoader: THREE.TextureLoader | null;
   world: World | null;
-  blocks: Block[] | null;
-  player: Player | null;
-  controlConfig: ControlConfig;
-  cursor: CursorState;
+  blocks: any | null;
+  player: any | null;
+  inputController: any | null;
+  rendererManager: any | null;
+  gameLogic: any | null;
+  threeSetup: any | null;
+  lighting: any | null;
+  controlConfig: typeof CONTROL_CONFIG;
+  cursor: typeof CURSOR_STATE;
   gameLoopId: number | null;
   canvasRef: HTMLDivElement | null;
-  inputController: InputController | null;
-  rendererManager: RendererManager | null;
-  gameLogic: GameLogic | null;
-  threeSetup: ThreeSetup | null;
-  lighting: {
-    ambient: THREE.AmbientLight;
-    directional: THREE.DirectionalLight;
-  } | null;
-  worldSeed: number | null;
-  sky: AdvancedSky | null; // Changed from Sky to AdvancedSky
+  worldSeed: string | null;
+  sky: AdvancedSky | null;
   eventBus: EventBus;
+  controls: any | null;
+  clock: THREE.Clock | null;
 }
 
 export type BlockDefinition = { side: string } | string[];

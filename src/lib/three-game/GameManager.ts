@@ -20,6 +20,10 @@ export class GameLogic {
   private worldController: WorldController;
   private renderController: RenderController;
   private debugInfoService: DebugInfoService;
+  private lastCameraPosition: THREE.Vector3 = new THREE.Vector3();
+  private lastCameraRotation: THREE.Euler = new THREE.Euler();
+  private CAMERA_MOVE_THRESHOLD: number = 0.01;
+  private lastFps: number = 60;
 
   constructor(
     gameRefs: GameRefs,
@@ -75,8 +79,29 @@ export class GameLogic {
       this.frustum.setFromProjectionMatrix(matrix);
     }
 
+    // Detectar si la cámara se ha movido significativamente
+    let cameraMoved = false;
+    if (refs.camera) {
+      const posMoved = this.lastCameraPosition.distanceToSquared(refs.camera.position) > this.CAMERA_MOVE_THRESHOLD;
+      // Convertir rotación Euler a vector manualmente
+      const lastRotVec = new THREE.Vector3(this.lastCameraRotation.x, this.lastCameraRotation.y, this.lastCameraRotation.z);
+      const currRotVec = new THREE.Vector3(refs.camera.rotation.x, refs.camera.rotation.y, refs.camera.rotation.z);
+      const rotMoved = lastRotVec.distanceTo(currRotVec) > this.CAMERA_MOVE_THRESHOLD;
+      if (posMoved || rotMoved) {
+        cameraMoved = true;
+        this.lastCameraPosition.copy(refs.camera.position);
+        this.lastCameraRotation.copy(refs.camera.rotation);
+      }
+    }
+
+    // Ajustar el remallado dinámicamente según los FPS
+    if (newFpsValue !== undefined) {
+      this.lastFps = newFpsValue;
+    }
+    const maxRemeshPerFrame = Math.max(1, Math.floor(this.lastFps / 30));
+
     this.playerController.update(deltaTime);
-    const visibleChunksCount = this.worldController.update(this.frustum);
+    const visibleChunksCount = this.worldController.update(this.frustum, cameraMoved, maxRemeshPerFrame);
     this.debugInfoService.updateDebugInfo(newFpsValue);
 
     if (refs.player && refs.world && refs.camera) {

@@ -11,28 +11,34 @@ export class WorldController {
   /**
    * Actualiza el mundo y realiza frustum culling de los chunks.
    * @param frustum Frustum de la cámara para visibilidad
+   * @param cameraMoved Indica si la cámara se ha movido significativamente
+   * @param maxRemeshPerFrame Número máximo de remallados por frame
    * @returns número de chunks visibles
    */
-  update(frustum?: THREE.Frustum) {
-    if (!this.refs.world || !this.refs.player) return 0;
+  update(frustum?: THREE.Frustum, cameraMoved: boolean = true, maxRemeshPerFrame: number = 2) {
+    const refs = this.refs;
+    if (!refs.world || !refs.player) return 0;
+    const playerMesh = refs.player.mesh;
+    const world = refs.world;
     
     // Actualiza los chunks activos (carga/descarga)
-    this.refs.world.updateChunks(this.refs.player.mesh.position);
+    world.updateChunks(playerMesh.position);
 
-    // Procesar la cola de remallado con prioridad para chunks cercanos
-    const MAX_REMESH_PER_FRAME = 2; 
-    if (this.refs.world.getRemeshQueueSize() > 0) {
-      this.refs.world.processRemeshQueue(MAX_REMESH_PER_FRAME, this.refs.player.mesh.position);
+    // Permitir ajustar dinámicamente el remallado por frame según el rendimiento
+    let MAX_REMESH_PER_FRAME = maxRemeshPerFrame;
+
+    if (world.getRemeshQueueSize() > 0) {
+      world.processRemeshQueue(MAX_REMESH_PER_FRAME, playerMesh.position);
     }
 
     // Priorizar remallados asíncronos en chunks cercanos al jugador
-    if (this.refs.world.activeChunks.size > 0) {
-      const playerPosition = this.refs.player.mesh.position;
+    if (world.activeChunks.size > 0) {
+      const playerPosition = playerMesh.position;
       const playerChunkX = Math.floor(playerPosition.x / 16);
       const playerChunkZ = Math.floor(playerPosition.z / 16);
       
       // Crear una lista ordenada de chunks por distancia al jugador
-      const chunksToProcess = Array.from(this.refs.world.activeChunks.entries())
+      const chunksToProcess = Array.from(world.activeChunks.entries())
         .map(([key, chunk]) => {
           const [chunkX, chunkZ] = key.split(',').map(Number);
           const distanceSquared = 
@@ -55,8 +61,9 @@ export class WorldController {
 
     // Frustum culling y visibilidad
     let visibleChunksCount = 0;
-    if (frustum) {
-      this.refs.world.activeChunks.forEach((chunk) => {
+    // Solo hacer frustum culling si la cámara se ha movido significativamente
+    if (frustum && cameraMoved) {
+      world.activeChunks.forEach((chunk) => {
         if (chunk && chunk.chunkRoot && chunk.boundingBox) {
           const isVisible = frustum.intersectsBox(chunk.boundingBox);
           chunk.chunkRoot.visible = isVisible;
@@ -65,6 +72,12 @@ export class WorldController {
           if (chunk && chunk.chunkRoot) chunk.chunkRoot.visible = false;
         }
       });
+    } else if (!frustum) {
+      // Si no hay frustum, asegurarse de que todos los chunks estén visibles
+      world.activeChunks.forEach((chunk) => {
+        if (chunk && chunk.chunkRoot) chunk.chunkRoot.visible = true;
+      });
+      visibleChunksCount = world.activeChunks.size;
     }
     return visibleChunksCount;
   }

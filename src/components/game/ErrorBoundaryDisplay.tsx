@@ -1,52 +1,65 @@
 "use client";
 
-import React from "react";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
+import React, { useEffect } from 'react';
+import { logger } from '@/lib/three-game/utils/Logger';
 
 interface ErrorBoundaryDisplayProps {
   title: string;
   message: string;
   onClose: () => void;
+  error?: Error;
 }
 
-export default function ErrorBoundaryDisplay({
-  title,
-  message,
+const ErrorBoundaryDisplay: React.FC<ErrorBoundaryDisplayProps> = ({ 
+  title, 
+  message, 
   onClose,
-}: ErrorBoundaryDisplayProps) {
+  error 
+}) => {
+  useEffect(() => {
+    // Registrar el error en el sistema de logs
+    logger.error(`Error en el juego: ${title}`, {
+      message,
+      error: error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      } : undefined,
+      timestamp: new Date().toISOString()
+    });
+  }, [title, message, error]);
+
   return (
-    <AlertDialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent className="max-w-2xl bg-background/95 backdrop-blur-sm">
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-        </AlertDialogHeader>
-        <AlertDialogDescription className="whitespace-pre-wrap text-sm max-h-[60vh] overflow-y-auto">
-          <p className="mb-2 text-foreground">
-            Ocurrió un error en el juego. Por favor, copia el siguiente mensaje
-            para ayudar a depurarlo:
-          </p>
-          <textarea
-            readOnly
-            aria-label="Mensaje de error para depuración"
-            className="w-full p-2 border rounded bg-muted text-muted-foreground text-xs h-60 font-mono"
-            value={message}
-            onClick={(e) => (e.target as HTMLTextAreaElement).select()}
-          />
-        </AlertDialogDescription>
-        <AlertDialogFooter>
-          <Button onClick={onClose} variant="outline">
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+      <div className="bg-gray-800 p-6 rounded-lg shadow-xl max-w-2xl w-full mx-4">
+        <h2 className="text-red-500 text-2xl font-bold mb-4">{title}</h2>
+        <p className="text-gray-300 mb-6 whitespace-pre-wrap">{message}</p>
+        <div className="flex justify-end space-x-4">
+          <button
+            onClick={() => {
+              const logs = logger.exportLogs();
+              const blob = new Blob([logs], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `game-error-${new Date().toISOString()}.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            Descargar Logs
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+          >
             Cerrar
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </button>
+        </div>
+      </div>
+    </div>
   );
-}
+};
+
+export default ErrorBoundaryDisplay;

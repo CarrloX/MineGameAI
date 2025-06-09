@@ -1,5 +1,7 @@
+import * as THREE from 'three';
 import type { GameRefs, PlayerCameraService } from "./types";
 import type { Player } from "./Player";
+import { gameLogger } from './services/LoggingService';
 
 export class InputController {
   private player: Player | null = null; // Player can be null initially or after destruction
@@ -19,6 +21,10 @@ export class InputController {
 
   private lastSpacePressTime: number = 0;
   private readonly FLY_TOGGLE_DELAY: number = 300; // ms
+
+  private mouseButtons: Set<number> = new Set();
+  private lastClickTime: number = 0;
+  private readonly CLICK_TIMEOUT = 50; // ms para considerar clicks simultáneos
 
   constructor(gameRefs: GameRefs, initialPlayer?: Player) {
     // Player is now optional
@@ -244,32 +250,114 @@ export class InputController {
     }
   }
 
-  private handleMouseDown(e: MouseEvent): void {
-    const { cursor } = this.gameRefs;
-    if (cursor?.inWindow && this.player) {
-      cursor.buttonPressed = e.button;
-      if (e.button === 0) {
-        cursor.holding = true;
-        if (!cursor.holdTime || cursor.holdTime < 0) cursor.holdTime = 0;
-        // Click instantáneo: destruir
+  private handleMouseDown = (event: MouseEvent) => {
+    event.preventDefault();
+    const button = event.button;
+    const now = performance.now();
+
+    // Registrar el botón presionado
+    this.mouseButtons.add(button);
+    
+    // Verificar si hay clicks simultáneos
+    if (this.mouseButtons.size > 1) {
+      this.handleSimultaneousClicks(now);
+      return;
+    }
+
+    // Comportamiento normal para un solo botón
+    if (button === 0) { // Click izquierdo
+      this.gameRefs.cursor.holding = true;
+      this.gameRefs.cursor.holdTime = now;
+      this.gameRefs.cursor.buttonPressed = 0;
+      if (this.player) {
         this.player.interactWithBlock(true);
       }
-      if (e.button === 2) {
-        cursor.holding = true;
-        if (!cursor.holdTime || cursor.holdTime < 0) cursor.holdTime = 0;
-        // Click instantáneo: colocar
+    } else if (button === 2) { // Click derecho
+      this.gameRefs.cursor.holding = true;
+      this.gameRefs.cursor.holdTime = now;
+      this.gameRefs.cursor.buttonPressed = 2;
+      if (this.player) {
         this.player.interactWithBlock(false);
       }
     }
+  };
+
+  private handleMouseUp = (event: MouseEvent) => {
+    event.preventDefault();
+    const button = event.button;
+    const now = performance.now();
+
+    // Remover el botón liberado
+    this.mouseButtons.delete(button);
+
+    // Si era el último botón presionado, resetear el estado
+    if (this.mouseButtons.size === 0) {
+      this.gameRefs.cursor.holding = false;
+      this.gameRefs.cursor.holdTime = 0;
+      this.gameRefs.cursor.buttonPressed = undefined;
+    }
+  };
+
+  private handleSimultaneousClicks(timestamp: number) {
+    if (!this.player) return;
+
+    // Obtener el objeto que el jugador está mirando
+    const lookingAt = this.getLookingAt();
+    
+    if (!lookingAt) {
+      // Si no está mirando nada, priorizar click izquierdo
+      this.gameRefs.cursor.holding = true;
+      this.gameRefs.cursor.holdTime = timestamp;
+      this.gameRefs.cursor.buttonPressed = 0;
+      this.player.interactWithBlock(true);
+      return;
+    }
+
+    // Verificar si el objeto es interactuable
+    const isInteractable = lookingAt.object.userData?.isInteractable;
+    
+    if (isInteractable) {
+      // Si es interactuable, priorizar click derecho
+      this.gameRefs.cursor.holding = true;
+      this.gameRefs.cursor.holdTime = timestamp;
+      this.gameRefs.cursor.buttonPressed = 2;
+      this.player.interactWithBlock(false);
+      gameLogger.logGameEvent('Click derecho priorizado en objeto interactuable', {
+        objectType: lookingAt.object.type,
+        position: lookingAt.point.toArray()
+      });
+    } else {
+      // Si no es interactuable, priorizar click izquierdo
+      this.gameRefs.cursor.holding = true;
+      this.gameRefs.cursor.holdTime = timestamp;
+      this.gameRefs.cursor.buttonPressed = 0;
+      this.player.interactWithBlock(true);
+      gameLogger.logGameEvent('Click izquierdo priorizado en bloque normal', {
+        objectType: lookingAt.object.type,
+        position: lookingAt.point.toArray()
+      });
+    }
   }
 
-  private handleMouseUp(e: MouseEvent): void {
-    const { cursor } = this.gameRefs;
-    if (cursor?.inWindow) {
-      cursor.holding = false;
-      cursor.holdTime = 0;
-      cursor.buttonPressed = undefined;
-    }
+  private getLookingAt() {
+    if (!this.player || !this.player.camera || !this.player.raycaster) return null;
+
+    // Obtener el punto central de la pantalla
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+
+    // Actualizar el raycaster
+    this.player.raycaster.setFromCamera(
+      new THREE.Vector2(
+        (centerX / window.innerWidth) * 2 - 1,
+        -(centerY / window.innerHeight) * 2 + 1
+      ),
+      this.player.camera
+    );
+
+    // Realizar el raycast
+    const intersects = this.player.raycaster.intersectObjects(this.player.scene.children, true);
+    return intersects.length > 0 ? intersects[0] : null;
   }
 
   private lastTouchX: number | null = null;

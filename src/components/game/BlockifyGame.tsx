@@ -12,6 +12,8 @@ import { GameDebugOverlay } from "./GameDebugOverlay";
 import { GameCrosshair } from "./GameCrosshair";
 import ErrorBoundaryDisplay from "./ErrorBoundaryDisplay";
 import { useFog } from '@/hooks/game/useFog';
+import { gameLogger } from '@/lib/three-game/services/LoggingService';
+import { getRecoveryService } from '@/lib/three-game/services/RecoveryService';
 
 // Componente de carga
 const LoadingComponent = () => (
@@ -71,9 +73,13 @@ const BlockifyGame: React.FC = () => {
     memory: null as null | { usedMB: number; totalMB: number },
   });
 
-  // Marcar que estamos en el cliente
+  const recoveryServiceRef = useRef(getRecoveryService());
+
+  // Marcar que estamos en el cliente e inicializar el servicio de recuperación
   useEffect(() => {
     setIsClient(true);
+    recoveryServiceRef.current.initialize();
+    gameLogger.logGameEvent('Componente montado en el cliente');
   }, []);
 
   const { gameLoop } = useGameLoop({
@@ -92,20 +98,70 @@ const BlockifyGame: React.FC = () => {
     gameLoop,
   });
 
+  // Efecto para manejar la recuperación
   useEffect(() => {
     if (!isClient) return;
 
+    const handleRecoveryAttempt = (event: CustomEvent) => {
+      gameLogger.logGameEvent('Recibido evento de recuperación');
+      
+      // Pausar el game loop
+      if (gameRefs.current.gameLoopId !== null) {
+        cancelAnimationFrame(gameRefs.current.gameLoopId);
+        gameRefs.current.gameLoopId = null;
+      }
+
+      // Limpiar recursos específicos del juego
+      if (gameRefs.current.renderer) {
+        gameRefs.current.renderer.dispose();
+      }
+
+      // Reinicializar componentes críticos
+      try {
+        initGame();
+        gameLogger.logGameEvent('Recuperación completada exitosamente');
+      } catch (error) {
+        gameLogger.logError(
+          new Error('Error durante la recuperación del juego'),
+          'Game Recovery Failed'
+        );
+      }
+    };
+
+    window.addEventListener('gameRecoveryAttempt', handleRecoveryAttempt as EventListener);
+
+    return () => {
+      window.removeEventListener('gameRecoveryAttempt', handleRecoveryAttempt as EventListener);
+    };
+  }, [isClient, initGame]);
+
+  // Modificar el useEffect principal para incluir manejo de recuperación
+  useEffect(() => {
+    if (!isClient) return;
+
+    if (recoveryServiceRef.current.isInRecoveryMode()) {
+      gameLogger.logGameEvent('Iniciando en modo recuperación');
+      // Esperar a que termine el período de recuperación
+      return;
+    }
+
+    gameLogger.logGameEvent('Iniciando montaje del juego');
     initGame();
 
     const refs = gameRefs.current;
 
     const updateCrosshairColor = () => {
       const now = performance.now();
-      // Limitar la frecuencia de actualización
       if (now - lastUpdateTimeRef.current < UPDATE_INTERVAL) return;
       lastUpdateTimeRef.current = now;
 
-      if (!refs.player || !refs.camera || !refs.raycaster) return;
+      if (!refs.player || !refs.camera || !refs.raycaster) {
+        gameLogger.logError(
+          new Error("Componentes necesarios no disponibles para actualizar crosshair"),
+          'Crosshair Update'
+        );
+        return;
+      }
 
       // Obtener el punto central de la pantalla
       const centerX = window.innerWidth / 2;
@@ -128,6 +184,10 @@ const BlockifyGame: React.FC = () => {
         // Verificar si el objeto es interactuable
         if (target.userData?.isInteractable) {
           setCrosshairBgColor("rgba(255, 255, 255, 0.75)");
+          gameLogger.logGameState('Crosshair interactuable detectado', {
+            objectType: target.type,
+            position: target.position.toArray()
+          });
         } else if (target instanceof THREE.Mesh) {
           // Si no es interactuable, usar el color opuesto al fondo
           const material = target.material as THREE.MeshStandardMaterial;
@@ -159,40 +219,72 @@ const BlockifyGame: React.FC = () => {
       animationFrameId = requestAnimationFrame(animate);
     };
     animationFrameId = requestAnimationFrame(animate);
+    gameLogger.logGameEvent('Loop de animación iniciado');
 
-    const handleContextMenu = (e: MouseEvent) => e.preventDefault();
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      gameLogger.logGameEvent('Contexto del menú bloqueado');
+    };
     document.addEventListener("contextmenu", handleContextMenu);
 
-    // Polling de memoria
+    // Polling de memoria con logging
     const memoryIntervalId = setInterval(() => {
       if (window.performance && (window.performance as any).memory) {
         const memory = (window.performance as any).memory;
+        const usedMB = memory.usedJSHeapSize / (1024 * 1024);
+        const totalMB = memory.jsHeapSizeLimit / (1024 * 1024);
+        
         setSystemStats({
           memory: {
-            usedMB: memory.usedJSHeapSize / (1024 * 1024),
-            totalMB: memory.jsHeapSizeLimit / (1024 * 1024),
+            usedMB,
+            totalMB,
           },
         });
+
+        // Registrar uso de memoria si excede el 80%
+        if (usedMB / totalMB > 0.8) {
+          gameLogger.logError(
+            new Error(`Uso de memoria crítico: ${usedMB.toFixed(2)}MB / ${totalMB.toFixed(2)}MB`),
+            'Memory Usage'
+          );
+        }
       }
     }, 1000);
 
     return () => {
+      if (recoveryServiceRef.current.isInRecoveryMode()) {
+        gameLogger.logGameEvent('Omitiendo limpieza durante recuperación');
+        return;
+      }
+
+      gameLogger.logGameEvent('Iniciando limpieza del componente');
+      
       cancelAnimationFrame(animationFrameId);
       clearInterval(memoryIntervalId);
       document.removeEventListener("contextmenu", handleContextMenu);
       
       if (refs.gameLoopId !== null) {
         cancelAnimationFrame(refs.gameLoopId);
+        gameLogger.logGameEvent('Game loop detenido');
       }
 
-      // Limpieza de recursos
+      // Limpieza de recursos con logging
       if (refs.renderer) {
+        gameLogger.logGameEvent('Limpiando renderer');
         refs.renderer.dispose();
       }
+      
       if (refs.scene) {
+        gameLogger.logGameEvent('Limpiando escena y recursos');
         refs.scene.traverse((object) => {
           if (object instanceof THREE.Mesh) {
-            if (object.geometry) object.geometry.dispose();
+            if (object.geometry) {
+              object.geometry.dispose();
+              gameLogger.logGameEvent('Geometría liberada', { 
+                type: object.geometry.type,
+                uuid: object.geometry.uuid 
+              });
+            }
             if (object.material) {
               if (Array.isArray(object.material)) {
                 object.material.forEach(disposeMaterial);
@@ -203,6 +295,8 @@ const BlockifyGame: React.FC = () => {
           }
         });
       }
+      
+      gameLogger.logGameEvent('Limpieza completada');
     };
   }, [initGame, isClient]);
 
@@ -210,15 +304,31 @@ const BlockifyGame: React.FC = () => {
   useFog({ gameRefs, isCameraSubmerged });
 
   if (!isClient) {
+    gameLogger.logGameEvent('Renderizando componente de carga');
     return <LoadingComponent />;
   }
 
   if (errorInfo) {
+    const error = new Error(errorInfo.message);
+    gameLogger.logError(error, errorInfo.title);
+    
+    // Intentar recuperación si es posible
+    if (!recoveryServiceRef.current.isInRecoveryMode()) {
+      recoveryServiceRef.current.handleCrash('component', error);
+    }
+
     return (
       <ErrorBoundaryDisplay 
         title={errorInfo.title} 
         message={errorInfo.message} 
-        onClose={() => setErrorInfo(null)}
+        onClose={() => {
+          setErrorInfo(null);
+          gameLogger.logGameEvent('Error boundary cerrado');
+          // Resetear contador de crashes si la recuperación fue exitosa
+          if (recoveryServiceRef.current.getCrashCount() > 0) {
+            recoveryServiceRef.current.resetCrashCount();
+          }
+        }}
       />
     );
   }
@@ -235,15 +345,31 @@ const BlockifyGame: React.FC = () => {
   );
 };
 
-// Función auxiliar para limpiar materiales
+// Función auxiliar para limpiar materiales con logging
 const disposeMaterial = (material: THREE.Material) => {
   const mat = material as THREE.MeshStandardMaterial;
-  if (mat.map) mat.map.dispose();
-  if (mat.lightMap) mat.lightMap.dispose();
-  if (mat.bumpMap) mat.bumpMap.dispose();
-  if (mat.normalMap) mat.normalMap.dispose();
-  if (mat.envMap) mat.envMap.dispose();
+  if (mat.map) {
+    mat.map.dispose();
+    gameLogger.logGameEvent('Textura liberada', { type: 'map', uuid: mat.map.uuid });
+  }
+  if (mat.lightMap) {
+    mat.lightMap.dispose();
+    gameLogger.logGameEvent('Textura liberada', { type: 'lightMap', uuid: mat.lightMap.uuid });
+  }
+  if (mat.bumpMap) {
+    mat.bumpMap.dispose();
+    gameLogger.logGameEvent('Textura liberada', { type: 'bumpMap', uuid: mat.bumpMap.uuid });
+  }
+  if (mat.normalMap) {
+    mat.normalMap.dispose();
+    gameLogger.logGameEvent('Textura liberada', { type: 'normalMap', uuid: mat.normalMap.uuid });
+  }
+  if (mat.envMap) {
+    mat.envMap.dispose();
+    gameLogger.logGameEvent('Textura liberada', { type: 'envMap', uuid: mat.envMap.uuid });
+  }
   material.dispose();
+  gameLogger.logGameEvent('Material liberado', { type: material.type, uuid: material.uuid });
 };
 
 // Exportar el componente con carga dinámica

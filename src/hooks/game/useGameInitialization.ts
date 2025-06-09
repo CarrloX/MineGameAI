@@ -8,6 +8,7 @@ import { GameLogic } from '@/lib/three-game/GameLogic';
 import { ThreeSetup } from '@/lib/three-game/ThreeSetup';
 import { EventBus } from '@/lib/three-game/events/EventBus';
 import type { DebugInfoState } from '@/lib/three-game/types';
+import { gameLogger } from '@/lib/three-game/services/LoggingService';
 
 interface UseGameInitializationProps {
   gameRefs: React.MutableRefObject<GameRefs>;
@@ -27,10 +28,13 @@ export const useGameInitialization = ({
   gameLoop
 }: UseGameInitializationProps) => {
   const initGame = useCallback(() => {
-    console.log("Initializing game...");
+    const startTime = performance.now();
+    gameLogger.logGameEvent('Iniciando inicialización del juego');
+
     const refs = gameRefs.current;
     if (!mountRef.current) {
-      console.error("Mount ref is not available");
+      const error = new Error("Mount ref no disponible");
+      gameLogger.logError(error, 'Game Initialization');
       return;
     }
     refs.canvasRef = mountRef.current;
@@ -39,67 +43,59 @@ export const useGameInitialization = ({
 
     // Generar seed del mundo
     refs.worldSeed = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString();
-    console.log("Generated World Seed:", refs.worldSeed);
+    gameLogger.logGameState('World Seed generado', { seed: refs.worldSeed });
 
     try {
       // Inicializar Three.js
-      console.log("Initializing Three.js setup...");
+      gameLogger.logGameEvent('Iniciando configuración de Three.js');
       refs.threeSetup = new ThreeSetup();
       refs.threeSetup.initialize(refs.canvasRef, refs);
-      console.log("Three.js setup initialized");
 
       // Verificar inicialización
       if (!validateThreeSetup(refs)) {
-        console.error("ThreeSetup validation failed:", {
-          scene: !!refs.scene,
-          camera: !!refs.camera,
-          renderer: !!refs.renderer,
-          textureLoader: !!refs.textureLoader,
-          blocks: !!refs.blocks,
-          lighting: !!refs.lighting,
-          raycaster: !!refs.raycaster,
-          sky: !!refs.sky
-        });
+        const error = new Error("ThreeSetup validation failed");
+        gameLogger.logError(error, 'Three.js Setup');
         setErrorInfo({
           title: "Initialization Error",
           message: "ThreeSetup failed to initialize essential Three.js components.",
         });
         return;
       }
+      gameLogger.logGameEvent('Three.js inicializado correctamente');
 
       // Configurar renderer y sky
-      console.log("Setting up renderer and sky...");
+      gameLogger.logGameEvent('Configurando renderer y sky');
       setupRendererAndSky(refs);
-      console.log("Renderer and sky setup complete");
 
       // Inicializar mundo
-      console.log("Initializing world...");
+      gameLogger.logGameEvent('Iniciando generación del mundo');
       if (!initializeWorld(refs, setErrorInfo)) {
-        console.error("World initialization failed");
+        const error = new Error("World initialization failed");
+        gameLogger.logError(error, 'World Generation');
         return;
       }
-      console.log("World initialized");
 
       // Configurar controles y lógica del juego
-      console.log("Setting up game controls and logic...");
+      gameLogger.logGameEvent('Configurando controles y lógica del juego');
       setupGameControlsAndLogic(refs, setDebugInfo, setIsCameraSubmerged);
-      console.log("Game controls and logic setup complete");
 
       // Iniciar game loop
-      console.log("Starting game loop...");
       if (refs.gameLoopId === null) {
         refs.gameLoopId = requestAnimationFrame(gameLoop);
-        console.log("Game loop started");
+        gameLogger.logGameEvent('Game loop iniciado');
       }
 
       // Forzar un render inicial
       if (refs.renderer && refs.scene && refs.camera) {
-        console.log("Forcing initial render...");
         refs.renderer.render(refs.scene, refs.camera);
       }
 
+      const endTime = performance.now();
+      gameLogger.logPerformance('Game Initialization', endTime - startTime);
+      gameLogger.logGameState('Juego inicializado completamente');
+
     } catch (error) {
-      console.error("Error during game initialization:", error);
+      gameLogger.logError(error instanceof Error ? error : new Error(String(error)), 'Game Initialization');
       setErrorInfo({
         title: "Initialization Error",
         message: `Error during initialization: ${error instanceof Error ? error.message : String(error)}`,
@@ -110,7 +106,7 @@ export const useGameInitialization = ({
   return { initGame };
 };
 
-// Funciones auxiliares
+// Funciones auxiliares actualizadas con logging
 const validateThreeSetup = (refs: GameRefs): boolean => {
   const isValid = !!(
     refs.scene &&
@@ -124,16 +120,10 @@ const validateThreeSetup = (refs: GameRefs): boolean => {
   );
 
   if (!isValid) {
-    console.error("ThreeSetup validation failed. Missing components:", {
-      scene: !refs.scene,
-      camera: !refs.camera,
-      renderer: !refs.renderer,
-      textureLoader: !refs.textureLoader,
-      blocks: !refs.blocks,
-      lighting: !refs.lighting,
-      raycaster: !refs.raycaster,
-      sky: !refs.sky
-    });
+    gameLogger.logError(
+      new Error("Componentes de Three.js faltantes"),
+      'Three.js Validation'
+    );
   }
 
   return isValid;
@@ -141,38 +131,34 @@ const validateThreeSetup = (refs: GameRefs): boolean => {
 
 const setupRendererAndSky = (refs: GameRefs) => {
   if (!refs.canvasRef) {
-    console.error("Canvas reference is not available for renderer setup");
+    gameLogger.logError(
+      new Error("Canvas reference no disponible"),
+      'Renderer Setup'
+    );
     return;
   }
 
-  console.log("Creating renderer manager...");
+  gameLogger.logGameEvent('Creando renderer manager');
   refs.rendererManager = new RendererManager(refs.canvasRef, refs);
 
   if (refs.renderer) {
-    console.log("Configuring renderer...");
-    // Asegurar que el renderer tenga el tamaño correcto
     const width = refs.canvasRef.clientWidth;
     const height = refs.canvasRef.clientHeight;
     refs.renderer.setSize(width, height, false);
     refs.renderer.setPixelRatio(window.devicePixelRatio);
 
-    // Configurar color de fondo
     if (refs.sky?.getSkyColorProvider()) {
       const skyColor = refs.sky.getSkyColorProvider().getSkyColor();
-      console.log("Setting sky color:", skyColor);
       refs.renderer.setClearColor(skyColor);
-    } else {
-      console.log("Setting default sky color");
-      refs.renderer.setClearColor(new THREE.Color(0xf1f1f1));
+      gameLogger.logGameState('Color del cielo configurado', { color: skyColor });
     }
-  } else {
-    console.error("Renderer is not available for setup");
   }
 };
 
 const initializeWorld = (refs: GameRefs, setErrorInfo: (error: any) => void): boolean => {
   if (refs.worldSeed === null) {
-    console.error("Initialization Error: World Seed is null before World creation.");
+    const error = new Error("World Seed missing");
+    gameLogger.logError(error, 'World Initialization');
     setErrorInfo({
       title: "Initialization Error",
       message: "World Seed missing.",
@@ -180,6 +166,7 @@ const initializeWorld = (refs: GameRefs, setErrorInfo: (error: any) => void): bo
     return false;
   }
   refs.world = new World(refs, refs.worldSeed);
+  gameLogger.logGameState('Mundo inicializado', { seed: refs.worldSeed });
   return true;
 };
 
@@ -193,8 +180,13 @@ const setupGameControlsAndLogic = (
 
   if (refs.inputController && refs.player) {
     refs.inputController.setPlayer(refs.player);
+    gameLogger.logGameEvent('Controles vinculados al jugador');
   } else {
-    console.warn("InputController or Player not available to link after GameLogic init.");
+    gameLogger.logError(
+      new Error("InputController o Player no disponible"),
+      'Controls Setup'
+    );
   }
   refs.inputController.setupEventListeners();
+  gameLogger.logGameEvent('Event listeners configurados');
 }; 

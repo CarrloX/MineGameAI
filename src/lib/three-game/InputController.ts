@@ -26,6 +26,12 @@ export class InputController {
   private lastClickTime: number = 0;
   private readonly CLICK_TIMEOUT = 50; // ms para considerar clicks simultáneos
 
+  private _hasInteractedBefore: boolean = false;
+
+  private _lastInteractionPos: { x: number, y: number, z: number } | null = null;
+  private _lastInteractionTime: number = 0;
+  private readonly INTERACTION_COOLDOWN = 300; // ms
+
   constructor(gameRefs: GameRefs, initialPlayer?: Player) {
     // Player is now optional
     this.gameRefs = gameRefs;
@@ -64,7 +70,7 @@ export class InputController {
     );
     this.gameRefs.canvasRef.addEventListener(
       "mouseup",
-      this.handleMouseUp.bind(this)
+      this.boundHandleMouseUp
     );
     this.gameRefs.canvasRef.addEventListener(
       "click",
@@ -85,12 +91,6 @@ export class InputController {
       "touchend",
       this.boundHandleTouchEnd
     );
-
-    // Agregado
-    this.gameRefs.canvasRef.addEventListener(
-      "mouseup",
-      this.boundHandleMouseUp
-    );
   }
 
   public removeEventListeners(): void {
@@ -98,7 +98,6 @@ export class InputController {
 
     window.removeEventListener("keydown", this.boundHandleKeyDown);
     window.removeEventListener("keyup", this.boundHandleKeyUp);
-    // mousemove is added/removed in handlePointerLockChange
     document.removeEventListener(
       "pointerlockchange",
       this.boundHandlePointerLockChange,
@@ -110,7 +109,7 @@ export class InputController {
     );
     this.gameRefs.canvasRef.removeEventListener(
       "mouseup",
-      this.handleMouseUp.bind(this)
+      this.boundHandleMouseUp
     );
     this.gameRefs.canvasRef.removeEventListener(
       "click",
@@ -128,12 +127,6 @@ export class InputController {
     this.gameRefs.canvasRef.removeEventListener(
       "touchend",
       this.boundHandleTouchEnd
-    );
-
-    // Agregado
-    this.gameRefs.canvasRef.removeEventListener(
-      "mouseup",
-      this.boundHandleMouseUp
     );
   }
 
@@ -255,13 +248,73 @@ export class InputController {
     const button = event.button;
     const now = performance.now();
 
+    // Si el botón ya está registrado, ignorar
+    if (this.mouseButtons.has(button)) {
+      return;
+    }
+
+    // Protección contra doble interacción en la misma posición
+    // Especialmente útil para la primera interacción
+    const blockingKey = 'interaction_lock';
+    if (this.gameRefs.cursor[blockingKey]) {
+      console.log("Interacción bloqueada temporalmente");
+      return;
+    }
+
+    // Aplicar un bloqueo temporal para evitar múltiples interacciones rápidas
+    this.gameRefs.cursor[blockingKey] = true;
+    setTimeout(() => {
+      if (this.gameRefs.cursor) {
+        this.gameRefs.cursor[blockingKey] = false;
+      }
+    }, 50); // 50ms debería ser suficiente para prevenir doble interacción
+
     // Registrar el botón presionado
     this.mouseButtons.add(button);
     
-    // Verificar si hay clicks simultáneos
-    if (this.mouseButtons.size > 1) {
+    // Si hay más de un botón presionado y el tiempo entre clicks es menor que CLICK_TIMEOUT
+    if (this.mouseButtons.size > 1 && (now - this.lastClickTime) < this.CLICK_TIMEOUT) {
+      // Limpiar el estado actual para evitar acciones duplicadas
+      this.mouseButtons.clear();
+      this.gameRefs.cursor.holding = false;
+      this.gameRefs.cursor.holdTime = 0;
+      this.gameRefs.cursor.buttonPressed = undefined;
+      
+      // Manejar como click simultáneo
       this.handleSimultaneousClicks(now);
       return;
+    }
+
+    this.lastClickTime = now;
+
+    // Obtener la posición actual del bloque que se está mirando
+    const lookingAt = this.getLookingAt();
+    let currentPos = null;
+    
+    if (lookingAt && lookingAt.object) {
+      const pos = button === 0 
+        ? lookingAt.point // Para destruir, usamos el punto exacto
+        : new THREE.Vector3().copy(lookingAt.point).add(lookingAt.face?.normal || new THREE.Vector3()); // Para construir, añadimos la normal
+      
+      currentPos = {
+        x: Math.floor(pos.x),
+        y: Math.floor(pos.y),
+        z: Math.floor(pos.z)
+      };
+      
+      // Verificar si estamos interactuando con la misma posición muy rápidamente
+      if (this._lastInteractionPos && 
+          this._lastInteractionPos.x === currentPos.x &&
+          this._lastInteractionPos.y === currentPos.y &&
+          this._lastInteractionPos.z === currentPos.z &&
+          now - this._lastInteractionTime < this.INTERACTION_COOLDOWN) {
+        console.log("Ignorando interacción duplicada en la misma posición");
+        return;
+      }
+      
+      // Actualizar el registro de la última interacción
+      this._lastInteractionPos = currentPos;
+      this._lastInteractionTime = now;
     }
 
     // Comportamiento normal para un solo botón
@@ -269,14 +322,30 @@ export class InputController {
       this.gameRefs.cursor.holding = true;
       this.gameRefs.cursor.holdTime = now;
       this.gameRefs.cursor.buttonPressed = 0;
+      
+      // Asegurarse de que solo se ejecute una interacción por clic
       if (this.player) {
+        gameLogger.logGameEvent('Interacción de bloque (destruir)', {
+          time: now,
+          firstClick: !this._hasInteractedBefore,
+          position: currentPos
+        });
+        this._hasInteractedBefore = true;
         this.player.interactWithBlock(true);
       }
     } else if (button === 2) { // Click derecho
       this.gameRefs.cursor.holding = true;
       this.gameRefs.cursor.holdTime = now;
       this.gameRefs.cursor.buttonPressed = 2;
+      
+      // Asegurarse de que solo se ejecute una interacción por clic
       if (this.player) {
+        gameLogger.logGameEvent('Interacción de bloque (colocar)', {
+          time: now,
+          firstClick: !this._hasInteractedBefore,
+          position: currentPos
+        });
+        this._hasInteractedBefore = true;
         this.player.interactWithBlock(false);
       }
     }
@@ -285,16 +354,16 @@ export class InputController {
   private handleMouseUp = (event: MouseEvent) => {
     event.preventDefault();
     const button = event.button;
-    const now = performance.now();
 
     // Remover el botón liberado
     this.mouseButtons.delete(button);
 
-    // Si era el último botón presionado, resetear el estado
+    // Si no hay más botones presionados, resetear el estado
     if (this.mouseButtons.size === 0) {
       this.gameRefs.cursor.holding = false;
       this.gameRefs.cursor.holdTime = 0;
       this.gameRefs.cursor.buttonPressed = undefined;
+      this.lastClickTime = 0; // Resetear también el tiempo del último click
     }
   };
 
@@ -305,21 +374,18 @@ export class InputController {
     const lookingAt = this.getLookingAt();
     
     if (!lookingAt) {
-      // Si no está mirando nada, priorizar click izquierdo
-      this.gameRefs.cursor.holding = true;
-      this.gameRefs.cursor.holdTime = timestamp;
-      this.gameRefs.cursor.buttonPressed = 0;
-      this.player.interactWithBlock(true);
-      return;
+      return; // No hacer nada si no está mirando ningún objeto
     }
 
     // Verificar si el objeto es interactuable
     const isInteractable = lookingAt.object.userData?.isInteractable;
     
+    // Establecer el estado del cursor
+    this.gameRefs.cursor.holding = true;
+    this.gameRefs.cursor.holdTime = timestamp;
+
     if (isInteractable) {
       // Si es interactuable, priorizar click derecho
-      this.gameRefs.cursor.holding = true;
-      this.gameRefs.cursor.holdTime = timestamp;
       this.gameRefs.cursor.buttonPressed = 2;
       this.player.interactWithBlock(false);
       gameLogger.logGameEvent('Click derecho priorizado en objeto interactuable', {
@@ -328,8 +394,6 @@ export class InputController {
       });
     } else {
       // Si no es interactuable, priorizar click izquierdo
-      this.gameRefs.cursor.holding = true;
-      this.gameRefs.cursor.holdTime = timestamp;
       this.gameRefs.cursor.buttonPressed = 0;
       this.player.interactWithBlock(true);
       gameLogger.logGameEvent('Click izquierdo priorizado en bloque normal', {
@@ -340,23 +404,23 @@ export class InputController {
   }
 
   private getLookingAt() {
-    if (!this.player || !this.player.camera || !this.player.raycaster) return null;
+    if (!this.gameRefs.camera || !this.gameRefs.raycaster || !this.gameRefs.scene) return null;
 
     // Obtener el punto central de la pantalla
     const centerX = window.innerWidth / 2;
     const centerY = window.innerHeight / 2;
 
     // Actualizar el raycaster
-    this.player.raycaster.setFromCamera(
+    this.gameRefs.raycaster.setFromCamera(
       new THREE.Vector2(
         (centerX / window.innerWidth) * 2 - 1,
         -(centerY / window.innerHeight) * 2 + 1
       ),
-      this.player.camera
+      this.gameRefs.camera
     );
 
     // Realizar el raycast
-    const intersects = this.player.raycaster.intersectObjects(this.player.scene.children, true);
+    const intersects = this.gameRefs.raycaster.intersectObjects(this.gameRefs.scene.children, true);
     return intersects.length > 0 ? intersects[0] : null;
   }
 

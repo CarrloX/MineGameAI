@@ -23,6 +23,8 @@ export class Chunk {
 
   private isRemeshing: boolean = false; // Bandera para evitar remallados concurrentes
 
+  private _recentlyPlacedBlocks: Set<string> | null = null;
+
   constructor(
     world: World,
     worldX: number,
@@ -115,93 +117,101 @@ export class Chunk {
       );
       return false;
     }
-    const currentBlock = this.blocks[localX][localY][localZ];
-    // Si el bloque actual es aire, revisa si debajo hay agua superficial
-    if (currentBlock === "air") {
-      if (blockType === "air") return false;
-      if (localY > 0) {
-        const below = this.blocks[localX][localY - 1][localZ];
-        const below2 =
-          localY > 1 ? this.blocks[localX][localY - 2][localZ] : null;
-        if (below === "waterBlock") {
-          if (below2 !== "waterBlock") {
-            // Agua superficial: reemplazar el agua
-            return this.setBlock(localX, localY - 1, localZ, blockType);
-          } else {
-            // Agua profunda: no permitir
-            console.warn(
-              "No se puede colocar un bloque sólido sobre agua profunda."
-            );
-            return false;
-          }
-        }
-      }
-      // No hay agua debajo, colocar en el aire
-      this.blocks[localX][localY][localZ] = blockType;
-      this.needsMeshUpdate = true;
-      this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
-      this.world.queueChunkRemesh(this.worldX, this.worldZ);
-      if (localX === 0)
-        this.world.queueChunkRemesh(this.worldX - 1, this.worldZ);
-      if (localX === CHUNK_SIZE - 1)
-        this.world.queueChunkRemesh(this.worldX + 1, this.worldZ);
-      if (localZ === 0)
-        this.world.queueChunkRemesh(this.worldX, this.worldZ - 1);
-      if (localZ === CHUNK_SIZE - 1)
-        this.world.queueChunkRemesh(this.worldX, this.worldZ + 1);
-      return true;
+
+    // Evitar doble colocación - Registrar esta operación
+    // Usar una marca de tiempo con coordenadas para evitar múltiples colocaciones en la misma posición
+    const now = Date.now();
+    const placeKey = `${this.worldX}_${this.worldZ}_${localX}_${localY}_${localZ}_${now}`;
+    if (this._recentlyPlacedBlocks && this._recentlyPlacedBlocks.has(placeKey)) {
+      return false; // Prevenir doble colocación
     }
-    // Si el bloque actual es agua, aplicar la lógica de reemplazo de agua superficial/profunda
-    if (
-      currentBlock === "waterBlock" &&
-      blockType !== "air" &&
-      blockType !== "waterBlock" &&
-      localY > 0
-    ) {
-      const below = this.blocks[localX][localY - 1][localZ];
-      const below2 =
-        localY > 1 ? this.blocks[localX][localY - 2][localZ] : null;
-      if (below === "waterBlock" && below2 !== "waterBlock") {
-        // Reemplazar el agua superficial
-        return this.setBlock(localX, localY - 1, localZ, blockType);
+    
+    // Registrar esta operación para evitar duplicados
+    if (!this._recentlyPlacedBlocks) {
+      this._recentlyPlacedBlocks = new Set();
+    }
+    this._recentlyPlacedBlocks.add(placeKey);
+    
+    // Limpiar el registro después de un breve retraso
+    setTimeout(() => {
+      if (this._recentlyPlacedBlocks) {
+        this._recentlyPlacedBlocks.delete(placeKey);
       }
-      if (below === "waterBlock" && below2 === "waterBlock") {
-        console.warn(
-          "No se puede colocar un bloque sólido sobre agua profunda."
-        );
+    }, 100); // 100ms debería ser suficiente para evitar dobles colocaciones
+
+    const currentBlock = this.blocks[localX][localY][localZ];
+
+    // Si el bloque actual es agua
+    if (currentBlock === "waterBlock") {
+      // Si queremos colocar aire o agua, permitir el cambio
+      if (blockType === "air" || blockType === "waterBlock") {
+        this.blocks[localX][localY][localZ] = blockType;
+        this.needsMeshUpdate = true;
+        this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
+        this.world.queueChunkRemesh(this.worldX, this.worldZ);
+        this.updateAdjacentChunks(localX, localZ);
+        return true;
+      }
+      
+      // Si queremos colocar un bloque sólido
+      if (blockType !== "air" && blockType !== "waterBlock") {
+        // Verificar si hay agua debajo
+        const hasWaterBelow = localY > 0 && this.blocks[localX][localY - 1][localZ] === "waterBlock";
+        const hasWaterBelow2 = localY > 1 && this.blocks[localX][localY - 2][localZ] === "waterBlock";
+        
+        // Si hay agua dos bloques abajo, es agua profunda
+        if (hasWaterBelow && hasWaterBelow2) {
+          console.warn("No se puede colocar un bloque sólido sobre agua profunda.");
+          return false;
+        }
+        
+        // Es agua superficial o no hay agua debajo, permitir reemplazar el agua
+        this.blocks[localX][localY][localZ] = blockType;
+        this.needsMeshUpdate = true;
+        this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
+        this.world.queueChunkRemesh(this.worldX, this.worldZ);
+        this.updateAdjacentChunks(localX, localZ);
+        return true;
+      }
+    }
+    // Si el bloque actual es aire y queremos colocar un bloque sólido
+    else if (currentBlock === "air" && blockType !== "air" && blockType !== "waterBlock") {
+      // Verificar si hay agua debajo
+      const hasWaterBelow = localY > 0 && this.blocks[localX][localY - 1][localZ] === "waterBlock";
+      const hasWaterBelow2 = localY > 1 && this.blocks[localX][localY - 2][localZ] === "waterBlock";
+      
+      // Si hay agua dos bloques abajo, es agua profunda
+      if (hasWaterBelow && hasWaterBelow2) {
+        console.warn("No se puede colocar un bloque sólido sobre agua profunda.");
         return false;
       }
-      // Si solo hay una capa de agua (agua superficial), reemplazar aquí
+      
+      // Es agua superficial o no hay agua debajo, permitir colocación
       this.blocks[localX][localY][localZ] = blockType;
       this.needsMeshUpdate = true;
       this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
       this.world.queueChunkRemesh(this.worldX, this.worldZ);
-      if (localX === 0)
-        this.world.queueChunkRemesh(this.worldX - 1, this.worldZ);
-      if (localX === CHUNK_SIZE - 1)
-        this.world.queueChunkRemesh(this.worldX + 1, this.worldZ);
-      if (localZ === 0)
-        this.world.queueChunkRemesh(this.worldX, this.worldZ - 1);
-      if (localZ === CHUNK_SIZE - 1)
-        this.world.queueChunkRemesh(this.worldX, this.worldZ + 1);
+      this.updateAdjacentChunks(localX, localZ);
       return true;
     }
-    // Si el bloque actual ya es del tipo solicitado, no hacer nada
-    if (currentBlock === blockType) {
-      return false;
+    // Para cualquier otro caso
+    else if (currentBlock !== blockType) {
+      this.blocks[localX][localY][localZ] = blockType;
+      this.needsMeshUpdate = true;
+      this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
+      this.world.queueChunkRemesh(this.worldX, this.worldZ);
+      this.updateAdjacentChunks(localX, localZ);
+      return true;
     }
-    // Para cualquier otro caso (bloque sólido, etc.)
-    this.blocks[localX][localY][localZ] = blockType;
-    this.needsMeshUpdate = true;
-    this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
-    this.world.queueChunkRemesh(this.worldX, this.worldZ);
+
+    return false;
+  }
+
+  private updateAdjacentChunks(localX: number, localZ: number): void {
     if (localX === 0) this.world.queueChunkRemesh(this.worldX - 1, this.worldZ);
-    if (localX === CHUNK_SIZE - 1)
-      this.world.queueChunkRemesh(this.worldX + 1, this.worldZ);
+    if (localX === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX + 1, this.worldZ);
     if (localZ === 0) this.world.queueChunkRemesh(this.worldX, this.worldZ - 1);
-    if (localZ === CHUNK_SIZE - 1)
-      this.world.queueChunkRemesh(this.worldX, this.worldZ + 1);
-    return true;
+    if (localZ === CHUNK_SIZE - 1) this.world.queueChunkRemesh(this.worldX, this.worldZ + 1);
   }
 
   private lerp(a: number, b: number, t: number): number {

@@ -24,6 +24,10 @@ export class World {
 
   public debugMaterialMode: "none" | "light" | "materialId" = "none";
 
+  // Añadir un registro para evitar colocaciones duplicadas
+  private _recentBlockOperations: Map<string, number> = new Map();
+  private readonly BLOCK_OPERATION_COOLDOWN = 100; // ms
+
   constructor(refs: GameRefs, seed: string) {
     this.gameRefs = refs;
     this.worldSeed = seed;
@@ -262,6 +266,33 @@ export class World {
     worldZ: number,
     blockType: string
   ): boolean {
+    // Crear una clave única para esta operación
+    const operationKey = `${Math.floor(worldX)},${Math.floor(worldY)},${Math.floor(worldZ)}`;
+    const now = Date.now();
+    
+    // Verificar si hay una operación reciente en estas coordenadas
+    if (this._recentBlockOperations.has(operationKey)) {
+      const lastOperationTime = this._recentBlockOperations.get(operationKey);
+      if (now - lastOperationTime! < this.BLOCK_OPERATION_COOLDOWN) {
+        console.log(`Operación de bloque ignorada (demasiado rápida): ${operationKey}`);
+        return false; // Ignorar operaciones demasiado rápidas en la misma posición
+      }
+    }
+    
+    // Registrar esta operación
+    this._recentBlockOperations.set(operationKey, now);
+    
+    // Limpiar operaciones antiguas ocasionalmente
+    if (this._recentBlockOperations.size > 100) {
+      const keysToRemove = [];
+      for (const [key, time] of this._recentBlockOperations.entries()) {
+        if (now - time > this.BLOCK_OPERATION_COOLDOWN * 2) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => this._recentBlockOperations.delete(key));
+    }
+
     const cX = Math.floor(worldX / CHUNK_SIZE);
     const cZ = Math.floor(worldZ / CHUNK_SIZE);
     const lY = Math.floor(worldY);

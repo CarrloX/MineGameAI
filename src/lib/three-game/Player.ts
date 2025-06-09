@@ -49,6 +49,8 @@ export class Player {
   private blockInteractionService: PlayerBlockInteractionService;
   private cameraController: PlayerCameraController;
 
+  private _lastInteractionTime: number | null = null;
+
   constructor(
     name: string,
     worldService: PlayerWorldService,
@@ -141,6 +143,16 @@ export class Player {
   }
 
   public interactWithBlock(destroy: boolean): void {
+    // PREVENIR DOBLE INTERACCIÓN
+    // Usar una marca de tiempo para evitar múltiples interacciones en un período corto
+    const now = Date.now();
+    if (this._lastInteractionTime && now - this._lastInteractionTime < 150) {
+      console.log("Interacción ignorada: demasiado rápida");
+      return;
+    }
+    this._lastInteractionTime = now;
+
+    // Delegamos la interacción al servicio correspondiente
     this.blockInteractionService.interactWithBlock(destroy);
   }
 

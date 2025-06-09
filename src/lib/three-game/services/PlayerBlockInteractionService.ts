@@ -14,6 +14,7 @@ import {
 } from "../events/EventBus";
 import { GameConfig } from "../config/GameConfig";
 import { Container } from "../di/Container";
+import { gameLogger } from './LoggingService';
 
 export class PlayerBlockInteractionService implements IBlockInteraction {
   private readonly worldService: IWorldService;
@@ -120,7 +121,8 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
       height: number;
     };
 
-    const firstValidIntersect = intersects.find(
+    // Filtramos las intersecciones para asegurarnos de tener solo resultados válidos
+    const validIntersects = intersects.filter(
       (intersect) =>
         intersect.object instanceof THREE.Mesh &&
         intersect.object.name.startsWith("MergedChunkMesh_") &&
@@ -129,10 +131,14 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
         intersect.face
     );
 
-    if (firstValidIntersect && firstValidIntersect.face) {
+    // Verificamos y procesamos solo la primera intersección válida
+    if (validIntersects.length > 0 && validIntersects[0].face) {
+      const firstValidIntersect = validIntersects[0];
+      
+      // Procesamos la intersección con mucho cuidado para evitar problemas de coordenadas
       this.handleValidIntersection(firstValidIntersect);
 
-      // Emitir evento de resaltado
+      // Emitir evento de resaltado con precaución
       this.eventBus.emit(GameEvents.BLOCK_HIGHLIGHT, {
         position: firstValidIntersect.point,
         blockType: this.getBlockTypeAt(firstValidIntersect.point),
@@ -158,16 +164,14 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
     if (!this.lookingAt) return;
 
     const { blockWorldCoords, placeBlockWorldCoords } = this.lookingAt;
-    const playerConfig = this.config.get("player");
 
     if (destroy) {
       if (this.canBreakBlock(blockWorldCoords)) {
-        const blockType =
-          this.worldService.getBlock(
-            blockWorldCoords.x,
-            blockWorldCoords.y,
-            blockWorldCoords.z
-          ) || "air"; // Si es null, usar 'air' como valor por defecto
+        const blockType = this.worldService.getBlock(
+          blockWorldCoords.x,
+          blockWorldCoords.y,
+          blockWorldCoords.z
+        ) || "air";
 
         this.worldService.setBlock(
           blockWorldCoords.x,
@@ -176,7 +180,6 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
           "air"
         );
 
-        // Emitir evento de destrucción
         this.eventBus.emit(GameEvents.BLOCK_BREAK, {
           position: blockWorldCoords,
           blockType,
@@ -187,22 +190,43 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
           },
         });
       }
-    } else {
-      if (this.canPlaceBlock(placeBlockWorldCoords)) {
-        // Usar stoneBlock como bloque por defecto
-        const blockType = "stoneBlock";
+      return;
+    }
 
+    // --- SOLO UNA COLOCACIÓN POR ACCIÓN ---
+    // Si estamos mirando agua, solo intentamos colocar en esa posición
+    const blockType = this.worldService.getBlock(
+      blockWorldCoords.x,
+      blockWorldCoords.y,
+      blockWorldCoords.z
+    );
+
+    // PREVENCIÓN DE DOBLE COLOCACIÓN EN AGUA
+    if (blockType === "waterBlock") {
+      // Verificar adicionalmente si placeBlockWorldCoords contiene agua
+      const placeBlockType = this.worldService.getBlock(
+        placeBlockWorldCoords.x, 
+        placeBlockWorldCoords.y, 
+        placeBlockWorldCoords.z
+      );
+      
+      // Si ambos son agua, SOLO colocar en el que estamos mirando directamente
+      if (placeBlockType === "waterBlock") {
+        console.log("Prevención de doble colocación activada: ambas posiciones contienen agua");
+      }
+
+      if (this.canPlaceBlockInWater(blockWorldCoords)) {
+        const newBlockType = "stoneBlock";
         this.worldService.setBlock(
-          placeBlockWorldCoords.x,
-          placeBlockWorldCoords.y,
-          placeBlockWorldCoords.z,
-          blockType
+          blockWorldCoords.x,
+          blockWorldCoords.y,
+          blockWorldCoords.z,
+          newBlockType
         );
 
-        // Emitir evento de colocación
         this.eventBus.emit(GameEvents.BLOCK_PLACE, {
-          position: placeBlockWorldCoords,
-          blockType,
+          position: blockWorldCoords,
+          blockType: newBlockType,
           playerPosition: {
             x: this.player.x,
             y: this.player.y,
@@ -210,6 +234,42 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
           },
         });
       }
+      // IMPORTANTE: return para evitar doble colocación
+      return;
+    }
+
+    // Si no es agua, intentamos colocar en la posición adyacente
+    // PREVENCIÓN ADICIONAL: verificar que no estamos intentando colocar en agua
+    const adjacentIsWater = this.worldService.getBlock(
+      placeBlockWorldCoords.x,
+      placeBlockWorldCoords.y,
+      placeBlockWorldCoords.z
+    ) === "waterBlock";
+
+    // Si el bloque adyacente es agua y estamos en la orilla, evitar colocación
+    if (adjacentIsWater) {
+      console.log("Prevención de colocación en agua adyacente activada");
+      return;
+    }
+
+    if (this.canPlaceBlock(placeBlockWorldCoords)) {
+      const newBlockType = "stoneBlock";
+      this.worldService.setBlock(
+        placeBlockWorldCoords.x,
+        placeBlockWorldCoords.y,
+        placeBlockWorldCoords.z,
+        newBlockType
+      );
+
+      this.eventBus.emit(GameEvents.BLOCK_PLACE, {
+        position: placeBlockWorldCoords,
+        blockType: newBlockType,
+        playerPosition: {
+          x: this.player.x,
+          y: this.player.y,
+          z: this.player.z,
+        },
+      });
     }
   }
 
@@ -219,28 +279,101 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
   }
 
   private canPlaceBlock(coords: THREE.Vector3): boolean {
-    const blockType = this.worldService.getBlock(coords.x, coords.y, coords.z);
-    return (
-      blockType === "air" &&
-      !this.wouldPlaceBlockInsidePlayer(coords.x, coords.y, coords.z)
-    );
+    // Verificar si el bloque está dentro del jugador
+    if (this.wouldPlaceBlockInsidePlayer(coords.x, coords.y, coords.z)) {
+      return false;
+    }
+
+    // Verificar si el bloque actual es aire o agua
+    const currentBlock = this.worldService.getBlock(coords.x, coords.y, coords.z);
+    if (currentBlock !== "air" && currentBlock !== "waterBlock") {
+      return false;
+    }
+
+    // Verificar si hay un bloque sólido debajo o al lado
+    const hasSolidNeighbor = 
+      this.isSolidBlock(coords.x, coords.y - 1, coords.z) ||
+      this.isSolidBlock(coords.x + 1, coords.y, coords.z) ||
+      this.isSolidBlock(coords.x - 1, coords.y, coords.z) ||
+      this.isSolidBlock(coords.x, coords.y, coords.z + 1) ||
+      this.isSolidBlock(coords.x, coords.y, coords.z - 1);
+
+    // Verificar si hay agua arriba o al lado
+    const hasWaterNeighbor = 
+      this.worldService.getBlock(coords.x, coords.y + 1, coords.z) === "waterBlock" ||
+      this.worldService.getBlock(coords.x + 1, coords.y, coords.z) === "waterBlock" ||
+      this.worldService.getBlock(coords.x - 1, coords.y, coords.z) === "waterBlock" ||
+      this.worldService.getBlock(coords.x, coords.y, coords.z + 1) === "waterBlock" ||
+      this.worldService.getBlock(coords.x, coords.y, coords.z - 1) === "waterBlock";
+
+    // Permitir colocación si hay un bloque sólido adyacente O si hay agua adyacente
+    return hasSolidNeighbor || hasWaterNeighbor || currentBlock === "waterBlock";
   }
 
-  private wouldPlaceBlockInsidePlayer(
-    placeX: number,
-    placeY: number,
-    placeZ: number
-  ): boolean {
-    const playerConfig = this.config.get("player") as {
-      height: number;
-    };
-    const playerHeadY = Math.floor(this.player.y + playerConfig.height - 0.1);
-    const playerFeetY = Math.floor(this.player.y + 0.1);
+  private isSolidBlock(x: number, y: number, z: number): boolean {
+    const blockType = this.worldService.getBlock(x, y, z);
+    return blockType !== null && blockType !== "air" && blockType !== "waterBlock";
+  }
+
+  private canPlaceBlockInWater(coords: THREE.Vector3): boolean {
+    const blockType = this.worldService.getBlock(coords.x, coords.y, coords.z);
+    if (blockType !== "waterBlock") return false;
+
+    // Si el bloque está dentro del jugador, no permitir colocación
+    if (this.wouldPlaceBlockInsidePlayer(coords.x, coords.y, coords.z)) {
+      return false;
+    }
+
+    // Verificar si hay un bloque sólido debajo
+    const blockBelow = this.worldService.getBlock(coords.x, coords.y - 1, coords.z);
+    const isSolidBelow = blockBelow && blockBelow !== "air" && blockBelow !== "waterBlock";
+
+    // Si hay un bloque sólido debajo, permitir colocación
+    if (isSolidBelow) {
+      return true;
+    }
+
+    // Si no hay bloque sólido debajo, verificar si es agua profunda
+    if (coords.y > 1) {
+      const waterBelow = this.worldService.getBlock(coords.x, coords.y - 1, coords.z) === "waterBlock";
+      const waterBelow2 = this.worldService.getBlock(coords.x, coords.y - 2, coords.z) === "waterBlock";
+      
+      // Si hay dos bloques de agua debajo, es agua profunda
+      if (waterBelow && waterBelow2) {
+        gameLogger.logGameEvent('Intento de colocar bloque en agua profunda', {
+          position: coords.toArray()
+        });
+        return false;
+      }
+    }
+
+    // Si hay un bloque sólido adyacente, permitir colocación
+    const hasSolidNeighbor = 
+      this.isSolidBlock(coords.x + 1, coords.y, coords.z) ||
+      this.isSolidBlock(coords.x - 1, coords.y, coords.z) ||
+      this.isSolidBlock(coords.x, coords.y, coords.z + 1) ||
+      this.isSolidBlock(coords.x, coords.y, coords.z - 1);
+
+    return hasSolidNeighbor;
+  }
+
+  private wouldPlaceBlockInsidePlayer(x: number, y: number, z: number): boolean {
+    if (!this.player) return false;
+
+    const playerMinX = this.player.x - this.player.width / 2;
+    const playerMaxX = this.player.x + this.player.width / 2;
+    const playerMinY = this.player.y;
+    const playerMaxY = this.player.y + this.player.height;
+    const playerMinZ = this.player.z - this.player.depth / 2;
+    const playerMaxZ = this.player.z + this.player.depth / 2;
 
     return (
-      Math.floor(placeX) === Math.floor(this.player.x) &&
-      Math.floor(placeZ) === Math.floor(this.player.z) &&
-      (Math.floor(placeY) === playerFeetY || Math.floor(placeY) === playerHeadY)
+      x + 1 > playerMinX &&
+      x < playerMaxX &&
+      y + 1 > playerMinY &&
+      y < playerMaxY &&
+      z + 1 > playerMinZ &&
+      z < playerMaxZ
     );
   }
 
@@ -265,18 +398,54 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
       .transformDirection(hitObject.matrixWorld)
       .normalize();
 
+    // Calcular las coordenadas del bloque que estamos mirando
     const calculatedBlockWorldCoords = new THREE.Vector3(
       Math.floor(hitPointWorld.x - hitNormalWorld.x * 0.499),
       Math.floor(hitPointWorld.y - hitNormalWorld.y * 0.499),
       Math.floor(hitPointWorld.z - hitNormalWorld.z * 0.499)
     );
 
-    const calculatedPlaceBlockWorldCoords = new THREE.Vector3(
-      Math.floor(hitPointWorld.x + hitNormalWorld.x * 0.499),
-      Math.floor(hitPointWorld.y + hitNormalWorld.y * 0.499),
-      Math.floor(hitPointWorld.z + hitNormalWorld.z * 0.499)
+    // Verificar si el bloque que estamos mirando es agua
+    const targetBlockType = this.worldService.getBlock(
+      calculatedBlockWorldCoords.x,
+      calculatedBlockWorldCoords.y,
+      calculatedBlockWorldCoords.z
     );
 
+    // Calcular las coordenadas donde se colocaría el bloque nuevo
+    // Si estamos mirando agua, usamos exactamente esas coordenadas
+    let calculatedPlaceBlockWorldCoords;
+    if (targetBlockType === "waterBlock") {
+      // En agua, usamos exactamente las mismas coordenadas del agua
+      calculatedPlaceBlockWorldCoords = calculatedBlockWorldCoords.clone();
+    } else {
+      // Si no es agua, calculamos las coordenadas adyacentes normales
+      calculatedPlaceBlockWorldCoords = new THREE.Vector3(
+        Math.floor(hitPointWorld.x + hitNormalWorld.x * 0.499),
+        Math.floor(hitPointWorld.y + hitNormalWorld.y * 0.499),
+        Math.floor(hitPointWorld.z + hitNormalWorld.z * 0.499)
+      );
+
+      // IMPORTANTE: Verificar si las nuevas coordenadas son agua
+      const placeBlockType = this.worldService.getBlock(
+        calculatedPlaceBlockWorldCoords.x,
+        calculatedPlaceBlockWorldCoords.y,
+        calculatedPlaceBlockWorldCoords.z
+      );
+
+      // Si también es agua, NO permitimos otra coordenada de colocación
+      // Esto evita la doble colocación cuando miramos la orilla del agua
+      if (placeBlockType === "waterBlock") {
+        gameLogger.logGameEvent('Prevención de colocación doble en agua', {
+          target: calculatedBlockWorldCoords.toArray(),
+          place: calculatedPlaceBlockWorldCoords.toArray()
+        });
+        // Usamos las coordenadas originales para evitar la doble colocación
+        calculatedPlaceBlockWorldCoords = calculatedBlockWorldCoords.clone();
+      }
+    }
+
+    // Actualizar el lookingAt con las coordenadas calculadas
     this.lookingAt = {
       object: hitObject,
       point: intersection.point,

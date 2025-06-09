@@ -30,6 +30,7 @@ export interface CursorState {
   triggerHoldTime: number;
   _lastDestroyTime?: number; // Para control de destrucción continua
   buttonPressed?: number; // 0=izquierdo, 2=derecho
+  interaction_lock?: boolean; // Para prevenir interacciones duplicadas
 }
 
 export interface LookingAtInfo {

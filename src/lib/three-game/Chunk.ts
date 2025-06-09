@@ -104,6 +104,7 @@ export class Chunk {
     localZ: number,
     blockType: string
   ): boolean {
+    // Verificar límites dentro del chunk
     if (
       localX < 0 ||
       localX >= CHUNK_SIZE ||
@@ -113,7 +114,7 @@ export class Chunk {
       localZ >= CHUNK_SIZE
     ) {
       console.warn(
-        `Attempted to set block out of chunk bounds: ${localX},${localY},${localZ} in chunk ${this.worldX},${this.worldZ}`
+        `Tried to set block outside chunk bounds: ${localX},${localY},${localZ}`
       );
       return false;
     }
@@ -139,7 +140,27 @@ export class Chunk {
       }
     }, 100); // 100ms debería ser suficiente para evitar dobles colocaciones
 
+    // Inicializar la matriz 3D si es necesario
+    if (!this.blocks[localX]) this.blocks[localX] = [];
+    if (!this.blocks[localX][localY]) this.blocks[localX][localY] = [];
+
+    // Obtener el tipo de bloque actual
     const currentBlock = this.blocks[localX][localY][localZ];
+
+    // Si el tipo es el mismo, no hacer nada
+    if (currentBlock === blockType) return false;
+
+    // CASO ESPECIAL: Convirtiendo un bloque a aire bajo el agua
+    // Este código ayuda a evitar artefactos visuales al romper bloques sumergidos
+    if (blockType === "air" && this.isBlockNearWater(localX, localY, localZ)) {
+      // Si se está eliminando un bloque cerca del agua, convertirlo en agua en lugar de aire
+      this.blocks[localX][localY][localZ] = "waterBlock";
+      this.needsMeshUpdate = true;
+      this.world.notifyChunkUpdate(this.worldX, this.worldZ, this.blocks);
+      this.world.queueChunkRemesh(this.worldX, this.worldZ);
+      this.updateAdjacentChunks(localX, localZ);
+      return true;
+    }
 
     // Si el bloque actual es agua
     if (currentBlock === "waterBlock") {
@@ -204,6 +225,44 @@ export class Chunk {
       return true;
     }
 
+    return false;
+  }
+
+  /**
+   * Verifica si un bloque está cerca de bloques de agua.
+   * Esto ayuda a determinar si un bloque al romperse debería convertirse en agua
+   * en lugar de aire para evitar artefactos visuales.
+   */
+  private isBlockNearWater(localX: number, localY: number, localZ: number): boolean {
+    // Direcciones para verificar (6 caras adyacentes)
+    const directions = [
+      [1, 0, 0], [-1, 0, 0], // ±X
+      [0, 1, 0], [0, -1, 0], // ±Y
+      [0, 0, 1], [0, 0, -1]  // ±Z
+    ];
+    
+    for (const [dx, dy, dz] of directions) {
+      const nx = localX + dx;
+      const ny = localY + dy;
+      const nz = localZ + dz;
+      
+      // Si el vecino está fuera de los límites del chunk, continuar
+      if (nx < 0 || nx >= CHUNK_SIZE || ny < 0 || ny >= this.world.layers || nz < 0 || nz >= CHUNK_SIZE) {
+        // Si es un límite de chunk, podríamos verificar con el World, pero por ahora lo omitimos
+        continue;
+      }
+      
+      // Si no hay datos para esta posición, continuar
+      if (!this.blocks[nx] || !this.blocks[nx][ny] || this.blocks[nx][ny][nz] === undefined) {
+        continue;
+      }
+      
+      // Si el bloque adyacente es agua, devolver true
+      if (this.blocks[nx][ny][nz] === "waterBlock") {
+        return true;
+      }
+    }
+    
     return false;
   }
 
@@ -592,10 +651,22 @@ export class Chunk {
       currentBlockType: string,
       neighborBlockType: string | null
     ): boolean => {
-      if (neighborBlockType === null) return true;
+      // Si no hay un bloque vecino (límite del chunk), verificar si el bloque actual es agua
+      if (neighborBlockType === null) {
+        // En los límites de chunk, no renderizar caras de agua para evitar "paredes" de agua
+        if (currentBlockType === "waterBlock") {
+          return false;
+        }
+        // Para otros bloques en los límites, renderizar normalmente
+        return true;
+      }
+      
+      // Si el bloque actual es agua, sólo mostrar caras contra el aire
       if (currentBlockType === "waterBlock") {
         return neighborBlockType === "air";
       }
+      
+      // Para bloques no-agua, mostrar caras contra aire o agua
       return neighborBlockType === "air" || neighborBlockType === "waterBlock";
     };
 
@@ -843,6 +914,8 @@ export class Chunk {
             metalness: 0.1,
             depthWrite: false,
             flatShading: false,
+            side: THREE.DoubleSide, // Renderizar ambos lados de las caras
+            alphaTest: 0.01 // Ayuda a evitar artefactos de orden de renderizado
           });
           mat.onBeforeCompile = (shader) => {
             shader.uniforms.time = { value: 0 };
@@ -877,6 +950,9 @@ export class Chunk {
                 float wave = 0.5 + 0.5 * sin(time * 2.5 + vAnimationId * 2.0 + vUvAnim.x * 16.0 + vUvAnim.y * 16.0);
                 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.1,0.5,1.0), 0.35 * wave);
                 diffuseColor.a *= 0.85 + 0.15 * wave;
+                
+                // Descarta píxeles casi transparentes para evitar artefactos
+                if (diffuseColor.a < 0.05) discard;
               `
               );
             mat.userData._waterAnim = true;

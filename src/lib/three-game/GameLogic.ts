@@ -133,38 +133,39 @@ export class GameLogic {
 
   public update(deltaTime: number, newFpsValue?: number): void {
     const refs = this.gameRefs;
-    if (
-      !refs.player ||
-      !refs.rendererManager ||
-      !refs.scene ||
-      !refs.camera ||
-      !refs.world ||
-      !refs.raycaster ||
-      !refs.inputController ||
-      !refs.sky
-    ) {
-      if (refs.gameLoopId !== null) cancelAnimationFrame(refs.gameLoopId);
-      refs.gameLoopId = null;
-      console.warn(
-        "GameLogic.update: Critical refs missing (incl. sky), stopping loop.",
-        refs
-      );
+
+    if (!refs.player || !refs.world || !refs.camera || !refs.scene) {
+      console.error("GameLogic.update: Missing critical references.");
       return;
     }
-    refs.sky.update(deltaTime, refs.camera, this.isCameraSubmerged_internal);
 
-    // Asegura que la matriz de transformación mundial de la cámara esté actualizada.
+    // Actualizar el cielo primero
+    if (refs.sky) {
+      refs.sky.update(deltaTime, refs.camera, this.isCameraSubmerged_internal);
+    }
+
+    // Actualizar posición del jugador y resaltar bloques
+    refs.player.updatePosition(deltaTime);
+    refs.player.highlightBlock();
+
+    // Actualizar chunks (carga/descarga)
+    refs.world.updateChunks(refs.player.mesh.position);
+
+    // Process remesh queue with player position to prioritize nearby chunks
+    const MAX_REMESH_PER_FRAME = 2;
+    if (refs.world.getRemeshQueueSize() > 0) {
+      refs.world.processRemeshQueue(MAX_REMESH_PER_FRAME, refs.player.mesh.position);
+    }
+
+    // Actualiza la matriz de proyección y el frustum
     refs.camera.updateMatrixWorld();
-
-    // Actualiza el frustum con la matriz combinada de proyección y vista de la cámara
-    this.frustum.setFromProjectionMatrix(
-      new THREE.Matrix4().multiplyMatrices(
-        refs.camera.projectionMatrix,
-        refs.camera.matrixWorldInverse
-      )
+    this.projectionMatrixInverse.multiplyMatrices(
+      refs.camera.projectionMatrix,
+      refs.camera.matrixWorldInverse
     );
+    this.frustum.setFromProjectionMatrix(this.projectionMatrixInverse);
 
-    // Frustum culling de chunks
+    // Frustum culling a nivel de chunks
     let visibleChunksCount = 0;
     refs.world.activeChunks.forEach((chunk) => {
       if (chunk && chunk.chunkRoot && chunk.boundingBox) {
@@ -172,52 +173,41 @@ export class GameLogic {
         chunk.chunkRoot.visible = isVisible;
         if (isVisible) visibleChunksCount++;
       } else {
-        // Si el chunk no tiene boundingBox o chunkRoot, lo ocultamos por seguridad
         if (chunk && chunk.chunkRoot) chunk.chunkRoot.visible = false;
       }
     });
 
-    refs.player.updatePosition(deltaTime);
-    refs.player.highlightBlock();
-    refs.world.updateChunks(refs.player.mesh.position);
-    // if (refs.camera) {
-    //   refs.world.updateChunkVisibility(refs.camera, this.frustum); // Esta línea es ahora redundante
-    // }
-    refs.world.processRemeshQueue(1);
-
+    // Actualizar información de depuración
     const playerForDebug = refs.player;
     const playerPosStr = `Player: X:${playerForDebug.x.toFixed(
-      2
-    )}, Y:${playerForDebug.y.toFixed(2)}, Z:${playerForDebug.z.toFixed(2)}`;
+      1
+    )} Y:${playerForDebug.y.toFixed(1)} Z:${playerForDebug.z.toFixed(1)}`;
     const playerChunkX = Math.floor(playerForDebug.x / CHUNK_SIZE);
     const playerChunkZ = Math.floor(playerForDebug.z / CHUNK_SIZE);
-    const playerChunkStr = `Chunk: CX:${playerChunkX}, CZ:${playerChunkZ}`;
+    const playerChunkStr = `Chunk: ${playerChunkX},${playerChunkZ}`;
 
+    // Raycast target display
+    const raycastResult = refs.player.getLookingAt();
     let rayTargetStr = "Ray: None";
-    let highlightFaceDir = "Inactive";
-    if (playerForDebug.lookingAt) {
-      const { object, distance, blockWorldCoords, worldFaceNormal } =
-        playerForDebug.lookingAt;
-      const objName =
-        object.name.length > 20
-          ? object.name.substring(0, 20) + "..."
-          : object.name;
-      rayTargetStr = `Ray: ${objName} D:${distance.toFixed(
-        1
-      )} B:[${blockWorldCoords.x.toFixed(0)},${blockWorldCoords.y.toFixed(
+    if (raycastResult) {
+      const blockPos = raycastResult.blockWorldCoords;
+      rayTargetStr = `Ray: X:${blockPos.x.toFixed(0)} Y:${blockPos.y.toFixed(
         0
-      )},${blockWorldCoords.z.toFixed(0)}]`;
+      )} Z:${blockPos.z.toFixed(0)}`;
+    }
 
-      if (worldFaceNormal) {
-        const normal = worldFaceNormal;
-        if (Math.abs(normal.x) > 0.5)
-          highlightFaceDir = normal.x > 0 ? "East (+X)" : "West (-X)";
-        else if (Math.abs(normal.y) > 0.5)
-          highlightFaceDir = normal.y > 0 ? "Top (+Y)" : "Bottom (-Y)";
-        else if (Math.abs(normal.z) > 0.5)
-          highlightFaceDir = normal.z > 0 ? "South (+Z)" : "North (-Z)";
-        else highlightFaceDir = "Unknown Face";
-      }
+    // Highlight face direction
+    let highlightFaceDir = "None";
+    const worldFaceNormal = raycastResult?.worldFaceNormal;
+    if (worldFaceNormal) {
+      const normal = worldFaceNormal;
+      if (Math.abs(normal.x) > 0.5)
+        highlightFaceDir = normal.x > 0 ? "East (+X)" : "West (-X)";
+      else if (Math.abs(normal.y) > 0.5)
+        highlightFaceDir = normal.y > 0 ? "Top (+Y)" : "Bottom (-Y)";
+      else if (Math.abs(normal.z) > 0.5)
+        highlightFaceDir = normal.z > 0 ? "South (+Z)" : "North (-Z)";
+      else highlightFaceDir = "Unknown Face";
     }
     const highlightStr = `HL: ${highlightFaceDir}`;
 
@@ -235,14 +225,15 @@ export class GameLogic {
       playerChunk: playerChunkStr,
       raycastTarget: rayTargetStr,
       highlightStatus: highlightStr,
-      visibleChunks: visibleChunksCount, // ¡Actualiza esto!
+      visibleChunks: visibleChunksCount,
       totalChunks: refs.world!.activeChunks.size,
       isFlying: `Flying: ${playerForDebug.flying ? "Yes" : "No"}`,
       isRunning: `Running: ${playerForDebug.isRunning ? "Yes" : "No"}`,
       isBoosting: `Boosting: ${playerForDebug.isBoosting ? "Yes" : "No"}`,
-      lookDirection: lookDirStr, // <-- Nueva línea para mostrar dirección de mirada
+      lookDirection: lookDirStr,
     }));
 
+    // Verificar si la cámara está bajo el agua
     if (refs.player && refs.world && refs.camera) {
       const camWorldX = Math.floor(refs.camera.position.x);
       const camWorldY = Math.floor(refs.camera.position.y);
@@ -404,6 +395,9 @@ export class GameLogic {
       refs.cursor._lastDestroyTime = 0;
     }
 
-    refs.rendererManager.render();
+    // Renderizar la escena
+    if (refs.rendererManager) {
+      refs.rendererManager.render();
+    }
   }
 }

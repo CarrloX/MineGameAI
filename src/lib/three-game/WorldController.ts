@@ -15,22 +15,41 @@ export class WorldController {
    */
   update(frustum?: THREE.Frustum) {
     if (!this.refs.world || !this.refs.player) return 0;
+    
     // Actualiza los chunks activos (carga/descarga)
     this.refs.world.updateChunks(this.refs.player.mesh.position);
 
-    // Llama al remallado asíncrono en todos los chunks que lo necesiten
-    this.refs.world.activeChunks.forEach((chunk) => {
-      chunk.updateMeshIfNeededAsync();
-    });
+    // Procesar la cola de remallado con prioridad para chunks cercanos
+    const MAX_REMESH_PER_FRAME = 2; 
+    if (this.refs.world.getRemeshQueueSize() > 0) {
+      this.refs.world.processRemeshQueue(MAX_REMESH_PER_FRAME, this.refs.player.mesh.position);
+    }
 
-    // Limita el número de remallados asíncronos por frame
-    const MAX_REMESH_PER_FRAME = 2; // Puedes ajustar este valor según el rendimiento deseado
-    let remeshesThisFrame = 0;
-    for (const chunk of this.refs.world.activeChunks.values()) {
-      if (remeshesThisFrame >= MAX_REMESH_PER_FRAME) break;
-      if (chunk.needsMeshUpdate && !(chunk as any).isRemeshing) {
-        chunk.updateMeshIfNeededAsync();
-        remeshesThisFrame++;
+    // Priorizar remallados asíncronos en chunks cercanos al jugador
+    if (this.refs.world.activeChunks.size > 0) {
+      const playerPosition = this.refs.player.mesh.position;
+      const playerChunkX = Math.floor(playerPosition.x / 16);
+      const playerChunkZ = Math.floor(playerPosition.z / 16);
+      
+      // Crear una lista ordenada de chunks por distancia al jugador
+      const chunksToProcess = Array.from(this.refs.world.activeChunks.entries())
+        .map(([key, chunk]) => {
+          const [chunkX, chunkZ] = key.split(',').map(Number);
+          const distanceSquared = 
+            (chunkX - playerChunkX) * (chunkX - playerChunkX) + 
+            (chunkZ - playerChunkZ) * (chunkZ - playerChunkZ);
+          return { key, chunk, distanceSquared };
+        })
+        .sort((a, b) => a.distanceSquared - b.distanceSquared);
+      
+      // Procesar primero los chunks más cercanos
+      let remeshesThisFrame = 0;
+      for (const { chunk } of chunksToProcess) {
+        if (remeshesThisFrame >= MAX_REMESH_PER_FRAME) break;
+        if (chunk.needsMeshUpdate && !(chunk as any).isRemeshing) {
+          chunk.updateMeshIfNeededAsync();
+          remeshesThisFrame++;
+        }
       }
     }
 

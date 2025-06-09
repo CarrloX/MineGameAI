@@ -29,7 +29,8 @@ export class Block {
       materialOptions.transparent = true;
       materialOptions.opacity = 0.7;
       materialOptions.depthWrite = false;
-      materialOptions.alphaTest = 0.1; // Helps with transparency sorting artifacts
+      materialOptions.alphaTest = 0.05; // Descartar píxeles demasiado transparentes
+      materialOptions.side = THREE.DoubleSide; // Renderizar ambos lados
     }
 
     if (this.multiTexture && Array.isArray(blockDefinition)) {

@@ -123,6 +123,9 @@ export class World {
     const playerChunkX = Math.floor(playerPosition.x / CHUNK_SIZE);
     const playerChunkZ = Math.floor(playerPosition.z / CHUNK_SIZE);
 
+    // Crear un array de coordenadas de chunks a cargar, ordenados por distancia al jugador
+    const chunksToLoad: { x: number; z: number; distance: number }[] = [];
+
     for (
       let dChunkX = -this.renderDistanceInChunks;
       dChunkX <= this.renderDistanceInChunks;
@@ -136,12 +139,35 @@ export class World {
         const chunkX = playerChunkX + dChunkX;
         const chunkZ = playerChunkZ + dChunkZ;
         const key = `${chunkX},${chunkZ}`;
+        
+        // Si el chunk ya está cargado, no lo agregamos a la lista
         if (!this.activeChunks.has(key)) {
-          this.loadChunk(chunkX, chunkZ);
+          // Calcular distancia al cuadrado (evita calcular raíz cuadrada)
+          const distanceSquared = dChunkX * dChunkX + dChunkZ * dChunkZ;
+          chunksToLoad.push({ x: chunkX, z: chunkZ, distance: distanceSquared });
         }
       }
     }
 
+    // Ordenar chunks por distancia (más cercanos primero)
+    chunksToLoad.sort((a, b) => a.distance - b.distance);
+
+    // Cargar chunks en orden de cercanía, priorizando los más cercanos
+    const MAX_PRIORITY_DISTANCE = 4; // Distancia máxima (en chunks) para prioridad alta
+    
+    for (const chunk of chunksToLoad) {
+      // Determinar si este chunk debe tener prioridad alta
+      const isPriority = chunk.distance <= MAX_PRIORITY_DISTANCE * MAX_PRIORITY_DISTANCE;
+      this.loadChunk(chunk.x, chunk.z, isPriority);
+      
+      // Asegurarse de que los chunks adyacentes también se actualizan para evitar problemas de agua en los bordes
+      // Solo para chunks que se acaban de cargar y que están a distancia razonable
+      if (isPriority) {
+        this.ensureAdjacentChunksUpdated(chunk.x, chunk.z);
+      }
+    }
+
+    // Descargar chunks fuera del rango de renderizado
     const chunksToUnloadKeys: string[] = [];
     this.activeChunks.forEach((chunk, key) => {
       const dx = Math.abs(chunk.worldX - playerChunkX);
@@ -180,7 +206,7 @@ export class World {
     });
   }
 
-  public loadChunk(chunkX: number, chunkZ: number): void {
+  public loadChunk(chunkX: number, chunkZ: number, priority: boolean = false): void {
     const key = `${chunkX},${chunkZ}`;
     if (this.activeChunks.has(key)) return;
 
@@ -207,7 +233,15 @@ export class World {
         "World: Scene not available in gameRefs when trying to load chunk."
       );
     }
-    this.queueChunkRemesh(chunkX, chunkZ);
+    
+    // Si el chunk es prioritario, procesarlo inmediatamente
+    if (priority && this.gameRefs.player) {
+      // Procesar este chunk inmediatamente
+      newChunk.buildMesh();
+    } else {
+      // Si no es prioritario, agregarlo a la cola de remallado
+      this.queueChunkRemesh(chunkX, chunkZ);
+    }
   }
 
   private unloadChunkByKey(key: string): void {
@@ -256,8 +290,76 @@ export class World {
           return storedData[localX][localY][localZ];
         }
       }
+      
+      // Especial: Para mejorar la continuidad del agua entre chunks
+      // Verificar si está cerca de otro chunk con agua en sus bordes
+      if (this.mightBeWaterAtChunkBoundary(worldX, worldY, worldZ)) {
+        return "waterBlock";
+      }
     }
     return "air";
+  }
+
+  /**
+   * Determina si una posición podría ser agua basándose en chunks vecinos.
+   * Esto ayuda a evitar "paredes" de agua en los límites de los chunks.
+   */
+  private mightBeWaterAtChunkBoundary(worldX: number, worldY: number, worldZ: number): boolean {
+    // Si la posición no está cerca del borde de un chunk, no es relevante
+    const localX = ((Math.floor(worldX) % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const localZ = ((Math.floor(worldZ) % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    
+    const isNearXBoundary = localX === 0 || localX === CHUNK_SIZE - 1;
+    const isNearZBoundary = localZ === 0 || localZ === CHUNK_SIZE - 1;
+    
+    if (!isNearXBoundary && !isNearZBoundary) {
+      return false;
+    }
+    
+    // Calcular qué chunks adyacentes deberíamos verificar
+    const chunkX = Math.floor(worldX / CHUNK_SIZE);
+    const chunkZ = Math.floor(worldZ / CHUNK_SIZE);
+    
+    // Direcciones a revisar basadas en la posición en el borde
+    const directionsToCheck = [];
+    
+    if (localX === 0) directionsToCheck.push([-1, 0]);
+    if (localX === CHUNK_SIZE - 1) directionsToCheck.push([1, 0]);
+    if (localZ === 0) directionsToCheck.push([0, -1]);
+    if (localZ === CHUNK_SIZE - 1) directionsToCheck.push([0, 1]);
+    
+    // Verificar chunks adyacentes
+    for (const [dx, dz] of directionsToCheck) {
+      const adjacentChunkX = chunkX + dx;
+      const adjacentChunkZ = chunkZ + dz;
+      const adjacentChunkKey = `${adjacentChunkX},${adjacentChunkZ}`;
+      
+      // Primero intentar con chunks activos
+      const adjacentChunk = this.activeChunks.get(adjacentChunkKey);
+      if (adjacentChunk) {
+        // Calcular coordenadas locales en el chunk adyacente
+        const adjacentLocalX = dx === -1 ? CHUNK_SIZE - 1 : (dx === 1 ? 0 : localX);
+        const adjacentLocalZ = dz === -1 ? CHUNK_SIZE - 1 : (dz === 1 ? 0 : localZ);
+        
+        const blockType = adjacentChunk.getBlock(adjacentLocalX, Math.floor(worldY), adjacentLocalZ);
+        if (blockType === "waterBlock") {
+          return true;
+        }
+      } else {
+        // Intentar con datos almacenados
+        const storedData = this.chunkDataStore.get(adjacentChunkKey);
+        if (storedData) {
+          const adjacentLocalX = dx === -1 ? CHUNK_SIZE - 1 : (dx === 1 ? 0 : localX);
+          const adjacentLocalZ = dz === -1 ? CHUNK_SIZE - 1 : (dz === 1 ? 0 : localZ);
+          
+          if (storedData[adjacentLocalX]?.[Math.floor(worldY)]?.[adjacentLocalZ] === "waterBlock") {
+            return true;
+          }
+        }
+      }
+    }
+    
+    return false;
   }
 
   public setBlock(
@@ -388,8 +490,24 @@ export class World {
     let processedCount = 0;
     let queueArray = Array.from(this.remeshQueue);
 
-    // Si se pasa la posición del jugador, ordenar por distancia al centro del chunk
+    // Siempre ordenar por distancia al jugador si se proporciona la posición
     if (playerPosition) {
+      queueArray.sort((a, b) => {
+        const [ax, az] = a.split(",").map(Number);
+        const [bx, bz] = b.split(",").map(Number);
+        // Calcular el centro del chunk
+        const acx = (ax + 0.5) * CHUNK_SIZE;
+        const acz = (az + 0.5) * CHUNK_SIZE;
+        const bcx = (bx + 0.5) * CHUNK_SIZE;
+        const bcz = (bz + 0.5) * CHUNK_SIZE;
+        // Calcular distancia al cuadrado (más eficiente que raíz cuadrada)
+        const distanceA = (acx - playerPosition.x) ** 2 + (acz - playerPosition.z) ** 2;
+        const distanceB = (bcx - playerPosition.x) ** 2 + (bcz - playerPosition.z) ** 2;
+        return distanceA - distanceB;
+      });
+    } else if (this.gameRefs.player) {
+      // Si no se proporciona playerPosition pero tenemos acceso al jugador, usamos su posición
+      const playerPos = this.gameRefs.player.mesh.position;
       queueArray.sort((a, b) => {
         const [ax, az] = a.split(",").map(Number);
         const [bx, bz] = b.split(",").map(Number);
@@ -397,11 +515,9 @@ export class World {
         const acz = (az + 0.5) * CHUNK_SIZE;
         const bcx = (bx + 0.5) * CHUNK_SIZE;
         const bcz = (bz + 0.5) * CHUNK_SIZE;
-        const da =
-          (acx - playerPosition.x) ** 2 + (acz - playerPosition.z) ** 2;
-        const db =
-          (bcx - playerPosition.x) ** 2 + (bcz - playerPosition.z) ** 2;
-        return da - db;
+        const distanceA = (acx - playerPos.x) ** 2 + (acz - playerPos.z) ** 2;
+        const distanceB = (bcx - playerPos.x) ** 2 + (bcz - playerPos.z) ** 2;
+        return distanceA - distanceB;
       });
     }
 
@@ -446,4 +562,30 @@ export class World {
       this.remeshQueue.add(key);
     }
   }
+
+  /**
+   * Asegura que los chunks adyacentes a un chunk dado estén cargados y actualizados
+   * para evitar problemas visuales en los bordes de los chunks con agua
+   */
+  private ensureAdjacentChunksUpdated(chunkX: number, chunkZ: number): void {
+    // Direcciones adyacentes (ortogonales)
+    const directions = [
+      [1, 0], [-1, 0], [0, 1], [0, -1]
+    ];
+    
+    for (const [dx, dz] of directions) {
+      const adjacentX = chunkX + dx;
+      const adjacentZ = chunkZ + dz;
+      const adjacentKey = `${adjacentX},${adjacentZ}`;
+      
+      // Si el chunk adyacente ya está cargado, asegurarse de que esté en la cola de remallado
+      if (this.activeChunks.has(adjacentKey)) {
+        const adjacentChunk = this.activeChunks.get(adjacentKey);
+        if (adjacentChunk) {
+          this.queueChunkRemesh(adjacentX, adjacentZ);
+        }
+      }
+    }
+  }
 }
+

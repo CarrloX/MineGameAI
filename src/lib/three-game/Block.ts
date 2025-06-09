@@ -1,16 +1,19 @@
-
-import * as THREE from 'three';
-import type { TextureLoader } from 'three';
-import type { BlockDefinition } from './types';
-import { getTextureHint } from './utils';
-
+import * as THREE from "three";
+import type { TextureLoader } from "three";
+import type { BlockDefinition } from "./types";
+import { getTextureHint } from "./utils";
 
 export class Block {
   public mesh: THREE.Mesh;
   public multiTexture: boolean;
   private nameKey: string; // Store the original key like "blueberryIMac" for hints
 
-  constructor(nameKey: string, blockDefinition: BlockDefinition, textureLoader: THREE.TextureLoader, multiTexture: boolean = false) {
+  constructor(
+    nameKey: string,
+    blockDefinition: BlockDefinition,
+    textureLoader: THREE.TextureLoader,
+    multiTexture: boolean = false
+  ) {
     this.nameKey = nameKey;
     const blockProtoGeo = new THREE.BoxGeometry(1, 1, 1);
     let blockMat: THREE.Material | THREE.Material[];
@@ -22,10 +25,10 @@ export class Block {
       color: blockColor,
     };
 
-    if (nameKey === 'waterBlock') {
+    if (nameKey === "waterBlock") {
       materialOptions.transparent = true;
       materialOptions.opacity = 0.7;
-      materialOptions.depthWrite = false; 
+      materialOptions.depthWrite = false;
       materialOptions.alphaTest = 0.1; // Helps with transparency sorting artifacts
     }
 
@@ -36,7 +39,7 @@ export class Block {
         const texture = textureLoader.load(path);
         texture.magFilter = THREE.NearestFilter;
         texture.minFilter = THREE.NearestFilter;
-        
+
         const faceMaterialOptions = { ...materialOptions };
         faceMaterialOptions.map = texture;
         const sprite = new THREE.MeshLambertMaterial(faceMaterialOptions);
@@ -44,22 +47,26 @@ export class Block {
         sprite.map!.wrapS = THREE.RepeatWrapping;
         sprite.map!.wrapT = THREE.RepeatWrapping;
         sprite.map!.repeat.set(1, 1);
-        (sprite as any)['data-ai-hint'] = textureHint;
+        (sprite as any)["data-ai-hint"] = textureHint;
         blockMat.push(sprite);
       }
-    } else if (!this.multiTexture && typeof blockDefinition === 'object' && 'side' in blockDefinition) {
+    } else if (
+      !this.multiTexture &&
+      typeof blockDefinition === "object" &&
+      "side" in blockDefinition
+    ) {
       const texture = textureLoader.load(blockDefinition.side);
       texture.magFilter = THREE.NearestFilter;
       texture.minFilter = THREE.NearestFilter;
-      
+
       const singleMaterialOptions = { ...materialOptions };
       singleMaterialOptions.map = texture;
       const sprite = new THREE.MeshLambertMaterial(singleMaterialOptions);
-      
+
       sprite.map!.wrapS = THREE.RepeatWrapping;
       sprite.map!.wrapT = THREE.RepeatWrapping;
       sprite.map!.repeat.set(1, 1);
-      (sprite as any)['data-ai-hint'] = getTextureHint(this.nameKey);
+      (sprite as any)["data-ai-hint"] = getTextureHint(this.nameKey);
       blockMat = sprite;
     } else {
       console.warn("Invalid block definition for:", nameKey, blockDefinition);
@@ -68,13 +75,12 @@ export class Block {
 
     this.mesh = new THREE.Mesh(blockProtoGeo, blockMat);
     if (Array.isArray(this.mesh.material)) {
-        this.mesh.material.forEach(m => m.needsUpdate = true);
+      this.mesh.material.forEach((m) => (m.needsUpdate = true));
     } else {
-        this.mesh.material.needsUpdate = true;
+      this.mesh.material.needsUpdate = true;
     }
-    this.mesh.castShadow = nameKey !== 'waterBlock'; 
+    this.mesh.castShadow = nameKey !== "waterBlock";
     this.mesh.receiveShadow = true;
     this.mesh.name = `Block_${nameKey}`;
   }
 }
-

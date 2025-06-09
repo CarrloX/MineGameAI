@@ -1,9 +1,12 @@
 // src/lib/three-game/workers/MeshWorkerPool.ts
 // Pool de Web Workers para generación de mallas de chunks
 
-import createMeshWorker from './meshWorkerWrapper';
+import createMeshWorker from "./meshWorkerWrapper";
 
-const WORKER_COUNT = Math.max(2, Math.floor(navigator.hardwareConcurrency / 2) || 2);
+const WORKER_COUNT = Math.max(
+  2,
+  Math.floor(navigator.hardwareConcurrency / 2) || 2
+);
 
 export type MeshTask = {
   chunkData: string[][][];
@@ -30,7 +33,7 @@ export class MeshWorkerPool {
 
   enqueueTask(task: MeshTask) {
     // Busca un worker libre
-    const freeIdx = this.busy.findIndex(b => !b);
+    const freeIdx = this.busy.findIndex((b) => !b);
     if (freeIdx !== -1) {
       this.runTaskOnWorker(freeIdx, task);
     } else {
@@ -40,7 +43,8 @@ export class MeshWorkerPool {
 
   private runTaskOnWorker(idx: number, task: MeshTask) {
     this.busy[idx] = true;
-    (this.workers[idx] as Worker).onmessage = (e) => this.handleWorkerMessage(idx, e, task.onComplete);
+    (this.workers[idx] as Worker).onmessage = (e) =>
+      this.handleWorkerMessage(idx, e, task.onComplete);
     this.workers[idx].postMessage({
       chunkData: task.chunkData,
       chunkX: task.chunkX,
@@ -50,7 +54,11 @@ export class MeshWorkerPool {
     });
   }
 
-  private handleWorkerMessage(idx: number, e: MessageEvent, onComplete?: (meshData: any) => void) {
+  private handleWorkerMessage(
+    idx: number,
+    e: MessageEvent,
+    onComplete?: (meshData: any) => void
+  ) {
     this.busy[idx] = false;
     const meshData = e.data.meshData;
     if (onComplete) onComplete(meshData);
@@ -62,7 +70,7 @@ export class MeshWorkerPool {
   }
 
   dispose() {
-    this.workers.forEach(w => w.terminate());
+    this.workers.forEach((w) => w.terminate());
     this.workers = [];
     this.busy = [];
     this.queue = [];

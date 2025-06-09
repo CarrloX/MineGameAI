@@ -124,8 +124,8 @@ export class SkyRenderer {
         mesh.parent.remove(mesh);
       }
       mesh.geometry.dispose();
-      if ((mesh.material as THREE.Material).map) {
-        ((mesh.material as THREE.Material).map as THREE.Texture).dispose();
+      if (mesh.material instanceof THREE.MeshBasicMaterial && mesh.material.map) {
+        mesh.material.map.dispose();
       }
       (mesh.material as THREE.Material).dispose();
     });

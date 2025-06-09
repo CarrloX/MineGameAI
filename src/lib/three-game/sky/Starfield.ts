@@ -1,12 +1,15 @@
-
-import * as THREE from 'three';
+import * as THREE from "three";
 
 export class Starfield {
   public mesh: THREE.Mesh;
   private material: THREE.MeshBasicMaterial;
   private texture: THREE.Texture | null = null; // Set to null
 
-  constructor(scene: THREE.Scene, textureLoader: THREE.TextureLoader, radius: number = 900) {
+  constructor(
+    scene: THREE.Scene,
+    textureLoader: THREE.TextureLoader,
+    radius: number = 900
+  ) {
     const geometry = new THREE.SphereGeometry(radius, 32, 16);
     this.material = new THREE.MeshBasicMaterial({
       // No map initially, rely on color or future direct texture assignment

@@ -1,5 +1,5 @@
-import type { GameRefs } from './types';
-import * as THREE from 'three';
+import type { GameRefs } from "./types";
+import * as THREE from "three";
 
 export class WorldController {
   private refs: GameRefs;
@@ -19,7 +19,7 @@ export class WorldController {
     this.refs.world.updateChunks(this.refs.player.mesh.position);
 
     // Llama al remallado asíncrono en todos los chunks que lo necesiten
-    this.refs.world.activeChunks.forEach(chunk => {
+    this.refs.world.activeChunks.forEach((chunk) => {
       chunk.updateMeshIfNeededAsync();
     });
 
@@ -37,7 +37,7 @@ export class WorldController {
     // Frustum culling y visibilidad
     let visibleChunksCount = 0;
     if (frustum) {
-      this.refs.world.activeChunks.forEach(chunk => {
+      this.refs.world.activeChunks.forEach((chunk) => {
         if (chunk && chunk.chunkRoot && chunk.boundingBox) {
           const isVisible = frustum.intersectsBox(chunk.boundingBox);
           chunk.chunkRoot.visible = isVisible;

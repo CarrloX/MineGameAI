@@ -1,4 +1,3 @@
-
 // This file will be deleted as its content is moved to InputController.ts
 // If your build system or version control doesn't handle file renames + content changes
 // well in a single step, you might need to manually delete this file after applying the changes.

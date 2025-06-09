@@ -1,5 +1,5 @@
-import type { GameRefs, PlayerCameraService } from './types';
-import type { Player } from './Player';
+import type { GameRefs, PlayerCameraService } from "./types";
+import type { Player } from "./Player";
 
 export class InputController {
   private player: Player | null = null; // Player can be null initially or after destruction
@@ -20,7 +20,8 @@ export class InputController {
   private lastSpacePressTime: number = 0;
   private readonly FLY_TOGGLE_DELAY: number = 300; // ms
 
-  constructor(gameRefs: GameRefs, initialPlayer?: Player) { // Player is now optional
+  constructor(gameRefs: GameRefs, initialPlayer?: Player) {
+    // Player is now optional
     this.gameRefs = gameRefs;
     if (initialPlayer) this.player = initialPlayer;
 
@@ -36,7 +37,8 @@ export class InputController {
     this.boundHandleMouseUp = this.handleMouseUp.bind(this); // Agregado
   }
 
-  public setPlayer(player: Player | null) { // Allow setting player to null
+  public setPlayer(player: Player | null) {
+    // Allow setting player to null
     this.player = player;
   }
 
@@ -45,16 +47,44 @@ export class InputController {
 
     window.addEventListener("keydown", this.boundHandleKeyDown);
     window.addEventListener("keyup", this.boundHandleKeyUp);
-    document.addEventListener('pointerlockchange', this.boundHandlePointerLockChange, false);    this.gameRefs.canvasRef.addEventListener("mousedown", this.boundHandleMouseDown);
-    this.gameRefs.canvasRef.addEventListener("mouseup", this.handleMouseUp.bind(this));
-    this.gameRefs.canvasRef.addEventListener("click", this.boundHandleCanvasClick);
+    document.addEventListener(
+      "pointerlockchange",
+      this.boundHandlePointerLockChange,
+      false
+    );
+    this.gameRefs.canvasRef.addEventListener(
+      "mousedown",
+      this.boundHandleMouseDown
+    );
+    this.gameRefs.canvasRef.addEventListener(
+      "mouseup",
+      this.handleMouseUp.bind(this)
+    );
+    this.gameRefs.canvasRef.addEventListener(
+      "click",
+      this.boundHandleCanvasClick
+    );
 
-    this.gameRefs.canvasRef.addEventListener("touchstart", this.boundHandleTouchStart, { passive: false });
-    this.gameRefs.canvasRef.addEventListener("touchmove", this.boundHandleTouchMove, { passive: false });
-    this.gameRefs.canvasRef.addEventListener("touchend", this.boundHandleTouchEnd);
+    this.gameRefs.canvasRef.addEventListener(
+      "touchstart",
+      this.boundHandleTouchStart,
+      { passive: false }
+    );
+    this.gameRefs.canvasRef.addEventListener(
+      "touchmove",
+      this.boundHandleTouchMove,
+      { passive: false }
+    );
+    this.gameRefs.canvasRef.addEventListener(
+      "touchend",
+      this.boundHandleTouchEnd
+    );
 
     // Agregado
-    this.gameRefs.canvasRef.addEventListener("mouseup", this.boundHandleMouseUp);
+    this.gameRefs.canvasRef.addEventListener(
+      "mouseup",
+      this.boundHandleMouseUp
+    );
   }
 
   public removeEventListeners(): void {
@@ -63,23 +93,50 @@ export class InputController {
     window.removeEventListener("keydown", this.boundHandleKeyDown);
     window.removeEventListener("keyup", this.boundHandleKeyUp);
     // mousemove is added/removed in handlePointerLockChange
-    document.removeEventListener('pointerlockchange', this.boundHandlePointerLockChange, false);    this.gameRefs.canvasRef.removeEventListener("mousedown", this.boundHandleMouseDown);
-    this.gameRefs.canvasRef.removeEventListener("mouseup", this.handleMouseUp.bind(this));
-    this.gameRefs.canvasRef.removeEventListener("click", this.boundHandleCanvasClick);
+    document.removeEventListener(
+      "pointerlockchange",
+      this.boundHandlePointerLockChange,
+      false
+    );
+    this.gameRefs.canvasRef.removeEventListener(
+      "mousedown",
+      this.boundHandleMouseDown
+    );
+    this.gameRefs.canvasRef.removeEventListener(
+      "mouseup",
+      this.handleMouseUp.bind(this)
+    );
+    this.gameRefs.canvasRef.removeEventListener(
+      "click",
+      this.boundHandleCanvasClick
+    );
 
-    this.gameRefs.canvasRef.removeEventListener("touchstart", this.boundHandleTouchStart);
-    this.gameRefs.canvasRef.removeEventListener("touchmove", this.boundHandleTouchMove);
-    this.gameRefs.canvasRef.removeEventListener("touchend", this.boundHandleTouchEnd);
+    this.gameRefs.canvasRef.removeEventListener(
+      "touchstart",
+      this.boundHandleTouchStart
+    );
+    this.gameRefs.canvasRef.removeEventListener(
+      "touchmove",
+      this.boundHandleTouchMove
+    );
+    this.gameRefs.canvasRef.removeEventListener(
+      "touchend",
+      this.boundHandleTouchEnd
+    );
 
     // Agregado
-    this.gameRefs.canvasRef.removeEventListener("mouseup", this.boundHandleMouseUp);
+    this.gameRefs.canvasRef.removeEventListener(
+      "mouseup",
+      this.boundHandleMouseUp
+    );
   }
 
   private handleCanvasClick(): void {
     if (!this.gameRefs.canvasRef) return;
     if (!document.pointerLockElement) {
-      this.gameRefs.canvasRef.requestPointerLock()
-        .catch(err => console.error("Pointer lock failed:", err));
+      this.gameRefs.canvasRef
+        .requestPointerLock()
+        .catch((err) => console.error("Pointer lock failed:", err));
     }
   }
 
@@ -88,13 +145,17 @@ export class InputController {
     if (!cursor || !canvasRef) return;
 
     if (document.pointerLockElement === canvasRef) {
-        document.addEventListener("mousemove", this.boundHandleMouseMove, false);
-        cursor.inWindow = true;
+      document.addEventListener("mousemove", this.boundHandleMouseMove, false);
+      cursor.inWindow = true;
     } else {
-        document.removeEventListener("mousemove", this.boundHandleMouseMove, false);
-        cursor.inWindow = false;
-        cursor.x = canvasRef.clientWidth / 2;
-        cursor.y = canvasRef.clientHeight / 2;
+      document.removeEventListener(
+        "mousemove",
+        this.boundHandleMouseMove,
+        false
+      );
+      cursor.inWindow = false;
+      cursor.x = canvasRef.clientWidth / 2;
+      cursor.y = canvasRef.clientHeight / 2;
     }
   }
 
@@ -103,23 +164,33 @@ export class InputController {
     const { controlConfig } = this.gameRefs;
     if (!controlConfig || !this.player) return;
 
-    console.log('KeyDown:', e.code);
+    console.log("KeyDown:", e.code);
 
     switch (e.code) {
-      case controlConfig.left: this.player.xdir = "left"; break;
-      case controlConfig.right: this.player.xdir = "right"; break;
-      case controlConfig.forwards: this.player.zdir = "forwards"; break;
-      case controlConfig.backwards: this.player.zdir = "backwards"; break;
-      case controlConfig.respawn: this.player.die(); break;
-      case controlConfig.jump: 
-        console.log('Tecla de salto presionada');
+      case controlConfig.left:
+        this.player.xdir = "left";
+        break;
+      case controlConfig.right:
+        this.player.xdir = "right";
+        break;
+      case controlConfig.forwards:
+        this.player.zdir = "forwards";
+        break;
+      case controlConfig.backwards:
+        this.player.zdir = "backwards";
+        break;
+      case controlConfig.respawn:
+        this.player.die();
+        break;
+      case controlConfig.jump:
+        console.log("Tecla de salto presionada");
         this.player.toggleFlying();
         break;
-      case controlConfig.flyDown: 
-        console.log('Tecla de descenso presionada');
-        this.player.startFlyingDown(); 
+      case controlConfig.flyDown:
+        console.log("Tecla de descenso presionada");
+        this.player.startFlyingDown();
         break;
-      case controlConfig.boost: 
+      case controlConfig.boost:
         if (this.player.flying) {
           this.player.toggleBoosting();
         } else {
@@ -134,31 +205,31 @@ export class InputController {
     const { controlConfig } = this.gameRefs;
     if (!controlConfig) return;
 
-    console.log('KeyUp:', e.code);
+    console.log("KeyUp:", e.code);
 
     switch (e.code) {
-      case controlConfig.left: 
-        if (this.player.xdir === "left") this.player.xdir = ""; 
+      case controlConfig.left:
+        if (this.player.xdir === "left") this.player.xdir = "";
         break;
-      case controlConfig.right: 
-        if (this.player.xdir === "right") this.player.xdir = ""; 
+      case controlConfig.right:
+        if (this.player.xdir === "right") this.player.xdir = "";
         break;
-      case controlConfig.forwards: 
-        if (this.player.zdir === "forwards") this.player.zdir = ""; 
+      case controlConfig.forwards:
+        if (this.player.zdir === "forwards") this.player.zdir = "";
         break;
-      case controlConfig.backwards: 
-        if (this.player.zdir === "backwards") this.player.zdir = ""; 
+      case controlConfig.backwards:
+        if (this.player.zdir === "backwards") this.player.zdir = "";
         break;
       case controlConfig.jump:
-        console.log('Tecla de salto liberada');
+        console.log("Tecla de salto liberada");
         if (this.player.flying) {
-          console.log('Deteniendo ascenso');
+          console.log("Deteniendo ascenso");
           this.player.stopFlyingUp();
         }
         break;
-      case controlConfig.flyDown: 
-        console.log('Tecla de descenso liberada');
-        this.player.stopFlyingDown(); 
+      case controlConfig.flyDown:
+        console.log("Tecla de descenso liberada");
+        this.player.stopFlyingDown();
         break;
     }
   }

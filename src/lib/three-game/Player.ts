@@ -1,14 +1,19 @@
-import * as THREE from 'three';
-import type { Block } from './Block';
+import * as THREE from "three";
+import type { Block } from "./Block";
 // World import no longer needed directly by Player
-import { CHUNK_SIZE } from './utils';
-import type { LookingAtInfo, PlayerWorldService, PlayerCameraService, PlayerSceneService, PlayerRaycasterService } from './types';
-import { CONTROL_CONFIG } from './CONTROL_CONFIG';
-import { PlayerMovementService } from './services/PlayerMovementService';
-import { PlayerBlockInteractionService } from './services/PlayerBlockInteractionService';
-import { PlayerStateService } from './services/PlayerStateService';
-import { PlayerCameraController } from './services/PlayerCameraService';
-
+import { CHUNK_SIZE } from "./utils";
+import type {
+  LookingAtInfo,
+  PlayerWorldService,
+  PlayerCameraService,
+  PlayerSceneService,
+  PlayerRaycasterService,
+} from "./types";
+import { CONTROL_CONFIG } from "./CONTROL_CONFIG";
+import { PlayerMovementService } from "./services/PlayerMovementService";
+import { PlayerBlockInteractionService } from "./services/PlayerBlockInteractionService";
+import { PlayerStateService } from "./services/PlayerStateService";
+import { PlayerCameraController } from "./services/PlayerCameraService";
 
 export class Player {
   public x: number;
@@ -50,7 +55,9 @@ export class Player {
     cameraService: PlayerCameraService,
     sceneService: PlayerSceneService,
     raycasterService: PlayerRaycasterService,
-    x: number = 0, y: number = 0, z: number = 0,
+    x: number = 0,
+    y: number = 0,
+    z: number = 0,
     preserveCam: boolean = false,
     audioManager?: any // AudioManager opcional para compatibilidad
   ) {
@@ -72,7 +79,7 @@ export class Player {
     this.depth = CONTROL_CONFIG.PLAYER_DEPTH;
 
     this.pitch = 0; // Initial pitch
-    this.yaw = 0;   // Initial yaw
+    this.yaw = 0; // Initial yaw
 
     this.speed = CONTROL_CONFIG.WALK_SPEED;
     this.velocity = 0;
@@ -85,7 +92,13 @@ export class Player {
 
     // Inicializar el resto de servicios después de que las propiedades básicas estén listas
     this.movementService = new PlayerMovementService(worldService, this);
-    this.blockInteractionService = new PlayerBlockInteractionService(worldService, sceneService, raycasterService, cameraService, this);
+    this.blockInteractionService = new PlayerBlockInteractionService(
+      worldService,
+      sceneService,
+      raycasterService,
+      cameraService,
+      this
+    );
     this.cameraController = new PlayerCameraController(cameraService, this);
 
     // Configurar cámara
@@ -97,7 +110,10 @@ export class Player {
     // Configurar highlight
     const highlightBoxGeo = new THREE.BoxGeometry(1.002, 1.002, 1.002);
     const highlightEdgesGeo = new THREE.EdgesGeometry(highlightBoxGeo);
-    const highlightMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
+    const highlightMaterial = new THREE.LineBasicMaterial({
+      color: 0x000000,
+      linewidth: 2,
+    });
 
     this.blockFaceHL = {
       mesh: new THREE.LineSegments(highlightEdgesGeo, highlightMaterial),
@@ -123,7 +139,6 @@ export class Player {
   public lookAround(): void {
     this.cameraController.lookAround();
   }
-
 
   public interactWithBlock(destroy: boolean): void {
     this.blockInteractionService.interactWithBlock(destroy);
@@ -204,22 +219,22 @@ export class Player {
 
   // Métodos para controlar el estado
   public toggleFlying(): void {
-    console.log('Player.toggleFlying llamado');
+    console.log("Player.toggleFlying llamado");
     this.stateService.toggleFlying();
   }
 
   public startFlyingDown(): void {
-    console.log('Player.startFlyingDown llamado');
+    console.log("Player.startFlyingDown llamado");
     this.stateService.startFlyingDown();
   }
 
   public stopFlyingDown(): void {
-    console.log('Player.stopFlyingDown llamado');
+    console.log("Player.stopFlyingDown llamado");
     this.stateService.stopFlyingDown();
   }
 
   public stopFlyingUp(): void {
-    console.log('Player.stopFlyingUp llamado');
+    console.log("Player.stopFlyingUp llamado");
     this.stateService.stopFlyingUp();
   }
 

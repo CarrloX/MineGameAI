@@ -1,13 +1,13 @@
-import type * as THREE from 'three';
-import type { Player } from './Player';
-import type { World } from './World';
-import type { Block } from './Block';
-import type { InputController } from './InputController';
-import type { RendererManager } from './RendererManager';
-import type { GameLogic } from './GameLogic';
-import type { ThreeSetup } from './ThreeSetup';
-import type { AdvancedSky } from './sky/AdvancedSky'; // New import
-import { EventBus } from './events/EventBus';
+import type * as THREE from "three";
+import type { Player } from "./Player";
+import type { World } from "./World";
+import type { Block } from "./Block";
+import type { InputController } from "./InputController";
+import type { RendererManager } from "./RendererManager";
+import type { GameLogic } from "./GameLogic";
+import type { ThreeSetup } from "./ThreeSetup";
+import type { AdvancedSky } from "./sky/AdvancedSky"; // New import
+import { EventBus } from "./events/EventBus";
 
 export interface ControlConfig {
   backwards: string;
@@ -78,7 +78,10 @@ export interface GameRefs {
   rendererManager: RendererManager | null;
   gameLogic: GameLogic | null;
   threeSetup: ThreeSetup | null;
-  lighting: { ambient: THREE.AmbientLight; directional: THREE.DirectionalLight; } | null;
+  lighting: {
+    ambient: THREE.AmbientLight;
+    directional: THREE.DirectionalLight;
+  } | null;
   worldSeed: number | null;
   sky: AdvancedSky | null; // Changed from Sky to AdvancedSky
   eventBus: EventBus;
@@ -88,71 +91,74 @@ export type BlockDefinition = { side: string } | string[];
 
 // Interfaces base para servicios
 export interface IWorldService {
-    getBlock(x: number, y: number, z: number): string | null;
-    setBlock(x: number, y: number, z: number, blockType: string): void;
-    activeChunks: Map<string, any>;
-    updateChunks(position: THREE.Vector3): void;
-    getSpawnHeight(x: number, z: number): number;
-    layers: number;
-    readonly voidHeight: number;
+  getBlock(x: number, y: number, z: number): string | null;
+  setBlock(x: number, y: number, z: number, blockType: string): void;
+  activeChunks: Map<string, any>;
+  updateChunks(position: THREE.Vector3): void;
+  getSpawnHeight(x: number, z: number): number;
+  layers: number;
+  readonly voidHeight: number;
 }
 
 export interface ICameraService {
-    position: THREE.Vector3;
-    rotation: THREE.Euler;
-    updateMatrixWorld(): void;
-    matrixWorld: THREE.Matrix4;
-    matrixWorldInverse: THREE.Matrix4;
-    projectionMatrix: THREE.Matrix4;
+  position: THREE.Vector3;
+  rotation: THREE.Euler;
+  updateMatrixWorld(): void;
+  matrixWorld: THREE.Matrix4;
+  matrixWorldInverse: THREE.Matrix4;
+  projectionMatrix: THREE.Matrix4;
 }
 
 export interface ISceneService {
-    add(object: THREE.Object3D): void;
-    remove(object: THREE.Object3D): void;
-    getObjectByName(name: string): THREE.Object3D | undefined;
+  add(object: THREE.Object3D): void;
+  remove(object: THREE.Object3D): void;
+  getObjectByName(name: string): THREE.Object3D | undefined;
 }
 
 export interface IRaycasterService {
-    setFromCamera(coords: THREE.Vector2, camera: ICameraService): void;
-    intersectObjects(objects: THREE.Object3D[], recursive?: boolean): THREE.Intersection[];
+  setFromCamera(coords: THREE.Vector2, camera: ICameraService): void;
+  intersectObjects(
+    objects: THREE.Object3D[],
+    recursive?: boolean
+  ): THREE.Intersection[];
 }
 
 export interface IPlayerState {
-    flying: boolean;
-    jumping: boolean;
-    onGround: boolean;
-    dead: boolean;
-    isRunning: boolean;
-    isBoosting: boolean;
-    lastSpacePressTime: number;
-    flySpeed: number;
-    runSpeedMultiplier: number;
-    boostSpeedMultiplier: number;
+  flying: boolean;
+  jumping: boolean;
+  onGround: boolean;
+  dead: boolean;
+  isRunning: boolean;
+  isBoosting: boolean;
+  lastSpacePressTime: number;
+  flySpeed: number;
+  runSpeedMultiplier: number;
+  boostSpeedMultiplier: number;
 }
 
 export interface IPlayerMovement {
-    x: number;
-    y: number;
-    z: number;
-    height: number;
-    width: number;
-    depth: number;
-    pitch: number;
-    yaw: number;
-    speed: number;
-    velocity: number;
-    jumpSpeed: number;
-    jumpVelocity: number;
-    xdir: string;
-    zdir: string;
-    attackRange: number;
+  x: number;
+  y: number;
+  z: number;
+  height: number;
+  width: number;
+  depth: number;
+  pitch: number;
+  yaw: number;
+  speed: number;
+  velocity: number;
+  jumpSpeed: number;
+  jumpVelocity: number;
+  xdir: string;
+  zdir: string;
+  attackRange: number;
 }
 
 export interface IBlockInteraction {
-    highlightBlock(): void;
-    interactWithBlock(destroy: boolean): void;
-    clearHighlight(): void;
-    getLookingAt(): LookingAtInfo | null;
+  highlightBlock(): void;
+  interactWithBlock(destroy: boolean): void;
+  clearHighlight(): void;
+  getLookingAt(): LookingAtInfo | null;
 }
 
 // Tipos existentes actualizados para usar las nuevas interfaces
@@ -163,35 +169,35 @@ export type PlayerRaycasterService = IRaycasterService;
 
 // Interfaces para los servicios del jugador
 export interface IPlayerStateService {
-    readonly state: IPlayerState;
-    toggleFlying(): void;
-    setJumping(value: boolean): void;
-    setOnGround(value: boolean): void;
-    setDead(value: boolean): void;
-    setRunning(value: boolean): void;
-    setBoosting(value: boolean): void;
+  readonly state: IPlayerState;
+  toggleFlying(): void;
+  setJumping(value: boolean): void;
+  setOnGround(value: boolean): void;
+  setDead(value: boolean): void;
+  setRunning(value: boolean): void;
+  setBoosting(value: boolean): void;
 }
 
 export interface IPlayerMovementService {
-    updatePosition(deltaTime: number): void;
-    calculateVerticalMovement(deltaTime: number): number;
-    calculateHorizontalMovement(): { moveX: number, moveZ: number };
-    calculateEffectiveSpeed(): number;
+  updatePosition(deltaTime: number): void;
+  calculateVerticalMovement(deltaTime: number): number;
+  calculateHorizontalMovement(): { moveX: number; moveZ: number };
+  calculateEffectiveSpeed(): number;
 }
 
 export interface IPlayerBlockInteractionService {
-    highlightBlock(): void;
-    interactWithBlock(destroy: boolean): void;
-    clearHighlight(): void;
+  highlightBlock(): void;
+  interactWithBlock(destroy: boolean): void;
+  clearHighlight(): void;
 }
 
 export interface IPlayerCameraController {
-    lookAround(): void;
-    updatePosition(): void;
-    setPitch(pitch: number): void;
-    setYaw(yaw: number): void;
-    getPitch(): number;
-    getYaw(): number;
-    setPosition(x: number, y: number, z: number): void;
-    setRotation(pitch: number, yaw: number): void;
+  lookAround(): void;
+  updatePosition(): void;
+  setPitch(pitch: number): void;
+  setYaw(yaw: number): void;
+  getPitch(): number;
+  getYaw(): number;
+  setPosition(x: number, y: number, z: number): void;
+  setRotation(pitch: number, yaw: number): void;
 }

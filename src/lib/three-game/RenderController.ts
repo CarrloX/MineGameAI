@@ -1,4 +1,4 @@
-import type { GameRefs } from './types';
+import type { GameRefs } from "./types";
 
 export class RenderController {
   private refs: GameRefs;

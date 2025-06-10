@@ -1,5 +1,6 @@
 import React from 'react';
 import type { DebugInfoState } from '@/lib/three-game/types';
+import styles from './BlockifyGame.module.css';
 
 interface GameDebugOverlayProps {
   debugInfo: DebugInfoState;
@@ -13,7 +14,9 @@ export const GameDebugOverlay: React.FC<GameDebugOverlayProps> = ({
   systemStats
 }) => {
   return (
-    <div className="fixed top-0 right-0 p-2 text-white text-sm font-mono bg-black/50 z-50">
+    <div
+      className={`fixed top-0 right-0 p-2 text-white text-sm font-mono bg-black/50 z-50 ${styles['debug-overlay-no-select']}`}
+    >
       <div>FPS: {debugInfo.fps}</div>
       <div>{debugInfo.playerPosition}</div>
       <div>{debugInfo.playerChunk}</div>
@@ -32,4 +35,4 @@ export const GameDebugOverlay: React.FC<GameDebugOverlayProps> = ({
       )}
     </div>
   );
-}; 
+};

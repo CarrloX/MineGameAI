@@ -327,6 +327,19 @@ const BlockifyGame: React.FC = () => {
     }
   };
 
+  // Manejo de la tecla F3 para mostrar/ocultar el overlay de depuración
+  useEffect(() => {
+    const handleF3 = (e: KeyboardEvent) => {
+      if (e.code === 'F3' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        setShowDebugOverlay(prev => !prev);
+        e.preventDefault();
+        e.stopPropagation(); // Bloquear buscador del navegador
+      }
+    };
+    window.addEventListener('keydown', handleF3, { capture: true });
+    return () => window.removeEventListener('keydown', handleF3, { capture: true });
+  }, []);
+
   if (!isClient) {
     return <LoadingComponent />;
   }

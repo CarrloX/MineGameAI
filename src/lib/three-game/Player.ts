@@ -296,4 +296,24 @@ export class Player {
   public respawn(): void {
     this.stateService.respawn();
   }
+
+  /**
+   * Devuelve la caja de colisión del jugador en la posición dada (o actual si no se pasa ninguna).
+   */
+  public getCollisionBox(pos?: { x: number; y: number; z: number }): THREE.Box3 {
+    const x = pos?.x ?? this.x;
+    const y = pos?.y ?? this.y;
+    const z = pos?.z ?? this.z;
+    const min = new THREE.Vector3(
+      x - this.width / 2,
+      y,
+      z - this.depth / 2
+    );
+    const max = new THREE.Vector3(
+      x + this.width / 2,
+      y + this.height,
+      z + this.depth / 2
+    );
+    return new THREE.Box3(min, max);
+  }
 }

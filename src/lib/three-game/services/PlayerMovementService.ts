@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { CONTROL_CONFIG } from "../CONTROL_CONFIG";
 import type { PlayerWorldService } from "../types";
 
+const STEP_HEIGHT_LIMIT = 0.6; // Altura máxima de escalón que el jugador puede subir automáticamente
+
 export class PlayerMovementService {
   private worldService: PlayerWorldService;
   private player: any; // Referencia al jugador para actualizar su posición
@@ -11,25 +13,118 @@ export class PlayerMovementService {
     this.player = player;
   }
 
+  /**
+   * Movimiento y colisión incremental por eje (X, Y, Z).
+   * Aplica el movimiento en cada eje y ajusta la posición si hay colisión.
+   */
   public updatePosition(deltaTime: number): void {
+    // 1. Calcular velocidades
     let dY = this.calculateVerticalMovement(deltaTime);
     let { moveX, moveZ } = this.calculateHorizontalMovement();
     let currentEffectiveSpeed = this.calculateEffectiveSpeed();
+    let dx = 0,
+      dz = 0;
+    // Normalizar movimiento horizontal
+    const moveMagnitude = Math.sqrt(moveX * moveX + moveZ * moveZ);
+    if (moveMagnitude > 0) {
+      dx = (moveX / moveMagnitude) * currentEffectiveSpeed * deltaTime;
+      dz = (moveZ / moveMagnitude) * currentEffectiveSpeed * deltaTime;
+    }
+    let dy = dY;
 
-    let { nextPlayerX, nextPlayerZ } = this.calculateNextPosition(
-      moveX,
-      moveZ,
-      currentEffectiveSpeed,
-      deltaTime
-    );
-    let { correctedX, correctedY, correctedZ, landedOnGroundThisFrame } =
-      this.handleCollisions(nextPlayerX, this.player.y + dY, nextPlayerZ);
+    // 2. Movimiento incremental por eje
+    let { x: px, y: py, z: pz } = this.player;
+    let onGround = false;
 
-    this.applyFinalPosition(
-      correctedX,
-      correctedY,
-      correctedZ,
-      landedOnGroundThisFrame
+    // --- EJE X (con lógica de escalón) ---
+    if (dx !== 0) {
+      const tryX = px + dx;
+      const boxX = this.player.getCollisionBox({ x: tryX, y: py, z: pz });
+      if (!this.isBoxCollidingWithWorld(boxX)) {
+        px = tryX;
+      } else {
+        // Intentar step-up
+        const stepUpY = py + STEP_HEIGHT_LIMIT;
+        const boxStep = this.player.getCollisionBox({ x: tryX, y: stepUpY, z: pz });
+        const boxHead = this.player.getCollisionBox({ x: tryX, y: stepUpY + this.player.height - 0.01, z: pz });
+        if (!this.isBoxCollidingWithWorld(boxStep) && !this.isBoxCollidingWithWorld(boxHead)) {
+          px = tryX;
+          py = stepUpY;
+        } else {
+          // Ajustar hasta el borde del bloque
+          let sign = Math.sign(dx);
+          let step = 0.01 * sign;
+          let testX = px;
+          while (!this.isBoxCollidingWithWorld(this.player.getCollisionBox({ x: testX + step, y: py, z: pz })) && Math.abs(testX - px) < Math.abs(dx)) {
+            testX += step;
+          }
+          px = testX;
+        }
+      }
+    }
+
+    // --- EJE Y ---
+    if (dy !== 0) {
+      const tryY = py + dy;
+      const boxY = this.player.getCollisionBox({ x: px, y: tryY, z: pz });
+      if (!this.isBoxCollidingWithWorld(boxY)) {
+        py = tryY;
+      } else {
+        // Ajustar hasta el borde del bloque
+        let sign = Math.sign(dy);
+        let step = 0.01 * sign;
+        let testY = py;
+        while (!this.isBoxCollidingWithWorld(this.player.getCollisionBox({ x: px, y: testY + step, z: pz })) && Math.abs(testY - py) < Math.abs(dy)) {
+          testY += step;
+        }
+        py = testY;
+        // Si el movimiento era descendente y hay colisión, está en el suelo
+        if (dy < 0) {
+          onGround = true;
+          this.player.jumpVelocity = 0;
+        } else if (dy > 0) {
+          this.player.jumpVelocity = -0.001;
+        }
+      }
+    }
+
+    // --- EJE Z (con lógica de escalón) ---
+    if (dz !== 0) {
+      const tryZ = pz + dz;
+      const boxZ = this.player.getCollisionBox({ x: px, y: py, z: tryZ });
+      if (!this.isBoxCollidingWithWorld(boxZ)) {
+        pz = tryZ;
+      } else {
+        // Intentar step-up
+        const stepUpY = py + STEP_HEIGHT_LIMIT;
+        const boxStep = this.player.getCollisionBox({ x: px, y: stepUpY, z: tryZ });
+        const boxHead = this.player.getCollisionBox({ x: px, y: stepUpY + this.player.height - 0.01, z: tryZ });
+        if (!this.isBoxCollidingWithWorld(boxStep) && !this.isBoxCollidingWithWorld(boxHead)) {
+          pz = tryZ;
+          py = stepUpY;
+        } else {
+          // Ajustar hasta el borde del bloque
+          let sign = Math.sign(dz);
+          let step = 0.01 * sign;
+          let testZ = pz;
+          while (!this.isBoxCollidingWithWorld(this.player.getCollisionBox({ x: px, y: py, z: testZ + step })) && Math.abs(testZ - pz) < Math.abs(dz)) {
+            testZ += step;
+          }
+          pz = testZ;
+        }
+      }
+    }
+
+    // 3. Aplicar posición final
+    this.player.x = px;
+    this.player.y = py;
+    this.player.z = pz;
+    this.player.onGround = onGround;
+    this.player.mesh.position.set(px, py, pz);
+    this.player.cameraService.position.set(
+      px,
+      py + this.player.height * 0.9,
+      pz
     );
   }
 
@@ -93,270 +188,23 @@ export class PlayerMovementService {
     return currentEffectiveSpeed;
   }
 
-  private calculateNextPosition(
-    moveX: number,
-    moveZ: number,
-    currentEffectiveSpeed: number,
-    deltaTime: number
-  ): { nextPlayerX: number; nextPlayerZ: number } {
-    let nextPlayerX = this.player.x;
-    let nextPlayerZ = this.player.z;
-    const moveMagnitude = Math.sqrt(moveX * moveX + moveZ * moveZ);
-    if (moveMagnitude > 0) {
-      const normalizedMoveX = moveX / moveMagnitude;
-      const normalizedMoveZ = moveZ / moveMagnitude;
-      nextPlayerX += normalizedMoveX * currentEffectiveSpeed * deltaTime;
-      nextPlayerZ += normalizedMoveZ * currentEffectiveSpeed * deltaTime;
-    }
-    return { nextPlayerX, nextPlayerZ };
-  }
-
-  private handleCollisions(
-    nextPlayerX: number,
-    nextPlayerY: number,
-    nextPlayerZ: number
-  ): {
-    correctedX: number;
-    correctedY: number;
-    correctedZ: number;
-    landedOnGroundThisFrame: boolean;
-  } {
-    let correctedX = nextPlayerX;
-    let correctedY = nextPlayerY;
-    let correctedZ = nextPlayerZ;
-    let landedOnGroundThisFrame = false;
-
-    const pMinProposedGlobalY = correctedY;
-    const pMaxProposedGlobalY = correctedY + this.player.height;
-    const pMinProposedGlobalX = correctedX - this.player.width / 2;
-    const pMaxProposedGlobalX = correctedX + this.player.width / 2;
-    const pMinProposedGlobalZ = correctedZ - this.player.depth / 2;
-    const pMaxProposedGlobalZ = correctedZ + this.player.depth / 2;
-
-    const checkRadius = 1;
-    const startBlockY = Math.max(
-      0,
-      Math.floor(pMinProposedGlobalY) - checkRadius
-    );
-    const endBlockY = Math.min(
-      this.worldService.layers,
-      Math.ceil(pMaxProposedGlobalY) + checkRadius
-    );
-
-    for (
-      let checkWorldX = Math.floor(pMinProposedGlobalX) - checkRadius;
-      checkWorldX <= Math.ceil(pMaxProposedGlobalX) + checkRadius;
-      checkWorldX++
-    ) {
-      for (
-        let checkWorldZ = Math.floor(pMinProposedGlobalZ) - checkRadius;
-        checkWorldZ <= Math.ceil(pMaxProposedGlobalZ) + checkRadius;
-        checkWorldZ++
-      ) {
-        for (
-          let checkWorldY = startBlockY;
-          checkWorldY < endBlockY;
-          checkWorldY++
-        ) {
-          const blockType = this.worldService.getBlock(
-            checkWorldX,
-            checkWorldY,
-            checkWorldZ
-          );
-
+  /**
+   * Verifica si la caja dada colisiona con algún bloque sólido en el mundo.
+   * Devuelve true si hay colisión, false si está libre.
+   */
+  private isBoxCollidingWithWorld(box: THREE.Box3): boolean {
+    const min = box.min;
+    const max = box.max;
+    for (let x = Math.floor(min.x); x < Math.ceil(max.x); x++) {
+      for (let y = Math.floor(min.y); y < Math.ceil(max.y); y++) {
+        for (let z = Math.floor(min.z); z < Math.ceil(max.z); z++) {
+          const blockType = this.worldService.getBlock(x, y, z);
           if (blockType && blockType !== "air" && blockType !== "waterBlock") {
-            const collisionResult = this.resolveCollision(
-              checkWorldX,
-              checkWorldY,
-              checkWorldZ,
-              correctedX,
-              correctedY,
-              correctedZ,
-              blockType
-            );
-            correctedX = collisionResult.correctedX;
-            correctedY = collisionResult.correctedY;
-            correctedZ = collisionResult.correctedZ;
-            if (collisionResult.landedOnGround) landedOnGroundThisFrame = true;
+            return true;
           }
         }
       }
     }
-
-    return { correctedX, correctedY, correctedZ, landedOnGroundThisFrame };
-  }
-
-  private resolveCollision(
-    blockX: number,
-    blockY: number,
-    blockZ: number,
-    playerX: number,
-    playerY: number,
-    playerZ: number,
-    blockType: string
-  ): {
-    correctedX: number;
-    correctedY: number;
-    correctedZ: number;
-    landedOnGround: boolean;
-  } {
-    const bMinX = blockX;
-    const bMaxX = blockX + 1;
-    const bMinY = blockY;
-    const bMaxY = blockY + 1;
-    const bMinZ = blockZ;
-    const bMaxZ = blockZ + 1;
-
-    let pMinX = playerX - this.player.width / 2;
-    let pMaxX = playerX + this.player.width / 2;
-    let pMinY = playerY;
-    let pMaxY = playerY + this.player.height;
-    let pMinZ = playerZ - this.player.depth / 2;
-    let pMaxZ = playerZ + this.player.depth / 2;
-
-    let correctedX = playerX;
-    let correctedY = playerY;
-    let correctedZ = playerZ;
-    let landedOnGround = false;
-
-    if (
-      pMaxX > bMinX &&
-      pMinX < bMaxX &&
-      pMaxY > bMinY &&
-      pMinY < bMaxY &&
-      pMaxZ > bMinZ &&
-      pMinZ < bMaxZ
-    ) {
-      const overlapX = Math.min(pMaxX - bMinX, bMaxX - pMinX);
-      const overlapY = Math.min(pMaxY - bMinY, bMaxY - pMinY);
-      const overlapZ = Math.min(pMaxZ - bMinZ, bMaxZ - pMinZ);
-
-      if (overlapY <= overlapX && overlapY <= overlapZ) {
-        if (this.player.flying) {
-          if (this.player.jumpVelocity > 0 && pMinY < bMaxY) {
-            correctedY = bMinY - this.player.height - 0.001;
-          } else if (this.player.jumpVelocity < 0 && pMaxY > bMinY) {
-            correctedY = bMaxY + 0.001;
-          } else if (
-            this.player.jumpVelocity === 0 &&
-            pMaxY > bMinY &&
-            pMinY < bMaxY
-          ) {
-            correctedY =
-              this.player.y > bMinY + this.player.height / 2
-                ? bMaxY + 0.001
-                : bMinY - this.player.height - 0.001;
-          }
-          this.player.jumpVelocity = 0;
-        } else {
-          if (
-            this.player.jumpVelocity <= 0 &&
-            pMinY < bMaxY - 0.0001 &&
-            this.player.y >= bMaxY - 0.01
-          ) {
-            correctedY = bMaxY;
-            this.player.jumpVelocity = 0;
-            landedOnGround = true;
-          } else if (
-            this.player.jumpVelocity > 0 &&
-            pMaxY > bMinY &&
-            this.player.y + this.player.height <= bMinY + 0.01
-          ) {
-            correctedY = bMinY - this.player.height;
-            this.player.jumpVelocity = -0.001;
-          }
-        }
-      } else if (overlapX <= overlapY && overlapX <= overlapZ) {
-        if (
-          !this.player.flying &&
-          this.player.isRunning &&
-          blockType !== "air" &&
-          blockType !== "waterBlock"
-        ) {
-          this.player.stateService.toggleRunning();
-        }
-        if (pMaxX - bMinX < bMaxX - pMinX) {
-          correctedX = bMinX - this.player.width / 2 - 0.001;
-        } else {
-          correctedX = bMaxX + this.player.width / 2 + 0.001;
-        }
-      } else {
-        if (
-          !this.player.flying &&
-          this.player.isRunning &&
-          blockType !== "air" &&
-          blockType !== "waterBlock"
-        ) {
-          this.player.stateService.toggleRunning();
-        }
-        if (pMaxZ - bMinZ < bMaxZ - pMinZ) {
-          correctedZ = bMinZ - this.player.depth / 2 - 0.001;
-        } else {
-          correctedZ = bMaxZ + this.player.depth / 2 + 0.001;
-        }
-      }
-    }
-
-    return { correctedX, correctedY, correctedZ, landedOnGround };
-  }
-
-  private applyFinalPosition(
-    correctedX: number,
-    correctedY: number,
-    correctedZ: number,
-    landedOnGroundThisFrame: boolean
-  ): void {
-    this.player.x = correctedX;
-    this.player.y = correctedY;
-    this.player.z = correctedZ;
-
-    if (this.player.flying) {
-      this.player.jumpVelocity = 0;
-      this.player.onGround = false;
-      if (this.player.y < 0) this.player.y = 0;
-      if (this.player.y + this.player.height > this.worldService.layers) {
-        this.player.y = this.worldService.layers - this.player.height;
-      }
-    } else {
-      if (this.player.y < 0) {
-        this.player.y = 0;
-        landedOnGroundThisFrame = true;
-        this.player.jumpVelocity = 0;
-        if (!this.player.dead) this.player.die();
-      }
-      if (this.player.y + this.player.height > this.worldService.layers) {
-        this.player.y = this.worldService.layers - this.player.height;
-        if (this.player.jumpVelocity > 0) this.player.jumpVelocity = -0.001;
-      }
-      this.player.onGround = landedOnGroundThisFrame;
-    }
-
-    const playerFeetBlockX = Math.floor(this.player.x);
-    const playerFeetBlockY = Math.floor(this.player.y + 0.01);
-    const playerFeetBlockZ = Math.floor(this.player.z);
-    const blockAtFeet = this.worldService.getBlock(
-      playerFeetBlockX,
-      playerFeetBlockY,
-      playerFeetBlockZ
-    );
-
-    if (
-      !this.player.flying &&
-      this.player.isRunning &&
-      blockAtFeet === "waterBlock"
-    ) {
-      this.player.stateService.toggleRunning();
-    }
-
-    if (this.player.y < -this.worldService.voidHeight && !this.player.dead) {
-      this.player.die();
-    }
-
-    this.player.mesh.position.set(this.player.x, this.player.y, this.player.z);
-    this.player.cameraService.position.set(
-      this.player.x,
-      this.player.y + this.player.height * 0.9,
-      this.player.z
-    );
+    return false;
   }
 }

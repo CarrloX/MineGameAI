@@ -15,6 +15,7 @@ import { useFog } from '@/hooks/game/useFog';
 import { gameLogger } from '@/lib/three-game/services/LoggingService';
 import { getRecoveryService } from '@/lib/three-game/services/RecoveryService';
 import PauseMenu from '../PauseMenu';
+import styles from './BlockifyGame.module.css';
 
 // Componente de carga
 const LoadingComponent = () => (
@@ -294,14 +295,21 @@ const BlockifyGame: React.FC = () => {
   // Usar el hook de niebla
   useFog({ gameRefs, isCameraSubmerged });
 
-  // Polling para sincronizar el estado de pausa de GameLogic con React
+  // Sincronizar el estado de pausa de GameLogic con React usando eventos
   useEffect(() => {
-    const intervalId = setInterval(() => {
-      if (gameRefs.current.gameLogic && typeof gameRefs.current.gameLogic.isPaused === 'boolean') {
-        setIsGamePaused(gameRefs.current.gameLogic.isPaused);
-      }
-    }, 100);
-    return () => clearInterval(intervalId);
+    const eventBus = gameRefs.current.eventBus;
+    if (!eventBus) return;
+    const handleGameStateChange = (event: { state: string }) => {
+      setIsGamePaused(event.state === "paused");
+    };
+    eventBus.on("game:state_change", handleGameStateChange);
+    // Inicializar el estado de pausa al montar
+    if (gameRefs.current.gameLogic) {
+      setIsGamePaused(gameRefs.current.gameLogic.isPaused);
+    }
+    return () => {
+      eventBus.off("game:state_change", handleGameStateChange);
+    };
   }, []);
 
   const handleResumeGame = () => {
@@ -340,7 +348,7 @@ const BlockifyGame: React.FC = () => {
   }
 
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+    <div className={styles.rootContainer}>
       <div 
         ref={mountRef} 
         className="absolute inset-0 w-full h-full bg-transparent touch-none"

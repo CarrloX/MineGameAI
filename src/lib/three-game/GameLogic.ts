@@ -10,7 +10,7 @@ import type {
 import { CHUNK_SIZE } from "./utils";
 import { Player } from "./Player";
 import { AudioManager, SOUND_PATHS } from "./AudioManager";
-import { GameEvents } from "./events/EventBus";
+import { GameEvents, EventBus } from "./events/EventBus";
 import { InputController } from "./InputController"; // Asegúrate de que la ruta sea correcta
 
 export class GameLogic {
@@ -141,6 +141,7 @@ export class GameLogic {
   }
 
   public togglePause(): void {
+    const prevState = this._isPaused ? "paused" : "playing";
     this._isPaused = !this._isPaused;
     console.log('Juego pausado:', this._isPaused);
 
@@ -156,8 +157,15 @@ export class GameLogic {
         this.gameRefs.inputController.requestPointerLock();
     }
 
-    // Opcional: Podrías emitir un evento aquí para que la UI del menú de pausa lo escuche
-    // this.onPauseStateChanged.emit(this._isPaused);
+    // Emitir evento para que la UI escuche el cambio de pausa
+    const eventBus = this.gameRefs.eventBus || EventBus.getInstance();
+    eventBus.emit(
+      GameEvents.GAME_STATE_CHANGE,
+      {
+        state: this._isPaused ? "paused" : "playing",
+        previousState: prevState
+      }
+    );
   }
 
   public update(deltaTime: number, newFpsValue?: number): void {

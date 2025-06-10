@@ -13,6 +13,7 @@ import { AudioManager, SOUND_PATHS } from "./AudioManager";
 import { GameEvents, EventBus } from "./events/EventBus";
 import { InputController } from "./InputController"; // Asegúrate de que la ruta sea correcta
 import { CollisionService } from "./physics/CollisionService";
+import { DebugInfoService } from "./DebugInfoService";
 
 export class GameLogic {
   private gameRefs: GameRefs;
@@ -22,6 +23,7 @@ export class GameLogic {
   private setIsCameraSubmerged: React.Dispatch<React.SetStateAction<boolean>>;
   private isCameraSubmerged_internal: boolean = false;
   private audioManager: AudioManager;
+  private debugInfoService: DebugInfoService;
 
   private frustum: THREE.Frustum = new THREE.Frustum();
   private projectionMatrixInverse: THREE.Matrix4 = new THREE.Matrix4(); // Aunque no la usaremos directamente para el frustum aquí, es una buena práctica tenerla cerca.
@@ -72,6 +74,7 @@ export class GameLogic {
 
     // Instanciar InputController pasando la instancia de GameLogic
     this.gameRefs.inputController = new InputController(this.gameRefs, this); // Pasa la instancia de GameLogic
+    this.debugInfoService = new DebugInfoService(gameRefs, setDebugInfo);
 
     this.initializePlayer();
   }
@@ -172,7 +175,7 @@ export class GameLogic {
     );
   }
 
-  public update(deltaTime: number, newFpsValue?: number): void {
+  public update(deltaTime: number, newFpsValue?: number, debugEnabled: boolean = true): void {
     const refs = this.gameRefs;
 
     if (!refs.player || !refs.world || !refs.camera || !refs.scene) {
@@ -383,61 +386,10 @@ export class GameLogic {
       }
     });
 
-    // Actualizar información de depuración (siempre)
-    const playerForDebug = refs.player;
-    const playerPosStr = `Player: X:${playerForDebug.x.toFixed(
-      1
-    )} Y:${playerForDebug.y.toFixed(1)} Z:${playerForDebug.z.toFixed(1)}`;
-    const playerChunkX = Math.floor(playerForDebug.x / CHUNK_SIZE);
-    const playerChunkZ = Math.floor(playerForDebug.z / CHUNK_SIZE);
-    const playerChunkStr = `Chunk: ${playerChunkX},${playerChunkZ}`;
-
-    // Raycast target display (siempre)
-    const raycastResult = refs.player.getLookingAt();
-    let rayTargetStr = "Ray: None";
-    if (raycastResult) {
-      const blockPos = raycastResult.blockWorldCoords;
-      rayTargetStr = `Ray: X:${blockPos.x.toFixed(0)} Y:${blockPos.y.toFixed(
-        0
-      )} Z:${blockPos.z.toFixed(0)}`;
+    // Actualizar información de depuración solo si está habilitado
+    if (debugEnabled && this.debugInfoService) {
+      this.debugInfoService.updateDebugInfo(newFpsValue);
     }
-
-    // Highlight face direction (siempre)
-    let highlightFaceDir = "None";
-    const worldFaceNormal = raycastResult?.worldFaceNormal;
-    if (worldFaceNormal) {
-      const normal = worldFaceNormal;
-      if (Math.abs(normal.x) > 0.5)
-        highlightFaceDir = normal.x > 0 ? "East (+X)" : "West (-X)";
-      else if (Math.abs(normal.y) > 0.5)
-        highlightFaceDir = normal.y > 0 ? "Top (+Y)" : "Bottom (-Y)";
-      else if (Math.abs(normal.z) > 0.5)
-        highlightFaceDir = normal.z > 0 ? "South (+Z)" : "North (-Z)";
-      else highlightFaceDir = "Unknown Face";
-    }
-    const highlightStr = `HL: ${highlightFaceDir}`;
-
-    const yawDeg = (THREE.MathUtils.radToDeg(playerForDebug.yaw) % 360).toFixed(
-      1
-    );
-    const pitchDeg = (
-      THREE.MathUtils.radToDeg(playerForDebug.pitch) % 360
-    ).toFixed(1);
-    const lookDirStr = `Look: Yaw ${yawDeg}°, Pitch ${pitchDeg}°`;
-
-    this.setDebugInfo((prev) => ({
-      fps: newFpsValue !== undefined ? newFpsValue : prev.fps,
-      playerPosition: playerPosStr,
-      playerChunk: playerChunkStr,
-      raycastTarget: rayTargetStr,
-      highlightStatus: highlightStr,
-      visibleChunks: visibleChunksCount,
-      totalChunks: refs.world!.activeChunks.size,
-      isFlying: `Flying: ${playerForDebug.flying ? "Yes" : "No"}`,
-      isRunning: `Running: ${playerForDebug.isRunning ? "Yes" : "No"}`,
-      isBoosting: `Boosting: ${playerForDebug.isBoosting ? "Yes" : "No"}`,
-      lookDirection: lookDirStr,
-    }));
 
     // Renderizar la escena (siempre)
     if (refs.rendererManager) {

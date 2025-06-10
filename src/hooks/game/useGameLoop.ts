@@ -7,13 +7,15 @@ interface UseGameLoopProps {
   setDebugInfo: (updateFn: (prevState: DebugInfoState) => DebugInfoState) => void;
   errorInfo: any;
   setErrorInfo: (error: any) => void;
+  debugEnabledRef?: React.MutableRefObject<boolean>;
 }
 
 export const useGameLoop = ({ 
   gameRefs, 
   setDebugInfo, 
   errorInfo, 
-  setErrorInfo 
+  setErrorInfo,
+  debugEnabledRef
 }: UseGameLoopProps) => {
   const lastFrameTimeRef = useRef(performance.now());
   const frameCountRef = useRef(0);
@@ -49,7 +51,7 @@ export const useGameLoop = ({
     frameCountRef.current++;
 
     // Actualización de FPS
-    if (deltaTime > 0) {
+    if (deltaTime > 0 && (!debugEnabledRef || debugEnabledRef.current)) {
       const currentFps = 1 / deltaTime;
       const window = fpsWindowRef.current;
       window.push(currentFps);
@@ -57,11 +59,11 @@ export const useGameLoop = ({
       const avgFps = window.reduce((a, b) => a + b, 0) / window.length;
       setDebugInfo(prev => ({ ...prev, fps: Math.round(avgFps) }));
     }
-
     try {
       // Actualizar lógica del juego
-      refs.gameLogic.update(deltaTime);
-
+      if (refs.gameLogic) {
+        refs.gameLogic.update(deltaTime, undefined, !debugEnabledRef || debugEnabledRef.current);
+      }
       // Renderizar la escena
       if (refs.renderer && refs.scene && refs.camera) {
         refs.renderer.render(refs.scene, refs.camera);
@@ -89,11 +91,11 @@ export const useGameLoop = ({
     if (refs.gameLoopId !== null) {
       refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
-  }, [errorInfo, gameRefs, setDebugInfo, setErrorInfo]);
+  }, [errorInfo, gameRefs, setDebugInfo, setErrorInfo, debugEnabledRef]);
 
   return {
     gameLoop,
     lastFrameTimeRef,
     frameCountRef
   };
-}; 
+};

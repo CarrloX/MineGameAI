@@ -75,6 +75,8 @@ const BlockifyGame: React.FC = () => {
     memory: null as null | { usedMB: number; totalMB: number },
   });
   const [isGamePaused, setIsGamePaused] = useState(false);
+  const [showDebugOverlay, setShowDebugOverlay] = useState(true);
+  const showDebugOverlayRef = useRef(true);
 
   const recoveryServiceRef = useRef(getRecoveryService());
 
@@ -85,11 +87,18 @@ const BlockifyGame: React.FC = () => {
     gameLogger.logGameEvent('Componente montado en el cliente');
   }, []);
 
+  // Mantener el ref sincronizado con el estado
+  useEffect(() => {
+    showDebugOverlayRef.current = showDebugOverlay;
+  }, [showDebugOverlay]);
+
+  // Pasa showDebugOverlayRef a gameLoop para evitar updates de debugInfo si está oculto
   const { gameLoop } = useGameLoop({
     gameRefs,
     setDebugInfo,
     errorInfo,
     setErrorInfo,
+    debugEnabledRef: showDebugOverlayRef,
   });
 
   const { initGame } = useGameInitialization({
@@ -353,7 +362,9 @@ const BlockifyGame: React.FC = () => {
         ref={mountRef} 
         className="absolute inset-0 w-full h-full bg-transparent touch-none"
       />
-      <GameDebugOverlay debugInfo={debugInfo} systemStats={systemStats} />
+      {showDebugOverlay && (
+        <GameDebugOverlay debugInfo={debugInfo} systemStats={systemStats} />
+      )}
       <GameCrosshair crosshairBgColor={crosshairBgColor} />
       <PauseMenu isPaused={isGamePaused} onResumeGame={handleResumeGame} />
     </div>

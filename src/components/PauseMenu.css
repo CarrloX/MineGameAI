@@ -1,42 +1,172 @@
 /* src/components/PauseMenu.css */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+/* Fondo translúcido tipo Minecraft */
 .pause-menu-overlay {
     position: fixed;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.7); /* Fondo semi-transparente oscuro */
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.45);
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 1000; /* Asegurarse de que esté por encima de todo */
+    z-index: 1000;
 }
 
 .pause-menu-content {
-    background-color: #333;
-    color: white;
-    padding: 30px 50px;
-    border-radius: 8px;
-    text-align: center;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    background: none;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
 }
 
 .pause-menu-content h1 {
-    margin-bottom: 25px;
-    font-size: 2.5em;
+    margin-bottom: 30px;
+    font-size: 2.2em;
+    font-family: 'Minecraftia', 'Press Start 2P', 'VT323', monospace;
+    letter-spacing: 1px;
+    text-shadow: 2px 2px 0 #3a3a3a, 4px 4px 0 #000;
 }
 
 .pause-menu-content button {
-    background-color: #007bff;
-    color: white;
-    border: none;
-    padding: 12px 25px;
-    border-radius: 5px;
-    font-size: 1.2em;
+    width: 340px;
+    padding: 16px 0;
+    margin: 0 auto;
+    background: linear-gradient(to bottom, #d7d7d7 0%, #bcbcbc 100%);
+    border: 3px solid #888;
+    border-radius: 4px;
+    color: #222;
+    font-size: 1.35em;
+    font-family: 'Minecraftia', 'Press Start 2P', 'VT323', monospace;
+    font-weight: bold;
+    box-shadow: 0 2px 0 #fff, 0 4px 0 #888;
+    text-shadow: 1px 1px 0 #fff;
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    transition: background 0.15s, border-color 0.15s;
+    outline: none;
+    margin-bottom: 8px;
 }
 
 .pause-menu-content button:hover {
-    background-color: #0056b3;
+    background: linear-gradient(to bottom, #f3f3f3 0%, #e0e0e0 100%);
+    border-color: #aaa;
+}
+
+/* --- Ajustes estilo Minecraft --- */
+.settings-menu {
+    background: none;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+    min-width: 420px;
+}
+
+.settings-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 380px;
+    background: linear-gradient(to bottom, #d7d7d7 0%, #bcbcbc 100%);
+    border: 3px solid #888;
+    border-radius: 4px;
+    color: #222;
+    font-size: 1.15em;
+    font-family: 'Minecraftia', 'Press Start 2P', 'VT323', monospace;
+    font-weight: bold;
+    box-shadow: 0 2px 0 #fff, 0 4px 0 #888;
+    text-shadow: 1px 1px 0 #fff;
+    margin-bottom: 10px;
+    padding: 12px 18px;
+}
+
+.settings-row span {
+    flex: 1;
+    text-align: left;
+}
+
+.settings-btn-on, .settings-btn-off {
+    min-width: 70px;
+    padding: 8px 0;
+    margin-left: 18px;
+    border: 2px solid #888;
+    border-radius: 4px;
+    font-family: 'Minecraftia', 'Press Start 2P', 'VT323', monospace;
+    font-size: 1em;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 2px 0 #fff, 0 4px 0 #888;
+    text-shadow: 1px 1px 0 #fff;
+    background: linear-gradient(to bottom, #e0e0e0 0%, #bcbcbc 100%);
+    color: #222;
+    transition: background 0.15s, border-color 0.15s;
+}
+.settings-btn-on {
+    background: linear-gradient(to bottom, #b22222 0%, #e06666 100%);
+    color: #fff;
+    border-color: #a00;
+}
+.settings-btn-off {
+    background: linear-gradient(to bottom, #6cc06c 0%, #b6e6b6 100%);
+    color: #222;
+    border-color: #393;
+}
+.settings-btn-on:hover, .settings-btn-off:hover {
+    filter: brightness(1.1);
+}
+
+.settings-done-btn {
+    width: 200px;
+    padding: 12px 0;
+    background: linear-gradient(to bottom, #d7d7d7 0%, #bcbcbc 100%);
+    border: 3px solid #888;
+    border-radius: 4px;
+    color: #222;
+    font-size: 1.15em;
+    font-family: 'Minecraftia', 'Press Start 2P', 'VT323', monospace;
+    font-weight: bold;
+    box-shadow: 0 2px 0 #fff, 0 4px 0 #888;
+    text-shadow: 1px 1px 0 #fff;
+    cursor: pointer;
+    margin-top: 18px;
+    transition: background 0.15s, border-color 0.15s;
+}
+.settings-done-btn:hover {
+    background: linear-gradient(to bottom, #f3f3f3 0%, #e0e0e0 100%);
+    border-color: #aaa;
+}
+
+.settings-slider {
+    width: 160px;
+    margin: 0 16px;
+    accent-color: #888;
+    background: #e0e0e0;
+    border-radius: 4px;
+    height: 6px;
+    outline: none;
+}
+
+.settings-volume-value {
+    min-width: 40px;
+    text-align: right;
+    font-family: 'Minecraftia', 'Press Start 2P', 'VT323', monospace;
+    font-size: 1em;
+    color: #222;
+    margin-left: 8px;
+}
+
+@media (max-width: 500px) {
+    .pause-menu-content button {
+        width: 90vw;
+        font-size: 1em;
+    }
+    .settings-menu, .settings-row { min-width: unset; width: 95vw; }
+    .settings-row { font-size: 0.95em; }
 }

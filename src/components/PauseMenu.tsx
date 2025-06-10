@@ -3,6 +3,7 @@ import './PauseMenu.css';
 import { logger } from '@/lib/three-game/utils/Logger';
 import { AudioManager } from '@/lib/three-game/AudioManager';
 import { Howler } from 'howler';
+import { EventBus, GameEvents } from '@/lib/three-game/events/EventBus';
 
 interface PauseMenuProps {
     isPaused: boolean;
@@ -13,6 +14,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ isPaused, onResumeGame }) => {
     const [showSettings, setShowSettings] = useState(false);
     const [disableLogs, setDisableLogs] = useState(false);
     const [masterVolume, setMasterVolume] = useState(100);
+    const [renderDistance, setRenderDistance] = useState(8); // Nuevo estado para la distancia de renderizado
 
     const handleToggleLogs = () => {
         setDisableLogs(v => {
@@ -33,6 +35,13 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ isPaused, onResumeGame }) => {
         } else {
             Howler.mute(false); // Reactiva el sistema de sonido
         }
+    };
+
+    const handleRenderDistanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = Number(e.target.value);
+        setRenderDistance(value);
+        // Emitir el evento para notificar al juego
+        EventBus.getInstance().emit(GameEvents.RENDER_DISTANCE_CHANGE, { distance: value });
     };
 
     if (!isPaused) {
@@ -65,6 +74,19 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ isPaused, onResumeGame }) => {
                             title="Controlar volumen maestro"
                         />
                         <span className="settings-volume-value">{masterVolume}</span>
+                    </div>
+                    <div className="settings-row">
+                        <span>Distancia de Renderizado</span>
+                        <input
+                            type="range"
+                            min={2}
+                            max={64}
+                            value={renderDistance}
+                            onChange={handleRenderDistanceChange}
+                            className="settings-slider"
+                            title="Controlar distancia de renderizado de chunks"
+                        />
+                        <span className="settings-volume-value">{renderDistance}</span>
                     </div>
                     <button className="settings-done-btn" onClick={() => setShowSettings(false)}>Hecho</button>
                 </div>

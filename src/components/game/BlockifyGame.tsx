@@ -5,7 +5,7 @@ import * as THREE from "three";
 import dynamic from 'next/dynamic';
 import type { GameRefs, DebugInfoState, ErrorInfo } from "@/lib/three-game/types";
 import { CONTROL_CONFIG, CURSOR_STATE, CHUNK_SIZE } from "@/lib/three-game/utils";
-import { EventBus } from "@/lib/three-game/events/EventBus";
+import { EventBus, GameEvents } from "@/lib/three-game/events/EventBus";
 import { useGameLoop } from "@/hooks/game/useGameLoop";
 import { useGameInitialization } from "@/hooks/game/useGameInitialization";
 import { GameDebugOverlay } from "./GameDebugOverlay";
@@ -162,6 +162,20 @@ const BlockifyGame: React.FC = () => {
 
     const refs = gameRefs.current;
 
+    // Suscribirse al evento de cambio de distancia de renderizado
+    const eventBus = refs.eventBus;
+    const handleRenderDistanceChange = (event: { distance: number }) => {
+        if (refs.world && refs.player?.mesh) { // Asegurarse de que world y player estén disponibles
+            refs.world.renderDistanceInChunks = event.distance;
+            gameLogger.logGameEvent(`Distancia de renderizado actualizada a ${event.distance}`);
+            // Forzar una actualización inmediata de chunks con la nueva distancia
+            refs.world.updateChunks(refs.player.mesh.position);
+        } else {
+            gameLogger.logGameEvent('World o Player no disponibles al cambiar distancia de renderizado.');
+        }
+    };
+    eventBus.on(GameEvents.RENDER_DISTANCE_CHANGE, handleRenderDistanceChange);
+
     const updateCrosshairColor = () => {
       const now = performance.now();
       if (now - lastUpdateTimeRef.current < UPDATE_INTERVAL) return;
@@ -298,6 +312,8 @@ const BlockifyGame: React.FC = () => {
           }
         });
       }
+
+      eventBus.off(GameEvents.RENDER_DISTANCE_CHANGE, handleRenderDistanceChange);
     };
   }, [initGame, isClient]);
 

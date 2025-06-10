@@ -63,6 +63,7 @@ export enum GameEvents {
   WORLD_UPDATE = "world:update",
   CAMERA_UPDATE = "camera:update",
   GAME_STATE_CHANGE = "game:state_change",
+  RENDER_DISTANCE_CHANGE = "renderDistanceChange",
 }
 
 // Tipos de eventos

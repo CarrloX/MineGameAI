@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { GameRefs, PlayerCameraService } from "./types";
 import type { Player } from "./Player";
 import { gameLogger } from './services/LoggingService';
+import { GameLogic } from './GameLogic'; // Importar GameLogic
 
 export class InputController {
   private player: Player | null = null; // Player can be null initially or after destruction
@@ -32,9 +33,16 @@ export class InputController {
   private _lastInteractionTime: number = 0;
   private readonly INTERACTION_COOLDOWN = 300; // ms
 
-  constructor(gameRefs: GameRefs, initialPlayer?: Player) {
+  // Propiedad para controlar si el movimiento del jugador está habilitado
+  private isPlayerMovementEnabled: boolean = true;
+
+  // Referencia a GameLogic
+  private gameLogic: GameLogic; // O IGameLogic si creas una interfaz
+
+  constructor(gameRefs: GameRefs, gameLogic: GameLogic, initialPlayer?: Player) { // Añade GameLogic como parámetro
     // Player is now optional
     this.gameRefs = gameRefs;
+    this.gameLogic = gameLogic; // Almacena la instancia de GameLogic
     if (initialPlayer) this.player = initialPlayer;
 
     this.boundHandleKeyDown = this.handleKeyDown.bind(this);
@@ -59,6 +67,15 @@ export class InputController {
 
     window.addEventListener("keydown", this.boundHandleKeyDown);
     window.addEventListener("keyup", this.boundHandleKeyUp);
+
+    // Añadir listener para la tecla P
+    window.addEventListener('keydown', (event) => {
+        if (event.key === 'p' || event.key === 'P') {
+            this.gameLogic.togglePause(); // Llama al método de GameLogic
+            event.preventDefault(); // Opcional: previene el comportamiento por defecto del navegador para P
+        }
+    });
+
     document.addEventListener(
       "pointerlockchange",
       this.boundHandlePointerLockChange,
@@ -98,6 +115,14 @@ export class InputController {
 
     window.removeEventListener("keydown", this.boundHandleKeyDown);
     window.removeEventListener("keyup", this.boundHandleKeyUp);
+    // Remover listener para la tecla P
+    window.removeEventListener('keydown', (event) => {
+        if (event.key === 'p' || event.key === 'P') {
+            this.gameLogic.togglePause();
+            event.preventDefault();
+        }
+    });
+
     document.removeEventListener(
       "pointerlockchange",
       this.boundHandlePointerLockChange,
@@ -165,38 +190,41 @@ export class InputController {
 
     console.log("KeyDown:", e.code);
 
-    switch (e.code) {
-      case controlConfig.left:
-        this.player.xdir = "left";
-        break;
-      case controlConfig.right:
-        this.player.xdir = "right";
-        break;
-      case controlConfig.forwards:
-        this.player.zdir = "forwards";
-        break;
-      case controlConfig.backwards:
-        this.player.zdir = "backwards";
-        break;
-      case controlConfig.respawn:
-        this.player.die();
-        break;
-      case controlConfig.jump:
-        console.log("Tecla de salto presionada");
-        this.player.toggleFlying();
-        break;
-      case controlConfig.flyDown:
-        console.log("Tecla de descenso presionada");
-        this.player.startFlyingDown();
-        break;
-      case controlConfig.boost:
-        if (this.player.flying) {
-          this.player.toggleBoosting();
-        } else {
-          this.player.toggleRunning();
-        }
-        break;
+    // Solo procesar input de movimiento si está habilitado
+    if (this.isPlayerMovementEnabled) {
+      switch (e.code) {
+        case controlConfig.left:
+          this.player.xdir = "left";
+          break;
+        case controlConfig.right:
+          this.player.xdir = "right";
+          break;
+        case controlConfig.forwards:
+          this.player.zdir = "forwards";
+          break;
+        case controlConfig.backwards:
+          this.player.zdir = "backwards";
+          break;
+        case controlConfig.jump:
+          console.log("Tecla de salto presionada");
+          this.player.toggleFlying();
+          break;
+        case controlConfig.flyDown:
+          console.log("Tecla de descenso presionada");
+          this.player.startFlyingDown();
+          break;
+        case controlConfig.boost:
+          if (this.player.flying) {
+            this.player.toggleBoosting();
+          } else {
+            this.player.toggleRunning();
+          }
+          break;
+      }
     }
+
+    // Las teclas que no son de movimiento (como la de pausa) se manejarían aquí fuera del if
+    // Por ahora, solo tenemos la lógica de movimiento dentro del if
   }
 
   private handleKeyUp(e: KeyboardEvent): void {
@@ -206,35 +234,41 @@ export class InputController {
 
     console.log("KeyUp:", e.code);
 
-    switch (e.code) {
-      case controlConfig.left:
-        if (this.player.xdir === "left") this.player.xdir = "";
-        break;
-      case controlConfig.right:
-        if (this.player.xdir === "right") this.player.xdir = "";
-        break;
-      case controlConfig.forwards:
-        if (this.player.zdir === "forwards") this.player.zdir = "";
-        break;
-      case controlConfig.backwards:
-        if (this.player.zdir === "backwards") this.player.zdir = "";
-        break;
-      case controlConfig.jump:
-        console.log("Tecla de salto liberada");
-        if (this.player.flying) {
-          console.log("Deteniendo ascenso");
-          this.player.stopFlyingUp();
-        }
-        break;
-      case controlConfig.flyDown:
-        console.log("Tecla de descenso liberada");
-        this.player.stopFlyingDown();
-        break;
+    // Solo procesar input de movimiento si está habilitado
+    if (this.isPlayerMovementEnabled) {
+      switch (e.code) {
+        case controlConfig.left:
+          if (this.player.xdir === "left") this.player.xdir = "";
+          break;
+        case controlConfig.right:
+          if (this.player.xdir === "right") this.player.xdir = "";
+          break;
+        case controlConfig.forwards:
+          if (this.player.zdir === "forwards") this.player.zdir = "";
+          break;
+        case controlConfig.backwards:
+          if (this.player.zdir === "backwards") this.player.zdir = "";
+          break;
+        case controlConfig.jump:
+          console.log("Tecla de salto liberada");
+          if (this.player.flying) {
+            console.log("Deteniendo ascenso");
+            this.player.stopFlyingUp();
+          }
+          break;
+        case controlConfig.flyDown:
+          console.log("Tecla de descenso liberada");
+          this.player.stopFlyingDown();
+          break;
+      }
     }
+    // Las teclas que no son de movimiento (como la de pausa) se manejarían aquí fuera del if
+    // Por ahora, solo tenemos la lógica de movimiento dentro del if
   }
 
   private handleMouseMove(e: MouseEvent): void {
-    if (this.gameRefs.cursor?.inWindow && this.player) {
+    // No permitir mover la cámara si el juego está en pausa
+    if (this.gameRefs.cursor?.inWindow && this.player && !this.gameLogic.isPaused) {
       const sensitivity = 0.002;
       const newYaw = this.player.getYaw() - e.movementX * sensitivity;
       const newPitch = this.player.getPitch() - e.movementY * sensitivity;
@@ -477,6 +511,44 @@ export class InputController {
       }
       cursor.holding = false;
       cursor.holdTime = 0;
+    }
+  }
+
+  // Método para deshabilitar el movimiento del jugador
+  public disablePlayerMovement(): void {
+    this.isPlayerMovementEnabled = false;
+    // Opcional: Resetear cualquier estado de movimiento activo al deshabilitar
+    if (this.player) {
+      this.player.xdir = "";
+      this.player.zdir = "";
+      this.player.stopFlyingUp();
+      this.player.stopFlyingDown();
+      // Detener correr y boostear si están activos
+      if (this.player.isRunning) {
+        this.player.toggleRunning();
+      }
+      if (this.player.isBoosting) {
+        this.player.toggleBoosting();
+      }
+    }
+  }
+
+  // Método para habilitar el movimiento del jugador
+  public enablePlayerMovement(): void {
+    this.isPlayerMovementEnabled = true;
+  }
+
+  // Método para liberar el mouse (salir de pointer lock)
+  public releasePointerLock(): void {
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+  }
+
+  // Método para volver a capturar el mouse (pointer lock)
+  public requestPointerLock(): void {
+    if (this.gameRefs.canvasRef && !document.pointerLockElement) {
+      this.gameRefs.canvasRef.requestPointerLock();
     }
   }
 }

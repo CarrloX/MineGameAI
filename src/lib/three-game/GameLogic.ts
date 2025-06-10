@@ -11,6 +11,7 @@ import { CHUNK_SIZE } from "./utils";
 import { Player } from "./Player";
 import { AudioManager, SOUND_PATHS } from "./AudioManager";
 import { GameEvents } from "./events/EventBus";
+import { InputController } from "./InputController"; // Asegúrate de que la ruta sea correcta
 
 export class GameLogic {
   private gameRefs: GameRefs;
@@ -26,6 +27,7 @@ export class GameLogic {
 
   public destroyBlockDelay: number = 0.2; // segundos entre destrucciones continuas
   public initialHoldDelay: number = 0.35; // retardo inicial antes de destrucción continua
+  private _isPaused: boolean = false;
 
   constructor(
     gameRefs: GameRefs,
@@ -66,6 +68,9 @@ export class GameLogic {
       console.log("Reproduciendo sonido de colocar bloque");
       this.audioManager.playSound("blockPlace");
     });
+
+    // Instanciar InputController pasando la instancia de GameLogic
+    this.gameRefs.inputController = new InputController(this.gameRefs, this); // Pasa la instancia de GameLogic
 
     this.initializePlayer();
   }
@@ -131,6 +136,30 @@ export class GameLogic {
     refs.player.lookAround();
   }
 
+  public get isPaused(): boolean {
+    return this._isPaused;
+  }
+
+  public togglePause(): void {
+    this._isPaused = !this._isPaused;
+    console.log('Juego pausado:', this._isPaused);
+
+    if (this._isPaused) {
+        // Cuando el juego se pausa, deshabilitar el input de movimiento del jugador
+        this.gameRefs.inputController.disablePlayerMovement();
+        // Liberar el mouse
+        this.gameRefs.inputController.releasePointerLock();
+    } else {
+        // Cuando el juego se reanuda, habilitar el input de movimiento del jugador
+        this.gameRefs.inputController.enablePlayerMovement();
+        // Volver a capturar el mouse
+        this.gameRefs.inputController.requestPointerLock();
+    }
+
+    // Opcional: Podrías emitir un evento aquí para que la UI del menú de pausa lo escuche
+    // this.onPauseStateChanged.emit(this._isPaused);
+  }
+
   public update(deltaTime: number, newFpsValue?: number): void {
     const refs = this.gameRefs;
 
@@ -144,20 +173,185 @@ export class GameLogic {
       refs.sky.update(deltaTime, refs.camera, this.isCameraSubmerged_internal);
     }
 
-    // Actualizar posición del jugador y resaltar bloques
-    refs.player.updatePosition(deltaTime);
-    refs.player.highlightBlock();
+    // Lógica que solo debe ejecutarse si el juego NO está pausado
+    if (!this._isPaused) {
+      // Actualizar posición del jugador y resaltar bloques
+      refs.player.updatePosition(deltaTime);
+      refs.player.highlightBlock();
 
-    // Actualizar chunks (carga/descarga)
-    refs.world.updateChunks(refs.player.mesh.position);
+      // Actualizar chunks (carga/descarga)
+      refs.world.updateChunks(refs.player.mesh.position);
 
-    // Process remesh queue with player position to prioritize nearby chunks
-    const MAX_REMESH_PER_FRAME = 2;
-    if (refs.world.getRemeshQueueSize() > 0) {
-      refs.world.processRemeshQueue(MAX_REMESH_PER_FRAME, refs.player.mesh.position);
+      // Process remesh queue with player position to prioritize nearby chunks
+      const MAX_REMESH_PER_FRAME = 2;
+      if (refs.world.getRemeshQueueSize() > 0) {
+        refs.world.processRemeshQueue(MAX_REMESH_PER_FRAME, refs.player.mesh.position);
+      }
+
+      // Interacción continua con bloques
+      if (refs.cursor.holding) {
+        refs.cursor.holdTime = (refs.cursor.holdTime || 0) + deltaTime;
+        if (refs.cursor.holdTime >= this.initialHoldDelay) {
+          // Destruir o colocar bloque cada destroyBlockDelay segundos
+          if (
+            !refs.cursor._lastDestroyTime ||
+            refs.cursor.holdTime - refs.cursor._lastDestroyTime >=
+              this.destroyBlockDelay
+          ) {
+            const destroy = refs.cursor.buttonPressed === 0;
+            refs.player.interactWithBlock(destroy);
+            refs.cursor._lastDestroyTime = refs.cursor.holdTime;
+          }
+        }
+      } else {
+        refs.cursor.holdTime = 0;
+        refs.cursor._lastDestroyTime = 0;
+      }
+
+      // Verificar si la cámara está bajo el agua
+      if (refs.player && refs.world && refs.camera) {
+        const camWorldX = Math.floor(refs.camera.position.x);
+        const camWorldY = Math.floor(refs.camera.position.y);
+        const camWorldZ = Math.floor(refs.camera.position.z);
+        const blockAtCamera = refs.world.getBlock(
+          camWorldX,
+          camWorldY,
+          camWorldZ
+        );
+        const newIsSubmerged = blockAtCamera === "waterBlock";
+
+        if (newIsSubmerged !== this.isCameraSubmerged_internal) {
+          this.isCameraSubmerged_internal = newIsSubmerged;
+          this.setIsCameraSubmerged(newIsSubmerged);
+        }
+      }
+
+      if (refs.player.dead) {
+        const respawnX = 0.5;
+        const respawnZ = 0.5;
+        const respawnChunkX = Math.floor(respawnX / CHUNK_SIZE);
+        const respawnChunkZ = Math.floor(respawnZ / CHUNK_SIZE);
+
+        if (!refs.world.activeChunks.has(`${respawnChunkX},${respawnChunkZ}`)) {
+          refs.world.loadChunk(respawnChunkX, respawnChunkZ);
+        }
+
+        let safetyRemeshLoops = 0;
+        const maxRemeshLoops = 5;
+        while (
+          refs.world.getRemeshQueueSize() > 0 &&
+          safetyRemeshLoops < maxRemeshLoops
+        ) {
+          refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
+          safetyRemeshLoops++;
+        }
+        if (
+          safetyRemeshLoops >= maxRemeshLoops &&
+          refs.world.getRemeshQueueSize() > 0
+        ) {
+          console.warn(
+            "Respawn: Remesh queue was not fully cleared after max attempts."
+          );
+        }
+
+        let safeRespawnY = refs.world.getSpawnHeight(respawnX, respawnZ);
+        let attempts = 0;
+        const maxSafetyCheckAttempts = refs.world.layers;
+        const playerHeightForCheck = refs.player.height - 0.01;
+
+        while (attempts < maxSafetyCheckAttempts) {
+          const blockAtFeet = refs.world.getBlock(
+            Math.floor(respawnX),
+            Math.floor(safeRespawnY),
+            Math.floor(respawnZ)
+          );
+          const blockAtHead = refs.world.getBlock(
+            Math.floor(respawnX),
+            Math.floor(safeRespawnY + playerHeightForCheck),
+            Math.floor(respawnZ)
+          );
+          const blockSlightlyAboveHead = refs.world.getBlock(
+            Math.floor(respawnX),
+            Math.floor(safeRespawnY + playerHeightForCheck + 0.5),
+            Math.floor(respawnZ)
+          );
+
+          if (
+            blockAtFeet === "air" &&
+            blockAtHead === "air" &&
+            blockSlightlyAboveHead === "air"
+          ) {
+            break;
+          }
+          safeRespawnY++;
+          attempts++;
+          if (safeRespawnY + playerHeightForCheck + 1 >= refs.world.layers) {
+            console.warn(
+              "Respawn safety check reached world top. Choosing a default Y."
+            );
+            safeRespawnY = Math.max(
+              1,
+              Math.min(
+                Math.floor(refs.world.layers / 2),
+                refs.world.layers - Math.ceil(playerHeightForCheck) - 2
+              )
+            );
+            break;
+          }
+        }
+        if (attempts >= maxSafetyCheckAttempts) {
+          console.warn(
+            "Could not find a perfectly safe respawn Y after " +
+              maxSafetyCheckAttempts +
+              " attempts. Using last calculated or default."
+          );
+          safeRespawnY = Math.max(
+            1,
+            Math.min(
+              safeRespawnY,
+              refs.world.layers - Math.ceil(playerHeightForCheck) - 2
+            )
+          );
+        }
+
+        safeRespawnY = Math.max(1, safeRespawnY);
+        safeRespawnY = Math.min(
+          safeRespawnY,
+          refs.world.layers - Math.ceil(refs.player.height) - 1
+        );
+
+        const currentPitch = refs.player.getPitch();
+        const currentYaw = refs.player.getYaw();
+        refs.player = new Player(
+          refs.player!["name"],
+          refs.world as PlayerWorldService,
+          refs.camera as PlayerCameraService,
+          refs.scene as PlayerSceneService,
+          refs.raycaster as PlayerRaycasterService,
+          respawnX,
+          safeRespawnY,
+          respawnZ,
+          true,
+          this.audioManager
+        );
+
+        if (refs.inputController) {
+          refs.inputController.setPlayer(refs.player);
+        }
+
+        refs.player.setPitch(currentPitch);
+        refs.player.setYaw(currentYaw);
+        refs.player.lookAround();
+
+        refs.camera.position.set(
+          refs.player.x,
+          refs.player.y + refs.player.height * 0.9,
+          refs.player.z
+        );
+      }
     }
 
-    // Actualiza la matriz de proyección y el frustum
+    // Actualiza la matriz de proyección y el frustum (siempre)
     refs.camera.updateMatrixWorld();
     this.projectionMatrixInverse.multiplyMatrices(
       refs.camera.projectionMatrix,
@@ -165,7 +359,7 @@ export class GameLogic {
     );
     this.frustum.setFromProjectionMatrix(this.projectionMatrixInverse);
 
-    // Frustum culling a nivel de chunks
+    // Frustum culling a nivel de chunks (siempre)
     let visibleChunksCount = 0;
     refs.world.activeChunks.forEach((chunk) => {
       if (chunk && chunk.chunkRoot && chunk.boundingBox) {
@@ -177,7 +371,7 @@ export class GameLogic {
       }
     });
 
-    // Actualizar información de depuración
+    // Actualizar información de depuración (siempre)
     const playerForDebug = refs.player;
     const playerPosStr = `Player: X:${playerForDebug.x.toFixed(
       1
@@ -186,7 +380,7 @@ export class GameLogic {
     const playerChunkZ = Math.floor(playerForDebug.z / CHUNK_SIZE);
     const playerChunkStr = `Chunk: ${playerChunkX},${playerChunkZ}`;
 
-    // Raycast target display
+    // Raycast target display (siempre)
     const raycastResult = refs.player.getLookingAt();
     let rayTargetStr = "Ray: None";
     if (raycastResult) {
@@ -196,7 +390,7 @@ export class GameLogic {
       )} Z:${blockPos.z.toFixed(0)}`;
     }
 
-    // Highlight face direction
+    // Highlight face direction (siempre)
     let highlightFaceDir = "None";
     const worldFaceNormal = raycastResult?.worldFaceNormal;
     if (worldFaceNormal) {
@@ -233,169 +427,7 @@ export class GameLogic {
       lookDirection: lookDirStr,
     }));
 
-    // Verificar si la cámara está bajo el agua
-    if (refs.player && refs.world && refs.camera) {
-      const camWorldX = Math.floor(refs.camera.position.x);
-      const camWorldY = Math.floor(refs.camera.position.y);
-      const camWorldZ = Math.floor(refs.camera.position.z);
-      const blockAtCamera = refs.world.getBlock(
-        camWorldX,
-        camWorldY,
-        camWorldZ
-      );
-      const newIsSubmerged = blockAtCamera === "waterBlock";
-
-      if (newIsSubmerged !== this.isCameraSubmerged_internal) {
-        this.isCameraSubmerged_internal = newIsSubmerged;
-        this.setIsCameraSubmerged(newIsSubmerged);
-      }
-    }
-
-    if (refs.player.dead) {
-      const respawnX = 0.5;
-      const respawnZ = 0.5;
-      const respawnChunkX = Math.floor(respawnX / CHUNK_SIZE);
-      const respawnChunkZ = Math.floor(respawnZ / CHUNK_SIZE);
-
-      if (!refs.world.activeChunks.has(`${respawnChunkX},${respawnChunkZ}`)) {
-        refs.world.loadChunk(respawnChunkX, respawnChunkZ);
-      }
-
-      let safetyRemeshLoops = 0;
-      const maxRemeshLoops = 5;
-      while (
-        refs.world.getRemeshQueueSize() > 0 &&
-        safetyRemeshLoops < maxRemeshLoops
-      ) {
-        refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
-        safetyRemeshLoops++;
-      }
-      if (
-        safetyRemeshLoops >= maxRemeshLoops &&
-        refs.world.getRemeshQueueSize() > 0
-      ) {
-        console.warn(
-          "Respawn: Remesh queue was not fully cleared after max attempts."
-        );
-      }
-
-      let safeRespawnY = refs.world.getSpawnHeight(respawnX, respawnZ);
-      let attempts = 0;
-      const maxSafetyCheckAttempts = refs.world.layers;
-      const playerHeightForCheck = refs.player.height - 0.01;
-
-      while (attempts < maxSafetyCheckAttempts) {
-        const blockAtFeet = refs.world.getBlock(
-          Math.floor(respawnX),
-          Math.floor(safeRespawnY),
-          Math.floor(respawnZ)
-        );
-        const blockAtHead = refs.world.getBlock(
-          Math.floor(respawnX),
-          Math.floor(safeRespawnY + playerHeightForCheck),
-          Math.floor(respawnZ)
-        );
-        const blockSlightlyAboveHead = refs.world.getBlock(
-          Math.floor(respawnX),
-          Math.floor(safeRespawnY + playerHeightForCheck + 0.5),
-          Math.floor(respawnZ)
-        );
-
-        if (
-          blockAtFeet === "air" &&
-          blockAtHead === "air" &&
-          blockSlightlyAboveHead === "air"
-        ) {
-          break;
-        }
-        safeRespawnY++;
-        attempts++;
-        if (safeRespawnY + playerHeightForCheck + 1 >= refs.world.layers) {
-          console.warn(
-            "Respawn safety check reached world top. Choosing a default Y."
-          );
-          safeRespawnY = Math.max(
-            1,
-            Math.min(
-              Math.floor(refs.world.layers / 2),
-              refs.world.layers - Math.ceil(playerHeightForCheck) - 2
-            )
-          );
-          break;
-        }
-      }
-      if (attempts >= maxSafetyCheckAttempts) {
-        console.warn(
-          "Could not find a perfectly safe respawn Y after " +
-            maxSafetyCheckAttempts +
-            " attempts. Using last calculated or default."
-        );
-        safeRespawnY = Math.max(
-          1,
-          Math.min(
-            safeRespawnY,
-            refs.world.layers - Math.ceil(playerHeightForCheck) - 2
-          )
-        );
-      }
-
-      safeRespawnY = Math.max(1, safeRespawnY);
-      safeRespawnY = Math.min(
-        safeRespawnY,
-        refs.world.layers - Math.ceil(refs.player.height) - 1
-      );
-
-      const currentPitch = refs.player.getPitch();
-      const currentYaw = refs.player.getYaw();
-      refs.player = new Player(
-        refs.player!["name"],
-        refs.world as PlayerWorldService,
-        refs.camera as PlayerCameraService,
-        refs.scene as PlayerSceneService,
-        refs.raycaster as PlayerRaycasterService,
-        respawnX,
-        safeRespawnY,
-        respawnZ,
-        true,
-        this.audioManager
-      );
-
-      if (refs.inputController) {
-        refs.inputController.setPlayer(refs.player);
-      }
-
-      refs.player.setPitch(currentPitch);
-      refs.player.setYaw(currentYaw);
-      refs.player.lookAround();
-
-      refs.camera.position.set(
-        refs.player.x,
-        refs.player.y + refs.player.height * 0.9,
-        refs.player.z
-      );
-    }
-
-    // Interacción continua con bloques
-    if (refs.cursor.holding) {
-      refs.cursor.holdTime = (refs.cursor.holdTime || 0) + deltaTime;
-      if (refs.cursor.holdTime >= this.initialHoldDelay) {
-        // Destruir o colocar bloque cada destroyBlockDelay segundos
-        if (
-          !refs.cursor._lastDestroyTime ||
-          refs.cursor.holdTime - refs.cursor._lastDestroyTime >=
-            this.destroyBlockDelay
-        ) {
-          const destroy = refs.cursor.buttonPressed === 0;
-          refs.player.interactWithBlock(destroy);
-          refs.cursor._lastDestroyTime = refs.cursor.holdTime;
-        }
-      }
-    } else {
-      refs.cursor.holdTime = 0;
-      refs.cursor._lastDestroyTime = 0;
-    }
-
-    // Renderizar la escena
+    // Renderizar la escena (siempre)
     if (refs.rendererManager) {
       refs.rendererManager.render();
     }

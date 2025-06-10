@@ -1,0 +1,42 @@
+/* src/components/PauseMenu.css */
+.pause-menu-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7); /* Fondo semi-transparente oscuro */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000; /* Asegurarse de que esté por encima de todo */
+}
+
+.pause-menu-content {
+    background-color: #333;
+    color: white;
+    padding: 30px 50px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.pause-menu-content h1 {
+    margin-bottom: 25px;
+    font-size: 2.5em;
+}
+
+.pause-menu-content button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 12px 25px;
+    border-radius: 5px;
+    font-size: 1.2em;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.pause-menu-content button:hover {
+    background-color: #0056b3;
+}

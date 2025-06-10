@@ -14,6 +14,7 @@ import ErrorBoundaryDisplay from "./ErrorBoundaryDisplay";
 import { useFog } from '@/hooks/game/useFog';
 import { gameLogger } from '@/lib/three-game/services/LoggingService';
 import { getRecoveryService } from '@/lib/three-game/services/RecoveryService';
+import PauseMenu from '../PauseMenu';
 
 // Componente de carga
 const LoadingComponent = () => (
@@ -72,6 +73,7 @@ const BlockifyGame: React.FC = () => {
   const [systemStats, setSystemStats] = useState({
     memory: null as null | { usedMB: number; totalMB: number },
   });
+  const [isGamePaused, setIsGamePaused] = useState(false);
 
   const recoveryServiceRef = useRef(getRecoveryService());
 
@@ -292,6 +294,22 @@ const BlockifyGame: React.FC = () => {
   // Usar el hook de niebla
   useFog({ gameRefs, isCameraSubmerged });
 
+  // Polling para sincronizar el estado de pausa de GameLogic con React
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (gameRefs.current.gameLogic && typeof gameRefs.current.gameLogic.isPaused === 'boolean') {
+        setIsGamePaused(gameRefs.current.gameLogic.isPaused);
+      }
+    }, 100);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  const handleResumeGame = () => {
+    if (gameRefs.current.gameLogic) {
+      gameRefs.current.gameLogic.togglePause();
+    }
+  };
+
   if (!isClient) {
     return <LoadingComponent />;
   }
@@ -322,13 +340,14 @@ const BlockifyGame: React.FC = () => {
   }
 
   return (
-    <div className="relative w-full h-screen overflow-hidden">
+    <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
       <div 
         ref={mountRef} 
         className="absolute inset-0 w-full h-full bg-transparent touch-none"
       />
       <GameDebugOverlay debugInfo={debugInfo} systemStats={systemStats} />
       <GameCrosshair crosshairBgColor={crosshairBgColor} />
+      <PauseMenu isPaused={isGamePaused} onResumeGame={handleResumeGame} />
     </div>
   );
 };

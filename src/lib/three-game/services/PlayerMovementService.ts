@@ -1,16 +1,17 @@
 import * as THREE from "three";
 import { CONTROL_CONFIG } from "../CONTROL_CONFIG";
 import type { PlayerWorldService } from "../types";
-
-const STEP_HEIGHT_LIMIT = 0.6; // Altura máxima de escalón que el jugador puede subir automáticamente
+import { CollisionService } from "../physics/CollisionService";
 
 export class PlayerMovementService {
   private worldService: PlayerWorldService;
   private player: any; // Referencia al jugador para actualizar su posición
+  private collisionService: CollisionService;
 
   constructor(worldService: PlayerWorldService, player: any) {
     this.worldService = worldService;
     this.player = player;
+    this.collisionService = new CollisionService(worldService);
   }
 
   /**
@@ -18,7 +19,7 @@ export class PlayerMovementService {
    * Aplica el movimiento en cada eje y ajusta la posición si hay colisión.
    */
   public updatePosition(deltaTime: number): void {
-    // 1. Calcular velocidades
+    // Calcular velocidades deseadas
     let dY = this.calculateVerticalMovement(deltaTime);
     let { moveX, moveZ } = this.calculateHorizontalMovement();
     let currentEffectiveSpeed = this.calculateEffectiveSpeed();
@@ -32,99 +33,22 @@ export class PlayerMovementService {
     }
     let dy = dY;
 
-    // 2. Movimiento incremental por eje
-    let { x: px, y: py, z: pz } = this.player;
-    let onGround = false;
+    // Usar CollisionService para resolver colisiones y step-up
+    const result = this.collisionService.resolveCollisions(
+      new THREE.Vector3(this.player.x, this.player.y, this.player.z),
+      new THREE.Vector3(dx, dy, dz),
+      { width: this.player.width, height: this.player.height, depth: this.player.depth }
+    );
 
-    // --- EJE X (con lógica de escalón) ---
-    if (dx !== 0) {
-      const tryX = px + dx;
-      const boxX = this.player.getCollisionBox({ x: tryX, y: py, z: pz });
-      if (!this.isBoxCollidingWithWorld(boxX)) {
-        px = tryX;
-      } else {
-        // Intentar step-up
-        const stepUpY = py + STEP_HEIGHT_LIMIT;
-        const boxStep = this.player.getCollisionBox({ x: tryX, y: stepUpY, z: pz });
-        const boxHead = this.player.getCollisionBox({ x: tryX, y: stepUpY + this.player.height - 0.01, z: pz });
-        if (!this.isBoxCollidingWithWorld(boxStep) && !this.isBoxCollidingWithWorld(boxHead)) {
-          px = tryX;
-          py = stepUpY;
-        } else {
-          // Ajustar hasta el borde del bloque
-          let sign = Math.sign(dx);
-          let step = 0.01 * sign;
-          let testX = px;
-          while (!this.isBoxCollidingWithWorld(this.player.getCollisionBox({ x: testX + step, y: py, z: pz })) && Math.abs(testX - px) < Math.abs(dx)) {
-            testX += step;
-          }
-          px = testX;
-        }
-      }
-    }
-
-    // --- EJE Y ---
-    if (dy !== 0) {
-      const tryY = py + dy;
-      const boxY = this.player.getCollisionBox({ x: px, y: tryY, z: pz });
-      if (!this.isBoxCollidingWithWorld(boxY)) {
-        py = tryY;
-      } else {
-        // Ajustar hasta el borde del bloque
-        let sign = Math.sign(dy);
-        let step = 0.01 * sign;
-        let testY = py;
-        while (!this.isBoxCollidingWithWorld(this.player.getCollisionBox({ x: px, y: testY + step, z: pz })) && Math.abs(testY - py) < Math.abs(dy)) {
-          testY += step;
-        }
-        py = testY;
-        // Si el movimiento era descendente y hay colisión, está en el suelo
-        if (dy < 0) {
-          onGround = true;
-          this.player.jumpVelocity = 0;
-        } else if (dy > 0) {
-          this.player.jumpVelocity = -0.001;
-        }
-      }
-    }
-
-    // --- EJE Z (con lógica de escalón) ---
-    if (dz !== 0) {
-      const tryZ = pz + dz;
-      const boxZ = this.player.getCollisionBox({ x: px, y: py, z: tryZ });
-      if (!this.isBoxCollidingWithWorld(boxZ)) {
-        pz = tryZ;
-      } else {
-        // Intentar step-up
-        const stepUpY = py + STEP_HEIGHT_LIMIT;
-        const boxStep = this.player.getCollisionBox({ x: px, y: stepUpY, z: tryZ });
-        const boxHead = this.player.getCollisionBox({ x: px, y: stepUpY + this.player.height - 0.01, z: tryZ });
-        if (!this.isBoxCollidingWithWorld(boxStep) && !this.isBoxCollidingWithWorld(boxHead)) {
-          pz = tryZ;
-          py = stepUpY;
-        } else {
-          // Ajustar hasta el borde del bloque
-          let sign = Math.sign(dz);
-          let step = 0.01 * sign;
-          let testZ = pz;
-          while (!this.isBoxCollidingWithWorld(this.player.getCollisionBox({ x: px, y: py, z: testZ + step })) && Math.abs(testZ - pz) < Math.abs(dz)) {
-            testZ += step;
-          }
-          pz = testZ;
-        }
-      }
-    }
-
-    // 3. Aplicar posición final
-    this.player.x = px;
-    this.player.y = py;
-    this.player.z = pz;
-    this.player.onGround = onGround;
-    this.player.mesh.position.set(px, py, pz);
+    this.player.x = result.newPosition.x;
+    this.player.y = result.newPosition.y;
+    this.player.z = result.newPosition.z;
+    this.player.onGround = result.isOnGround;
+    this.player.mesh.position.set(result.newPosition.x, result.newPosition.y, result.newPosition.z);
     this.player.cameraService.position.set(
-      px,
-      py + this.player.height * 0.9,
-      pz
+      result.newPosition.x,
+      result.newPosition.y + this.player.height * 0.9,
+      result.newPosition.z
     );
   }
 
@@ -186,25 +110,5 @@ export class PlayerMovementService {
       currentEffectiveSpeed *= this.player.runSpeedMultiplier;
     }
     return currentEffectiveSpeed;
-  }
-
-  /**
-   * Verifica si la caja dada colisiona con algún bloque sólido en el mundo.
-   * Devuelve true si hay colisión, false si está libre.
-   */
-  private isBoxCollidingWithWorld(box: THREE.Box3): boolean {
-    const min = box.min;
-    const max = box.max;
-    for (let x = Math.floor(min.x); x < Math.ceil(max.x); x++) {
-      for (let y = Math.floor(min.y); y < Math.ceil(max.y); y++) {
-        for (let z = Math.floor(min.z); z < Math.ceil(max.z); z++) {
-          const blockType = this.worldService.getBlock(x, y, z);
-          if (blockType && blockType !== "air" && blockType !== "waterBlock") {
-            return true;
-          }
-        }
-      }
-    }
-    return false;
   }
 }

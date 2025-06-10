@@ -12,6 +12,7 @@ import { Player } from "./Player";
 import { AudioManager, SOUND_PATHS } from "./AudioManager";
 import { GameEvents, EventBus } from "./events/EventBus";
 import { InputController } from "./InputController"; // Asegúrate de que la ruta sea correcta
+import { CollisionService } from "./physics/CollisionService";
 
 export class GameLogic {
   private gameRefs: GameRefs;
@@ -102,6 +103,8 @@ export class GameLogic {
     }
 
     let spawnY = refs.world.getSpawnHeight(initialPlayerX, initialPlayerZ);
+    // Instanciar CollisionService antes de Player
+    const collisionService = new CollisionService(refs.world);
     refs.player = new Player(
       "Player",
       refs.world as PlayerWorldService,
@@ -112,7 +115,8 @@ export class GameLogic {
       spawnY,
       initialPlayerZ,
       false,
-      this.audioManager
+      this.audioManager,
+      collisionService // Inyección de dependencias
     );
 
     // Verificar que el AudioManager se pasó correctamente al jugador

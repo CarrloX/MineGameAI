@@ -14,6 +14,7 @@ import { PlayerMovementService } from "./services/PlayerMovementService";
 import { PlayerBlockInteractionService } from "./services/PlayerBlockInteractionService";
 import { PlayerStateService } from "./services/PlayerStateService";
 import { PlayerCameraController } from "./services/PlayerCameraService";
+import { CollisionService } from "./physics/CollisionService";
 
 export class Player {
   public x: number;
@@ -42,6 +43,7 @@ export class Player {
   private sceneService: PlayerSceneService;
   private raycasterService: PlayerRaycasterService;
   private audioManager: any;
+  private collisionService: CollisionService;
 
   // Servicios
   private stateService: PlayerStateService;
@@ -61,7 +63,8 @@ export class Player {
     y: number = 0,
     z: number = 0,
     preserveCam: boolean = false,
-    audioManager?: any // AudioManager opcional para compatibilidad
+    audioManager?: any, // AudioManager opcional para compatibilidad
+    collisionService?: CollisionService // Nuevo parámetro opcional
   ) {
     // Inicializar servicios primero
     this.name = name;
@@ -71,6 +74,7 @@ export class Player {
     this.raycasterService = raycasterService;
     this.audioManager = audioManager;
     this.stateService = new PlayerStateService(this);
+    this.collisionService = collisionService || new CollisionService(worldService);
 
     // Inicializar propiedades básicas
     this.x = x;
@@ -295,25 +299,5 @@ export class Player {
 
   public respawn(): void {
     this.stateService.respawn();
-  }
-
-  /**
-   * Devuelve la caja de colisión del jugador en la posición dada (o actual si no se pasa ninguna).
-   */
-  public getCollisionBox(pos?: { x: number; y: number; z: number }): THREE.Box3 {
-    const x = pos?.x ?? this.x;
-    const y = pos?.y ?? this.y;
-    const z = pos?.z ?? this.z;
-    const min = new THREE.Vector3(
-      x - this.width / 2,
-      y,
-      z - this.depth / 2
-    );
-    const max = new THREE.Vector3(
-      x + this.width / 2,
-      y + this.height,
-      z + this.depth / 2
-    );
-    return new THREE.Box3(min, max);
   }
 }

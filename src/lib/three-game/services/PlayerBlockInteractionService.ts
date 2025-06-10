@@ -166,9 +166,9 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
         
         // Si es agua profunda, ignorar esta intersección para el resaltado
         if (isDeepWater) {
-          gameLogger.logGameEvent('Ignorando resaltado en agua profunda', {
-            position: blockCoords.toArray()
-          });
+          // gameLogger.logGameEvent('Ignorando resaltado en agua profunda', {
+          //   position: blockCoords.toArray()
+          // }); // Eliminado para evitar spam
           continue; // Saltar a la siguiente intersección
         }
         
@@ -194,15 +194,15 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
     if (nonWaterIntersections.length > 0) {
       // Si hay bloques sólidos, usar el primer bloque sólido encontrado
       targetIntersection = nonWaterIntersections[0];
-      gameLogger.logGameEvent('Apuntando a bloque sólido a través del agua', {
-        distance: targetIntersection.distance
-      });
+      // gameLogger.logGameEvent('Apuntando a bloque sólido a través del agua', {
+      //   distance: targetIntersection.distance
+      // }); // Eliminado para evitar spam
     } else {
       // Si solo hay agua (no profunda), usar la primera intersección con agua
       targetIntersection = waterIntersections[0];
-      gameLogger.logGameEvent('Apuntando a bloque de agua (no profunda)', {
-        distance: targetIntersection.distance
-      });
+      // gameLogger.logGameEvent('Apuntando a bloque de agua (no profunda)', {
+      //   distance: targetIntersection.distance
+      // }); // Eliminado para evitar spam
     }
 
     // Procesamos la intersección seleccionada
@@ -274,9 +274,9 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
       if (this.canPlaceBlockInWater(blockWorldCoords)) {
         const newBlockType = "stoneBlock";
         
-        gameLogger.logGameEvent('Colocando bloque en agua', {
-          position: blockWorldCoords.toArray()
-        });
+        // gameLogger.logGameEvent('Colocando bloque en agua', {
+        //   position: blockWorldCoords.toArray()
+        // }); // Eliminado para evitar spam
         
         this.worldService.setBlock(
           blockWorldCoords.x,
@@ -310,9 +310,9 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
       if (this.canPlaceBlockInWater(placeBlockWorldCoords)) {
         const newBlockType = "stoneBlock";
         
-        gameLogger.logGameEvent('Colocando bloque en agua adyacente', {
-          position: placeBlockWorldCoords.toArray()
-        });
+        // gameLogger.logGameEvent('Colocando bloque en agua adyacente', {
+        //   position: placeBlockWorldCoords.toArray()
+        // }); // Eliminado para evitar spam
         
         this.worldService.setBlock(
           placeBlockWorldCoords.x,
@@ -339,9 +339,9 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
     if (this.canPlaceBlock(placeBlockWorldCoords)) {
       const newBlockType = "stoneBlock";
       
-      gameLogger.logGameEvent('Colocando bloque en posición normal', {
-        position: placeBlockWorldCoords.toArray()
-      });
+      // gameLogger.logGameEvent('Colocando bloque en posición normal', {
+      //   position: placeBlockWorldCoords.toArray()
+      // }); // Eliminado para evitar spam
       
       this.worldService.setBlock(
         placeBlockWorldCoords.x,
@@ -407,57 +407,36 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
 
   private canPlaceBlockInWater(coords: THREE.Vector3): boolean {
     const blockType = this.worldService.getBlock(coords.x, coords.y, coords.z);
-    
     // Verificar que el bloque es agua
     if (blockType !== "waterBlock") {
-      gameLogger.logGameEvent('No se puede colocar: no es agua', {
-        position: coords.toArray(),
-        blockType
-      });
+      // Eliminado log para evitar consumo de recursos
       return false;
     }
-
     // Verificar que no colocamos dentro del jugador
     if (this.wouldPlaceBlockInsidePlayer(coords.x, coords.y, coords.z)) {
-      gameLogger.logGameEvent('No se puede colocar: colisión con jugador', {
-        position: coords.toArray()
-      });
+      // Eliminado log para evitar consumo de recursos
       return false;
     }
-
     // *** VERIFICACIÓN CLAVE: Comprobar si es agua superficial ***
     // Obtener el bloque debajo del agua
     const blockBelow = this.worldService.getBlock(coords.x, coords.y - 1, coords.z);
-    
     // Si el bloque debajo no es agua, entonces esta agua es superficial
-    // y podemos colocar un bloque aquí sin problema
     if (blockBelow !== "waterBlock") {
-      gameLogger.logGameEvent('Colocación permitida: agua superficial', {
-        position: coords.toArray(),
-        blockBelow
-      });
+      // Eliminado log para evitar consumo de recursos
       return true;
     }
-    
     // Si el bloque debajo es agua, verificar si es agua profunda
     if (coords.y > 1) {
       const blockTwoBelow = this.worldService.getBlock(coords.x, coords.y - 2, coords.z);
-      
       // Si el bloque dos niveles abajo no es agua, todavía es superficial (2 bloques)
       if (blockTwoBelow !== "waterBlock") {
-        gameLogger.logGameEvent('Colocación permitida: agua semi-profunda', {
-          position: coords.toArray()
-        });
+        // Eliminado log para evitar consumo de recursos
         return true;
       }
-      
       // Si tenemos 3 o más bloques de agua, es agua profunda
-      gameLogger.logGameEvent('No se puede colocar: agua profunda', {
-        position: coords.toArray()
-      });
+      // Eliminado log para evitar consumo de recursos
       return false;
     }
-    
     // Si no podemos verificar más abajo (estamos en y=0 o y=1)
     // permitir colocar para evitar casos extremos
     return true;
@@ -649,7 +628,7 @@ export class PlayerBlockInteractionService implements IBlockInteraction {
     return this.lookingAt;
   }
 
-  // Método para determinar si un bloque de agua es agua profunda (3+ bloques)
+  // Método para determinar si un bloque de agua es agua profunda (3+)
   private isDeepWater(coords: THREE.Vector3): boolean {
     // Si no es agua, no es agua profunda
     if (this.worldService.getBlock(coords.x, coords.y, coords.z) !== "waterBlock") {

@@ -525,11 +525,19 @@ export class World {
       if (processedCount >= maxPerFrame) break;
 
       const chunk = this.activeChunks.get(key);
-      if (chunk && chunk.needsMeshUpdate) {
-        chunk.buildMesh(); // buildMesh sets needsMeshUpdate to false
+      // Evitar remallado redundante: si el chunk ya está remallando, saltar este frame
+      if (chunk && chunk.needsMeshUpdate && !chunk.isCurrentlyRemeshing()) {
+        // Marcar como remallando para evitar duplicados
+        // chunk.isRemeshing = true; // Ya se gestiona internamente en updateMeshIfNeededAsync/remeshAsync
+        chunk.buildMesh(); // buildMesh debe poner needsMeshUpdate a false
+        // chunk.isRemeshing = false;
+        this.remeshQueue.delete(key);
+        processedCount++;
+      } else if (!chunk || !chunk.needsMeshUpdate) {
+        // Si el chunk ya no necesita remallado, quitar de la cola
+        this.remeshQueue.delete(key);
       }
-      this.remeshQueue.delete(key);
-      processedCount++;
+      // Si está remallando, lo dejamos en la cola para el siguiente frame
     }
   }
 

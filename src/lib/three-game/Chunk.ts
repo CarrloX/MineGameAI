@@ -21,7 +21,8 @@ export class Chunk {
 
   public boundingBox: THREE.Box3; // Propiedad para almacenar el bounding box del chunk
 
-  private isRemeshing: boolean = false; // Bandera para evitar remallados concurrentes
+  // Cambiar isRemeshing a protected para permitir acceso desde World
+  protected isRemeshing: boolean = false; // Bandera para evitar remallados concurrentes
 
   private _recentlyPlacedBlocks: Set<string> | null = null;
 
@@ -1134,6 +1135,10 @@ export class Chunk {
       this.needsMeshUpdate = false;
       if (onComplete) onComplete();
     });
+  }
+
+  public isCurrentlyRemeshing(): boolean {
+    return this.isRemeshing;
   }
 }
 

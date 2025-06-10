@@ -219,7 +219,6 @@ const BlockifyGame: React.FC = () => {
       animationFrameId = requestAnimationFrame(animate);
     };
     animationFrameId = requestAnimationFrame(animate);
-    gameLogger.logGameEvent('Loop de animación iniciado');
 
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
@@ -257,8 +256,6 @@ const BlockifyGame: React.FC = () => {
         return;
       }
 
-      gameLogger.logGameEvent('Iniciando limpieza del componente');
-      
       cancelAnimationFrame(animationFrameId);
       clearInterval(memoryIntervalId);
       document.removeEventListener("contextmenu", handleContextMenu);
@@ -270,20 +267,14 @@ const BlockifyGame: React.FC = () => {
 
       // Limpieza de recursos con logging
       if (refs.renderer) {
-        gameLogger.logGameEvent('Limpiando renderer');
         refs.renderer.dispose();
       }
       
       if (refs.scene) {
-        gameLogger.logGameEvent('Limpiando escena y recursos');
         refs.scene.traverse((object) => {
           if (object instanceof THREE.Mesh) {
             if (object.geometry) {
               object.geometry.dispose();
-              gameLogger.logGameEvent('Geometría liberada', { 
-                type: object.geometry.type,
-                uuid: object.geometry.uuid 
-              });
             }
             if (object.material) {
               if (Array.isArray(object.material)) {
@@ -295,8 +286,6 @@ const BlockifyGame: React.FC = () => {
           }
         });
       }
-      
-      gameLogger.logGameEvent('Limpieza completada');
     };
   }, [initGame, isClient]);
 
@@ -304,7 +293,6 @@ const BlockifyGame: React.FC = () => {
   useFog({ gameRefs, isCameraSubmerged });
 
   if (!isClient) {
-    gameLogger.logGameEvent('Renderizando componente de carga');
     return <LoadingComponent />;
   }
 
@@ -350,26 +338,20 @@ const disposeMaterial = (material: THREE.Material) => {
   const mat = material as THREE.MeshStandardMaterial;
   if (mat.map) {
     mat.map.dispose();
-    gameLogger.logGameEvent('Textura liberada', { type: 'map', uuid: mat.map.uuid });
   }
   if (mat.lightMap) {
     mat.lightMap.dispose();
-    gameLogger.logGameEvent('Textura liberada', { type: 'lightMap', uuid: mat.lightMap.uuid });
   }
   if (mat.bumpMap) {
     mat.bumpMap.dispose();
-    gameLogger.logGameEvent('Textura liberada', { type: 'bumpMap', uuid: mat.bumpMap.uuid });
   }
   if (mat.normalMap) {
     mat.normalMap.dispose();
-    gameLogger.logGameEvent('Textura liberada', { type: 'normalMap', uuid: mat.normalMap.uuid });
   }
   if (mat.envMap) {
     mat.envMap.dispose();
-    gameLogger.logGameEvent('Textura liberada', { type: 'envMap', uuid: mat.envMap.uuid });
   }
   material.dispose();
-  gameLogger.logGameEvent('Material liberado', { type: material.type, uuid: material.uuid });
 };
 
 // Exportar el componente con carga dinámica

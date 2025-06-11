@@ -79,6 +79,7 @@ const BlockifyGame: React.FC = () => {
   const showDebugOverlayRef = useRef(true);
 
   const recoveryServiceRef = useRef(getRecoveryService());
+  const fpsLimitRef = useRef<number>(60);
 
   // Marcar que estamos en el cliente e inicializar el servicio de recuperación
   useEffect(() => {
@@ -99,6 +100,7 @@ const BlockifyGame: React.FC = () => {
     errorInfo,
     setErrorInfo,
     debugEnabledRef: showDebugOverlayRef,
+    fpsLimitRef,
   });
 
   const { initGame } = useGameInitialization({
@@ -354,6 +356,19 @@ const BlockifyGame: React.FC = () => {
     };
     window.addEventListener('keydown', handleF3, { capture: true });
     return () => window.removeEventListener('keydown', handleF3, { capture: true });
+  }, []);
+
+  // Escuchar cambios en el límite de FPS
+  useEffect(() => {
+    const eventBus = gameRefs.current.eventBus;
+    const handleFpsLimitChange = (event: { fps: number }) => {
+      fpsLimitRef.current = event.fps;
+      gameLogger.logGameEvent(`Límite de FPS actualizado a ${event.fps === 0 ? 'Ilimitado' : event.fps}`);
+    };
+    eventBus.on('FPS_LIMIT_CHANGE', handleFpsLimitChange);
+    return () => {
+      eventBus.off('FPS_LIMIT_CHANGE', handleFpsLimitChange);
+    };
   }, []);
 
   if (!isClient) {

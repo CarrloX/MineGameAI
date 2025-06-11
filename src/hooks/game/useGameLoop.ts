@@ -8,6 +8,7 @@ interface UseGameLoopProps {
   errorInfo: any;
   setErrorInfo: (error: any) => void;
   debugEnabledRef?: React.MutableRefObject<boolean>;
+  fpsLimitRef?: React.MutableRefObject<number>;
 }
 
 export const useGameLoop = ({ 
@@ -15,7 +16,8 @@ export const useGameLoop = ({
   setDebugInfo, 
   errorInfo, 
   setErrorInfo,
-  debugEnabledRef
+  debugEnabledRef,
+  fpsLimitRef
 }: UseGameLoopProps) => {
   const lastFrameTimeRef = useRef(performance.now());
   const frameCountRef = useRef(0);
@@ -47,8 +49,17 @@ export const useGameLoop = ({
     }
 
     const now = performance.now();
-    const deltaTime = (now - lastFrameTimeRef.current) / 1000.0;
-    frameCountRef.current++;
+    let deltaTime = (now - lastFrameTimeRef.current) / 1000.0;
+
+    // FPS limit logic (más preciso)
+    if (typeof fpsLimitRef !== 'undefined' && fpsLimitRef.current > 0) {
+      const minFrameTime = 1000 / fpsLimitRef.current;
+      if (now - lastFrameTimeRef.current < minFrameTime) {
+        refs.gameLoopId = requestAnimationFrame(gameLoop);
+        return;
+      }
+    }
+    lastFrameTimeRef.current = now;
 
     // Actualización de FPS
     if (deltaTime > 0 && (!debugEnabledRef || debugEnabledRef.current)) {
@@ -86,12 +97,20 @@ export const useGameLoop = ({
       return;
     }
 
-    lastFrameTimeRef.current = now;
-
+    // FPS limit logic
+    let nextFrame = () => requestAnimationFrame(gameLoop);
+    if (typeof fpsLimitRef !== 'undefined' && fpsLimitRef.current > 0) {
+      const minFrameTime = 1000 / fpsLimitRef.current;
+      const elapsed = performance.now() - now;
+      if (elapsed < minFrameTime) {
+        setTimeout(() => requestAnimationFrame(gameLoop), minFrameTime - elapsed);
+        return;
+      }
+    }
     if (refs.gameLoopId !== null) {
       refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
-  }, [errorInfo, gameRefs, setDebugInfo, setErrorInfo, debugEnabledRef]);
+  }, [errorInfo, gameRefs, setDebugInfo, setErrorInfo, debugEnabledRef, fpsLimitRef]);
 
   return {
     gameLoop,

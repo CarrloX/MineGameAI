@@ -22,6 +22,8 @@ export const useGameLoop = ({
   const lastFrameTimeRef = useRef(performance.now());
   const frameCountRef = useRef(0);
   const fpsWindowRef = useRef<number[]>([]);
+  // Acumulador de física global para el game loop
+  const physicsAccumulatorRef = useRef(0);
 
   const gameLoop = useCallback(() => {
     const refs = gameRefs.current;
@@ -50,18 +52,22 @@ export const useGameLoop = ({
 
     const now = performance.now();
     let deltaTime = (now - lastFrameTimeRef.current) / 1000.0;
-
-    // FPS limit logic (más preciso)
-    if (typeof fpsLimitRef !== 'undefined' && fpsLimitRef.current > 0) {
-      const minFrameTime = 1000 / fpsLimitRef.current;
-      if (now - lastFrameTimeRef.current < minFrameTime) {
-        refs.gameLoopId = requestAnimationFrame(gameLoop);
-        return;
+    // Limitar deltaTime máximo para evitar saltos de física por lag o pausa
+    const FIXED_STEP = 1 / 60; // 60 FPS fijo para física
+    const MAX_STEPS = 5; // Evitar bucles infinitos
+    let numSteps = 0;
+    // Acumular el tiempo real pasado
+    let accumulator = physicsAccumulatorRef.current + deltaTime;
+    while (accumulator >= FIXED_STEP && numSteps < MAX_STEPS) {
+      if (refs.gameLogic) {
+        refs.gameLogic.update(FIXED_STEP, undefined, !debugEnabledRef || debugEnabledRef.current);
       }
+      accumulator -= FIXED_STEP;
+      numSteps++;
     }
+    physicsAccumulatorRef.current = accumulator;
     lastFrameTimeRef.current = now;
-
-    // Actualización de FPS
+    // Actualización de FPS (solo para mostrar, no para física)
     if (deltaTime > 0 && (!debugEnabledRef || debugEnabledRef.current)) {
       const currentFps = 1 / deltaTime;
       const window = fpsWindowRef.current;
@@ -71,17 +77,12 @@ export const useGameLoop = ({
       setDebugInfo(prev => ({ ...prev, fps: Math.round(avgFps) }));
     }
     try {
-      // Actualizar lógica del juego
-      if (refs.gameLogic) {
-        refs.gameLogic.update(deltaTime, undefined, !debugEnabledRef || debugEnabledRef.current);
-      }
-      // Renderizar la escena
+      // Renderizar la escena (solo una vez por frame)
       if (refs.renderer && refs.scene && refs.camera) {
         refs.renderer.render(refs.scene, refs.camera);
       } else {
         console.warn("Cannot render: missing renderer, scene, or camera");
       }
-
     } catch (error: any) {
       console.error("Error in game loop:", error);
       if (!errorInfo) {

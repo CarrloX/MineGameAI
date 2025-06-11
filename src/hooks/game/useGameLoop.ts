@@ -58,15 +58,20 @@ export const useGameLoop = ({
     let numSteps = 0;
     // Acumular el tiempo real pasado
     let accumulator = physicsAccumulatorRef.current + deltaTime;
+    // Lógica de física y cielo en pasos fijos
     while (accumulator >= FIXED_STEP && numSteps < MAX_STEPS) {
       if (refs.gameLogic) {
-        refs.gameLogic.update(FIXED_STEP, undefined, !debugEnabledRef || debugEnabledRef.current);
+        refs.gameLogic.fixedStepUpdate(FIXED_STEP);
       }
       accumulator -= FIXED_STEP;
       numSteps++;
     }
     physicsAccumulatorRef.current = accumulator;
     lastFrameTimeRef.current = now;
+    // Lógica de frame: chunks, highlight, etc. (cada frame)
+    if (refs.gameLogic) {
+      refs.gameLogic.update(deltaTime, undefined, !debugEnabledRef || debugEnabledRef.current);
+    }
     // Actualización de FPS (solo para mostrar, no para física)
     if (deltaTime > 0 && (!debugEnabledRef || debugEnabledRef.current)) {
       const currentFps = 1 / deltaTime;

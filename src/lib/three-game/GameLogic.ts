@@ -175,195 +175,194 @@ export class GameLogic {
     );
   }
 
+  // fixedStepUpdate: solo física y cielo
+  public fixedStepUpdate(fixedStep: number): void {
+    const refs = this.gameRefs;
+    if (refs.sky && refs.camera) {
+      refs.sky.updateFixedStep(fixedStep, refs.camera, this.isCameraSubmerged_internal);
+    }
+    // Física del jugador
+    if (!this._isPaused && refs.player) {
+      refs.player.updatePosition(fixedStep);
+    }
+  }
+
+  // update: lógica de frame, chunks, highlight, etc.
   public update(deltaTime: number, newFpsValue?: number, debugEnabled: boolean = true): void {
     const refs = this.gameRefs;
-
     if (!refs.player || !refs.world || !refs.camera || !refs.scene) {
       console.error("GameLogic.update: Missing critical references.");
       return;
     }
-
-    // Actualizar el cielo primero
-    if (refs.sky) {
-      refs.sky.update(deltaTime, refs.camera, this.isCameraSubmerged_internal);
+    // Highlight de bloques (puede depender del frame)
+    refs.player.highlightBlock();
+    // Actualizar chunks y remallado (debe ejecutarse cada frame, no solo en fixedStep)
+    refs.world.updateChunks(refs.player.mesh.position);
+    // Procesar la cola de remallado de chunks cada frame
+    if (refs.world.getRemeshQueueSize() > 0) {
+      refs.world.processRemeshQueue(2, refs.player.mesh.position);
     }
 
-    // Lógica que solo debe ejecutarse si el juego NO está pausado
-    if (!this._isPaused) {
-      // Actualizar posición del jugador y resaltar bloques
-      refs.player.updatePosition(deltaTime);
-      refs.player.highlightBlock();
-
-      // Actualizar chunks (carga/descarga)
-      refs.world.updateChunks(refs.player.mesh.position);
-
-      // Process remesh queue with player position to prioritize nearby chunks
-      const MAX_REMESH_PER_FRAME = 2;
-      if (refs.world.getRemeshQueueSize() > 0) {
-        refs.world.processRemeshQueue(MAX_REMESH_PER_FRAME, refs.player.mesh.position);
-      }
-
-      // Interacción continua con bloques
-      if (refs.cursor.holding) {
-        refs.cursor.holdTime = (refs.cursor.holdTime || 0) + deltaTime;
-        if (refs.cursor.holdTime >= this.initialHoldDelay) {
-          // Destruir o colocar bloque cada destroyBlockDelay segundos
-          if (
-            !refs.cursor._lastDestroyTime ||
-            refs.cursor.holdTime - refs.cursor._lastDestroyTime >=
-              this.destroyBlockDelay
-          ) {
-            const destroy = refs.cursor.buttonPressed === 0;
-            refs.player.interactWithBlock(destroy);
-            refs.cursor._lastDestroyTime = refs.cursor.holdTime;
-          }
-        }
-      } else {
-        refs.cursor.holdTime = 0;
-        refs.cursor._lastDestroyTime = 0;
-      }
-
-      // Verificar si la cámara está bajo el agua
-      if (refs.player && refs.world && refs.camera) {
-        const camWorldX = Math.floor(refs.camera.position.x);
-        const camWorldY = Math.floor(refs.camera.position.y);
-        const camWorldZ = Math.floor(refs.camera.position.z);
-        const blockAtCamera = refs.world.getBlock(
-          camWorldX,
-          camWorldY,
-          camWorldZ
-        );
-        const newIsSubmerged = blockAtCamera === "waterBlock";
-
-        if (newIsSubmerged !== this.isCameraSubmerged_internal) {
-          this.isCameraSubmerged_internal = newIsSubmerged;
-          this.setIsCameraSubmerged(newIsSubmerged);
-        }
-      }
-
-      if (refs.player.dead) {
-        const respawnX = 0.5;
-        const respawnZ = 0.5;
-        const respawnChunkX = Math.floor(respawnX / CHUNK_SIZE);
-        const respawnChunkZ = Math.floor(respawnZ / CHUNK_SIZE);
-
-        if (!refs.world.activeChunks.has(`${respawnChunkX},${respawnChunkZ}`)) {
-          refs.world.loadChunk(respawnChunkX, respawnChunkZ);
-        }
-
-        let safetyRemeshLoops = 0;
-        const maxRemeshLoops = 5;
-        while (
-          refs.world.getRemeshQueueSize() > 0 &&
-          safetyRemeshLoops < maxRemeshLoops
-        ) {
-          refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
-          safetyRemeshLoops++;
-        }
+    // Interacción continua con bloques
+    if (refs.cursor.holding) {
+      refs.cursor.holdTime = (refs.cursor.holdTime || 0) + deltaTime;
+      if (refs.cursor.holdTime >= this.initialHoldDelay) {
+        // Destruir o colocar bloque cada destroyBlockDelay segundos
         if (
-          safetyRemeshLoops >= maxRemeshLoops &&
-          refs.world.getRemeshQueueSize() > 0
+          !refs.cursor._lastDestroyTime ||
+          refs.cursor.holdTime - refs.cursor._lastDestroyTime >=
+            this.destroyBlockDelay
         ) {
-          console.warn(
-            "Respawn: Remesh queue was not fully cleared after max attempts."
-          );
+          const destroy = refs.cursor.buttonPressed === 0;
+          refs.player.interactWithBlock(destroy);
+          refs.cursor._lastDestroyTime = refs.cursor.holdTime;
         }
+      }
+    } else {
+      refs.cursor.holdTime = 0;
+      refs.cursor._lastDestroyTime = 0;
+    }
 
-        let safeRespawnY = refs.world.getSpawnHeight(respawnX, respawnZ);
-        let attempts = 0;
-        const maxSafetyCheckAttempts = refs.world.layers;
-        const playerHeightForCheck = refs.player.height - 0.01;
+    // Verificar si la cámara está bajo el agua
+    if (refs.player && refs.world && refs.camera) {
+      const camWorldX = Math.floor(refs.camera.position.x);
+      const camWorldY = Math.floor(refs.camera.position.y);
+      const camWorldZ = Math.floor(refs.camera.position.z);
+      const blockAtCamera = refs.world.getBlock(
+        camWorldX,
+        camWorldY,
+        camWorldZ
+      );
+      const newIsSubmerged = blockAtCamera === "waterBlock";
 
-        while (attempts < maxSafetyCheckAttempts) {
-          const blockAtFeet = refs.world.getBlock(
-            Math.floor(respawnX),
-            Math.floor(safeRespawnY),
-            Math.floor(respawnZ)
-          );
-          const blockAtHead = refs.world.getBlock(
-            Math.floor(respawnX),
-            Math.floor(safeRespawnY + playerHeightForCheck),
-            Math.floor(respawnZ)
-          );
-          const blockSlightlyAboveHead = refs.world.getBlock(
-            Math.floor(respawnX),
-            Math.floor(safeRespawnY + playerHeightForCheck + 0.5),
-            Math.floor(respawnZ)
-          );
+      if (newIsSubmerged !== this.isCameraSubmerged_internal) {
+        this.isCameraSubmerged_internal = newIsSubmerged;
+        this.setIsCameraSubmerged(newIsSubmerged);
+      }
+    }
 
-          if (
-            blockAtFeet === "air" &&
-            blockAtHead === "air" &&
-            blockSlightlyAboveHead === "air"
-          ) {
-            break;
-          }
-          safeRespawnY++;
-          attempts++;
-          if (safeRespawnY + playerHeightForCheck + 1 >= refs.world.layers) {
-            console.warn(
-              "Respawn safety check reached world top. Choosing a default Y."
-            );
-            safeRespawnY = Math.max(
-              1,
-              Math.min(
-                Math.floor(refs.world.layers / 2),
-                refs.world.layers - Math.ceil(playerHeightForCheck) - 2
-              )
-            );
-            break;
-          }
+    if (refs.player.dead) {
+      const respawnX = 0.5;
+      const respawnZ = 0.5;
+      const respawnChunkX = Math.floor(respawnX / CHUNK_SIZE);
+      const respawnChunkZ = Math.floor(respawnZ / CHUNK_SIZE);
+
+      if (!refs.world.activeChunks.has(`${respawnChunkX},${respawnChunkZ}`)) {
+        refs.world.loadChunk(respawnChunkX, respawnChunkZ);
+      }
+
+      let safetyRemeshLoops = 0;
+      const maxRemeshLoops = 5;
+      while (
+        refs.world.getRemeshQueueSize() > 0 &&
+        safetyRemeshLoops < maxRemeshLoops
+      ) {
+        refs.world.processRemeshQueue(refs.world.getRemeshQueueSize());
+        safetyRemeshLoops++;
+      }
+      if (
+        safetyRemeshLoops >= maxRemeshLoops &&
+        refs.world.getRemeshQueueSize() > 0
+      ) {
+        console.warn(
+          "Respawn: Remesh queue was not fully cleared after max attempts."
+        );
+      }
+
+      let safeRespawnY = refs.world.getSpawnHeight(respawnX, respawnZ);
+      let attempts = 0;
+      const maxSafetyCheckAttempts = refs.world.layers;
+      const playerHeightForCheck = refs.player.height - 0.01;
+
+      while (attempts < maxSafetyCheckAttempts) {
+        const blockAtFeet = refs.world.getBlock(
+          Math.floor(respawnX),
+          Math.floor(safeRespawnY),
+          Math.floor(respawnZ)
+        );
+        const blockAtHead = refs.world.getBlock(
+          Math.floor(respawnX),
+          Math.floor(safeRespawnY + playerHeightForCheck),
+          Math.floor(respawnZ)
+        );
+        const blockSlightlyAboveHead = refs.world.getBlock(
+          Math.floor(respawnX),
+          Math.floor(safeRespawnY + playerHeightForCheck + 0.5),
+          Math.floor(respawnZ)
+        );
+
+        if (
+          blockAtFeet === "air" &&
+          blockAtHead === "air" &&
+          blockSlightlyAboveHead === "air"
+        ) {
+          break;
         }
-        if (attempts >= maxSafetyCheckAttempts) {
+        safeRespawnY++;
+        attempts++;
+        if (safeRespawnY + playerHeightForCheck + 1 >= refs.world.layers) {
           console.warn(
-            "Could not find a perfectly safe respawn Y after " +
-              maxSafetyCheckAttempts +
-              " attempts. Using last calculated or default."
+            "Respawn safety check reached world top. Choosing a default Y."
           );
           safeRespawnY = Math.max(
             1,
             Math.min(
-              safeRespawnY,
+              Math.floor(refs.world.layers / 2),
               refs.world.layers - Math.ceil(playerHeightForCheck) - 2
             )
           );
+          break;
         }
-
-        safeRespawnY = Math.max(1, safeRespawnY);
-        safeRespawnY = Math.min(
-          safeRespawnY,
-          refs.world.layers - Math.ceil(refs.player.height) - 1
+      }
+      if (attempts >= maxSafetyCheckAttempts) {
+        console.warn(
+          "Could not find a perfectly safe respawn Y after " +
+            maxSafetyCheckAttempts +
+            " attempts. Using last calculated or default."
         );
-
-        const currentPitch = refs.player.getPitch();
-        const currentYaw = refs.player.getYaw();
-        refs.player = new Player(
-          refs.player!["name"],
-          refs.world as PlayerWorldService,
-          refs.camera as PlayerCameraService,
-          refs.scene as PlayerSceneService,
-          refs.raycaster as PlayerRaycasterService,
-          respawnX,
-          safeRespawnY,
-          respawnZ,
-          true,
-          this.audioManager
-        );
-
-        if (refs.inputController) {
-          refs.inputController.setPlayer(refs.player);
-        }
-
-        refs.player.setPitch(currentPitch);
-        refs.player.setYaw(currentYaw);
-        refs.player.lookAround();
-
-        refs.camera.position.set(
-          refs.player.x,
-          refs.player.y + refs.player.height * 0.9,
-          refs.player.z
+        safeRespawnY = Math.max(
+          1,
+          Math.min(
+            safeRespawnY,
+            refs.world.layers - Math.ceil(playerHeightForCheck) - 2
+          )
         );
       }
+
+      safeRespawnY = Math.max(1, safeRespawnY);
+      safeRespawnY = Math.min(
+        safeRespawnY,
+        refs.world.layers - Math.ceil(refs.player.height) - 1
+      );
+
+      const currentPitch = refs.player.getPitch();
+      const currentYaw = refs.player.getYaw();
+      refs.player = new Player(
+        refs.player!["name"],
+        refs.world as PlayerWorldService,
+        refs.camera as PlayerCameraService,
+        refs.scene as PlayerSceneService,
+        refs.raycaster as PlayerRaycasterService,
+        respawnX,
+        safeRespawnY,
+        respawnZ,
+        true,
+        this.audioManager
+      );
+
+      if (refs.inputController) {
+        refs.inputController.setPlayer(refs.player);
+      }
+
+      refs.player.setPitch(currentPitch);
+      refs.player.setYaw(currentYaw);
+      refs.player.lookAround();
+
+      refs.camera.position.set(
+        refs.player.x,
+        refs.player.y + refs.player.height * 0.9,
+        refs.player.z
+      );
     }
 
     // Actualiza la matriz de proyección y el frustum (siempre)

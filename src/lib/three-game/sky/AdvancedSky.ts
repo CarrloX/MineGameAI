@@ -146,6 +146,29 @@ export class AdvancedSky {
     }
   }
 
+  // Nuevo método: updateFixedStep para avanzar el tiempo del cielo en pasos fijos
+  public updateFixedStep(
+    fixedStep: number,
+    camera: THREE.Camera,
+    isCameraSubmerged: boolean = false
+  ): void {
+    this.timeManager.update(fixedStep);
+    this.skyColorController.updateColors();
+    this.celestialBodyController.update(camera.position);
+    this.skyRenderer.update(camera);
+    const ambientLight = this.scene.getObjectByName(
+      "Ambient Light"
+    ) as THREE.AmbientLight;
+    if (ambientLight) {
+      ambientLight.color.copy(this.skyColorController.getAmbientLightColor());
+      ambientLight.intensity =
+        this.skyColorController.getAmbientLightIntensity();
+    }
+    if (this.scene.fog instanceof THREE.Fog && !isCameraSubmerged) {
+      this.scene.fog.color.copy(this.skyColorController.getFogColor());
+    }
+  }
+
   public dispose(): void {
     this.skyRenderer.dispose();
     this.celestialBodyController.dispose();

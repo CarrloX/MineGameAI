@@ -50,6 +50,9 @@ export class Chunk {
       this.worldY,
       this.worldZ * CHUNK_SIZE
     );
+    // Configurar sombras para el chunkRoot
+    this.chunkRoot.castShadow = true;
+    this.chunkRoot.receiveShadow = true;
 
     // Calcular el bounding box para este chunk
     const minX = this.worldX * CHUNK_SIZE;
@@ -809,8 +812,13 @@ export class Chunk {
             (data.material as any)?.map?.source?.src?.split("/").pop() ||
             data.material.uuid.substring(0, 6)
           }`;
-          chunkMesh.castShadow = !(data.material as THREE.Material).transparent;
+          // Configurar sombras para la malla
+          chunkMesh.castShadow = true;
           chunkMesh.receiveShadow = true;
+          // Asegurar que las mallas transparentes no proyecten sombras
+          if ((data.material as THREE.Material).transparent) {
+            chunkMesh.castShadow = false;
+          }
           this.chunkRoot.add(chunkMesh);
         }
         data.geometries.forEach((g) => g.dispose());

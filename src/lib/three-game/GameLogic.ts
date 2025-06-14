@@ -10,6 +10,7 @@ import type {
 import { CHUNK_SIZE } from "./utils";
 import { Player } from "./Player";
 import { AudioManager, SOUND_PATHS } from "./AudioManager";
+import ShadowService from "./services/ShadowService";
 import { GameEvents, EventBus } from "./events/EventBus";
 import { InputController } from "./InputController"; // Asegúrate de que la ruta sea correcta
 import { CollisionService } from "./physics/CollisionService";
@@ -23,6 +24,7 @@ export class GameLogic {
   private setIsCameraSubmerged: React.Dispatch<React.SetStateAction<boolean>>;
   private isCameraSubmerged_internal: boolean = false;
   private audioManager: AudioManager;
+  private shadowService: ShadowService;
   private debugInfoService: DebugInfoService;
 
   private frustum: THREE.Frustum = new THREE.Frustum();
@@ -46,6 +48,10 @@ export class GameLogic {
 
     console.log("Creando AudioManager");
     this.audioManager = new AudioManager();
+
+    // Inicializar sombras
+    console.log("Inicializando ShadowService");
+    this.shadowService = new ShadowService(gameRefs);
 
     // Cargar sonidos comunes
     console.log("Cargando sonidos del juego");

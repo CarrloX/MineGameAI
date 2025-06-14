@@ -21,16 +21,15 @@ export class Block {
 
     this.multiTexture = multiTexture;
 
-    let materialOptions: THREE.MeshLambertMaterialParameters = {
-      color: blockColor,
+    let materialOptions: THREE.MeshBasicMaterialParameters = {
+      color: blockColor
     };
 
     if (nameKey === "waterBlock") {
       materialOptions.transparent = true;
       materialOptions.opacity = 0.7;
       materialOptions.depthWrite = false;
-      materialOptions.alphaTest = 0.05; // Descartar píxeles demasiado transparentes
-      materialOptions.side = THREE.DoubleSide; // Renderizar ambos lados
+      materialOptions.side = THREE.DoubleSide;
     }
 
     if (this.multiTexture && Array.isArray(blockDefinition)) {
@@ -43,11 +42,16 @@ export class Block {
 
         const faceMaterialOptions = { ...materialOptions };
         faceMaterialOptions.map = texture;
-        const sprite = new THREE.MeshLambertMaterial(faceMaterialOptions);
+        const sprite = new THREE.MeshBasicMaterial(faceMaterialOptions);
 
         sprite.map!.wrapS = THREE.RepeatWrapping;
         sprite.map!.wrapT = THREE.RepeatWrapping;
         sprite.map!.repeat.set(1, 1);
+        sprite.map!.anisotropy = 16;
+        sprite.map!.generateMipmaps = false;
+        sprite.map!.minFilter = THREE.LinearFilter;
+        sprite.map!.magFilter = THREE.LinearFilter;
+        sprite.map!.flipY = false;
         (sprite as any)["data-ai-hint"] = textureHint;
         blockMat.push(sprite);
       }
@@ -62,16 +66,24 @@ export class Block {
 
       const singleMaterialOptions = { ...materialOptions };
       singleMaterialOptions.map = texture;
-      const sprite = new THREE.MeshLambertMaterial(singleMaterialOptions);
+      const sprite = new THREE.MeshBasicMaterial(singleMaterialOptions);
 
-      sprite.map!.wrapS = THREE.RepeatWrapping;
-      sprite.map!.wrapT = THREE.RepeatWrapping;
-      sprite.map!.repeat.set(1, 1);
+      const textureProperties = sprite.map!;
+      textureProperties.wrapS = THREE.RepeatWrapping;
+      textureProperties.wrapT = THREE.RepeatWrapping;
+      textureProperties.repeat.set(1, 1);
+      textureProperties.anisotropy = 16;
+      textureProperties.generateMipmaps = false;
+      textureProperties.minFilter = THREE.LinearFilter;
+      textureProperties.magFilter = THREE.LinearFilter;
+      textureProperties.flipY = false;
       (sprite as any)["data-ai-hint"] = getTextureHint(this.nameKey);
       blockMat = sprite;
     } else {
       console.warn("Invalid block definition for:", nameKey, blockDefinition);
-      blockMat = new THREE.MeshLambertMaterial({ color: 0xcccccc });
+      blockMat = new THREE.MeshBasicMaterial({ 
+        color: 0xcccccc
+      });
     }
 
     this.mesh = new THREE.Mesh(blockProtoGeo, blockMat);

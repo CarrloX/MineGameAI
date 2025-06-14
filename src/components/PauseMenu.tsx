@@ -13,7 +13,7 @@ interface PauseMenuProps {
 const PauseMenu: React.FC<PauseMenuProps> = ({ isPaused, onResumeGame }) => {
     const [showSettings, setShowSettings] = useState(false);
     const [disableLogs, setDisableLogs] = useState(false);
-    const [masterVolume, setMasterVolume] = useState(100);
+    const [masterVolume, setMasterVolume] = useState(50);
     const [renderDistance, setRenderDistance] = useState(8); // Nuevo estado para la distancia de renderizado
     // Detectar la frecuencia máxima de la pantalla (mejorado)
     const [detectedHz, setDetectedHz] = useState<number>(60);

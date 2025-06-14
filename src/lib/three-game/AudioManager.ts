@@ -16,7 +16,7 @@ export class AudioManager {
 
   constructor() {
     console.log("Inicializando AudioManager");
-    Howler.volume(1.0); // Volumen global por defecto
+    Howler.volume(0.5); // Volumen global por defecto (50%)
     this.isInitialized = true;
     console.log("AudioManager inicializado con volumen:", Howler.volume());
   }

@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import React, { useCallback, useRef } from 'react';
 import type { GameRefs } from '@/lib/three-game/types';
 import type { DebugInfoState } from '@/lib/three-game/types';
 
@@ -53,11 +53,13 @@ export const useGameLoop = ({
     const now = performance.now();
     let deltaTime = (now - lastFrameTimeRef.current) / 1000.0;
     // Limitar deltaTime máximo para evitar saltos de física por lag o pausa
+    deltaTime = Math.min(deltaTime, 0.25); // Máx 0.25s (4 FPS) para evitar acumulación tras tab-out
     const FIXED_STEP = 1 / 60; // 60 FPS fijo para física
-    const MAX_STEPS = 5; // Evitar bucles infinitos
+    const MAX_STEPS = 10; // Permitir más pasos pero evitar bucles infinitos
     let numSteps = 0;
     // Acumular el tiempo real pasado
     let accumulator = physicsAccumulatorRef.current + deltaTime;
+    if (accumulator > 0.5) accumulator = 0.5; // Limitar acumulador tras tab-out (máx 0.5s de catch-up)
     // Lógica de física y cielo en pasos fijos
     while (accumulator >= FIXED_STEP && numSteps < MAX_STEPS) {
       if (refs.gameLogic) {
@@ -117,6 +119,35 @@ export const useGameLoop = ({
       refs.gameLoopId = requestAnimationFrame(gameLoop);
     }
   }, [errorInfo, gameRefs, setDebugInfo, setErrorInfo, debugEnabledRef, fpsLimitRef]);
+
+  // FPS dinámico según visibilidad
+  const userFpsLimitRef = useRef<number | undefined>(undefined);
+  // Detectar cambio de visibilidad de la pestaña
+  React.useEffect(() => {
+    function handleVisibility() {
+      if (document.hidden) {
+        // Solo guardar el límite del usuario si aún no está guardado
+        if (fpsLimitRef && fpsLimitRef.current !== 30 && userFpsLimitRef.current === undefined) {
+          userFpsLimitRef.current = fpsLimitRef.current;
+          fpsLimitRef.current = 30;
+        }
+      } else {
+        // Restaurar el límite del usuario si estaba guardado
+        if (fpsLimitRef && userFpsLimitRef.current !== undefined) {
+          fpsLimitRef.current = userFpsLimitRef.current;
+          userFpsLimitRef.current = undefined;
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+    window.addEventListener('blur', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
+      window.removeEventListener('blur', handleVisibility);
+    };
+  }, [fpsLimitRef]);
 
   return {
     gameLoop,

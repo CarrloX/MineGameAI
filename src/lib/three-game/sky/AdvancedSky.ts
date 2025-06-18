@@ -49,6 +49,7 @@ export interface AdvancedSkyOptions {
 export class AdvancedSky {
   private scene: THREE.Scene;
   private textureLoader: THREE.TextureLoader;
+  private lightingService?: import("../lighting/ILightingService").ILightingService;
 
   public timeManager: TimeOfDayManager;
   public skyColorController: SkyColorController;
@@ -64,7 +65,8 @@ export class AdvancedSky {
     textureLoader: THREE.TextureLoader,
     worldRenderDistanceChunks: number,
     chunkSize: number,
-    options: AdvancedSkyOptions = {}
+    options: AdvancedSkyOptions = {},
+    lightingService?: import("../lighting/ILightingService").ILightingService
   ) {
     this.scene = scene;
     this.textureLoader = textureLoader;
@@ -82,6 +84,8 @@ export class AdvancedSky {
     const finalMoonSize =
       skyElementsBaseRadius * 0.04 * (options.moonSizeFactor ?? 1.0);
 
+    this.lightingService = lightingService;
+
     this.timeManager = new TimeOfDayManager(
       options.dayDurationMinutes ?? 20,
       0.25
@@ -93,7 +97,6 @@ export class AdvancedSky {
 
     // El sol y la luna siempre serán visibles con los valores por defecto
     this.sun = new Sun(
-      this.textureLoader,
       this.scene,
       finalSunOrbitalRadius,
       finalSunSize
@@ -133,14 +136,24 @@ export class AdvancedSky {
     this.celestialBodyController.update(camera.position);
     this.skyRenderer.update(camera);
 
-    const ambientLight = this.scene.getObjectByName(
-      "Ambient Light"
-    ) as THREE.AmbientLight;
-    if (ambientLight) {
-      ambientLight.color.copy(this.skyColorController.getAmbientLightColor());
-      ambientLight.intensity =
-        this.skyColorController.getAmbientLightIntensity();
+    // === Nueva integración con ILightingService ===
+    if (this.lightingService) {
+      // Actualizar la luz direccional (Sol)
+      const sunData = this.sun.getRenderData();
+      this.lightingService.updateLightPosition(sunData.position);
+      this.lightingService.setDirectionalLightIntensity(sunData.intensity);
+      this.lightingService.setDirectionalLightColor(sunData.color);
+
+      // Actualizar la luz ambiental según el ciclo de cielo
+      this.lightingService.setAmbientLightIntensity(
+        this.skyColorController.getAmbientLightIntensity()
+      );
+      this.lightingService.setAmbientLightColor(
+        this.skyColorController.getAmbientLightColor()
+      );
     }
+    // === Fin integración ===
+
     if (this.scene.fog instanceof THREE.Fog && !isCameraSubmerged) {
       this.scene.fog.color.copy(this.skyColorController.getFogColor());
     }

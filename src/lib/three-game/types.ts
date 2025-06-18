@@ -9,6 +9,7 @@ import type { ThreeSetup } from "./ThreeSetup";
 import type { AdvancedSky } from "./sky/AdvancedSky"; // New import
 import { EventBus } from "./events/EventBus";
 import { CONTROL_CONFIG, CURSOR_STATE } from "./utils";
+import type { ILightingService } from "./lighting/ILightingService";
 
 export interface ControlConfig {
   backwards: string;
@@ -76,7 +77,7 @@ export interface GameRefs {
   rendererManager: any | null;
   gameLogic: any | null;
   threeSetup: any | null;
-  lighting: any | null;
+
   controlConfig: typeof CONTROL_CONFIG;
   cursor: typeof CURSOR_STATE;
   gameLoopId: number | null;
@@ -86,6 +87,7 @@ export interface GameRefs {
   eventBus: EventBus;
   controls: any | null;
   clock: THREE.Clock | null;
+  lightingService: ILightingService | null;
 }
 
 export type BlockDefinition = { side: string } | string[];

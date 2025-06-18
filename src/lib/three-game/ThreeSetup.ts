@@ -2,10 +2,17 @@ import * as THREE from "three";
 import type { GameRefs } from "./types";
 import { Block } from "./Block";
 import { getBlockDefinitions, CHUNK_SIZE } from "./utils";
-import { AdvancedSky } from "./sky/AdvancedSky"; // Import AdvancedSky
+import { AdvancedSky } from "./sky/AdvancedSky";
+import { SimpleShadowService } from "./lighting/SimpleShadowService";
+import type { ILightingService } from "./lighting/ILightingService";
 
 export class ThreeSetup {
-  constructor() {}
+  private lightingService: ILightingService;
+
+  constructor() {
+    // Inicializar el servicio de iluminación
+    this.lightingService = new SimpleShadowService();
+  }
 
   public initialize(canvasRef: HTMLDivElement, gameRefs: GameRefs): void {
     if (!canvasRef) {
@@ -39,10 +46,24 @@ export class ThreeSetup {
     // TextureLoader
     gameRefs.textureLoader = new THREE.TextureLoader();
 
-    // Lighting - Ambient Light (Directional light is now handled by AdvancedSky's Sun)
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); // Initial moderate intensity
-    ambientLight.name = "Ambient Light";
-    gameRefs.scene.add(ambientLight);
+    // Inicializar el servicio de iluminación
+    try {
+      if (!gameRefs.scene) {
+        throw new Error('La escena no está inicializada');
+      }
+      
+      console.log('Inicializando servicio de iluminación...');
+      this.lightingService.initialize(gameRefs.scene);
+      
+      // Configurar la iluminación básica
+      this.lightingService.setAmbientLightIntensity(0.5);
+      this.lightingService.setDirectionalLightIntensity(0.8);
+      console.log('Servicio de iluminación configurado correctamente');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      console.error('Error al inicializar el servicio de iluminación:', error);
+      throw new Error(`No se pudo inicializar el servicio de iluminación: ${errorMessage}`);
+    }
 
     // Advanced Sky System
     // Parámetros de configuración avanzados para el cielo
@@ -54,31 +75,18 @@ export class ThreeSetup {
       sunSizeFactor: 1.1,
       moonSizeFactor: 0.9,
     };
+    
     gameRefs.sky = new AdvancedSky(
       gameRefs.scene,
       gameRefs.textureLoader,
       defaultWorldRenderDistanceChunks,
       CHUNK_SIZE,
-      skyOptions
+      skyOptions,
+      this.lightingService
     );
-
-    gameRefs.lighting = {
-      ambient: ambientLight,
-      directional:
-        gameRefs.sky.getSunLight() ?? new THREE.DirectionalLight(0xffffff, 0.5), // fallback para evitar error de tipo
-    };
-
-    if (
-      gameRefs.lighting &&
-      gameRefs.lighting.directional &&
-      !gameRefs.lighting.directional.parent
-    ) {
-      // This check is mostly a safeguard; Sun adds its light to the scene.
-      // gameRefs.scene.add(gameRefs.lighting.directional);
-      // if (gameRefs.lighting.directional.target && !gameRefs.lighting.directional.target.parent) {
-      //     gameRefs.scene.add(gameRefs.lighting.directional.target);
-      // }
-    }
+    
+    // Configurar la referencia al servicio de iluminación
+    gameRefs.lightingService = this.lightingService;
 
     // Adjust camera far plane to see the sky
     // AdvancedSky calculates its elements' radius based on worldRenderDistanceChunks * chunkSize.
@@ -158,5 +166,17 @@ export class ThreeSetup {
     console.log(
       "Three.js core initialized by ThreeSetup, including AdvancedSky."
     );
+    // Guardar referencia al servicio de iluminación
+    gameRefs.lightingService = this.lightingService;
+  }
+
+  public update(deltaTime: number, cameraPosition: THREE.Vector3): void {
+    // Actualizar la iluminación en cada frame
+    this.lightingService.update(deltaTime, cameraPosition);
+  }
+
+  public dispose(): void {
+    // Limpiar recursos de iluminación
+    this.lightingService.dispose();
   }
 }

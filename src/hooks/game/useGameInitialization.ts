@@ -114,7 +114,7 @@ const validateThreeSetup = (refs: GameRefs): boolean => {
     refs.renderer &&
     refs.textureLoader &&
     refs.blocks &&
-    refs.lighting &&
+    refs.lightingService &&
     refs.raycaster &&
     refs.sky
   );
@@ -175,7 +175,7 @@ const setupGameControlsAndLogic = (
   setDebugInfo: (updateFn: (prevState: DebugInfoState) => DebugInfoState) => void,
   setIsCameraSubmerged: (value: boolean | ((prev: boolean) => boolean)) => void
 ) => {
-  refs.inputController = new InputController(refs);
+  // refs.inputController is initialized within GameLogic's constructor.
   refs.gameLogic = new GameLogic(refs, setDebugInfo, setIsCameraSubmerged);
 
   if (refs.inputController && refs.player) {

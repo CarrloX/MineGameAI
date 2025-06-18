@@ -8,6 +8,10 @@ export interface ICelestialBodyData {
   color: THREE.Color;
   intensity: number;
   isVisible: boolean;
+  // Propiedades para servicios de iluminación
+  lightPosition: THREE.Vector3;
+  lightColor: THREE.Color;
+  lightIntensity: number;
 }
 
 export interface ICelestialBody {

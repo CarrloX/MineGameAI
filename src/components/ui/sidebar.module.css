@@ -1,0 +1,10 @@
+.sidebarWrapper {
+  min-height: 100svh;
+  width: 100%;
+  /* Add more static styles as needed */
+}
+
+.sidebarDynamic {
+  --sidebar-width: 16rem;
+  --sidebar-width-icon: 3rem;
+}

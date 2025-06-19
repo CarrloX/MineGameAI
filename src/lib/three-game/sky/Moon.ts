@@ -27,6 +27,9 @@ export class Moon implements ICelestialBody {
       color: new THREE.Color(0xe0e0f0), // Base color for the moon if no texture
       intensity: 0,
       isVisible: false,
+      lightPosition: new THREE.Vector3(),
+      lightColor: new THREE.Color(0xe0e0f0),
+      lightIntensity: 0,
     };
   }
 
@@ -42,6 +45,11 @@ export class Moon implements ICelestialBody {
     this.renderData.isVisible = isNightVisiblePhase1 || isNightVisiblePhase2;
 
     if (this.renderData.isVisible) {
+      // Update lightPosition, lightColor, lightIntensity for moon
+      this.renderData.lightPosition.copy(this.renderData.position);
+      this.renderData.lightColor.copy(this.renderData.color);
+      // The moon does not emit strong light; set a low value
+      this.renderData.lightIntensity = this.renderData.intensity * 0.1;
       // Calculate moon's progress through its visible arc (approx -PI/2 to PI/2 for y position)
       // This logic positions the moon opposite the sun's path.
       let moonProgress;

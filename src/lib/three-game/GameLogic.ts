@@ -13,7 +13,7 @@ import { AudioManager, SOUND_PATHS } from "./AudioManager";
 import { GameEvents, EventBus } from "./events/EventBus";
 import { InputController } from "./InputController"; // Asegúrate de que la ruta sea correcta
 import { CollisionService } from "./physics/CollisionService";
-import { DebugInfoService } from "./DebugInfoService";
+import { DebugInfoService } from "./services/DebugInfoService";
 
 export class GameLogic {
   private gameRefs: GameRefs;
@@ -387,7 +387,7 @@ export class GameLogic {
 
     // Actualizar información de depuración solo si está habilitado
     if (debugEnabled && this.debugInfoService) {
-      this.debugInfoService.updateDebugInfo(newFpsValue);
+      this.debugInfoService.updateDebugInfo();
     }
 
     // Renderizar la escena (siempre)

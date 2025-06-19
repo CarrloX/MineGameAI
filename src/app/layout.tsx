@@ -1,6 +1,10 @@
 import type {Metadata} from 'next';
 import {Geist, Geist_Mono} from 'next/font/google';
 import './globals.css';
+import { configureContainer } from '@/lib/three-game/di/container-config';
+
+// Configurar el contenedor de inyección de dependencias al cargar el módulo
+configureContainer();
 
 const geistSans = Geist({
   variable: '--font-geist-sans',

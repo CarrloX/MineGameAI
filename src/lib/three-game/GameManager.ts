@@ -2,11 +2,11 @@ import * as THREE from "three";
 import type { GameRefs, DebugInfoState } from "./types";
 import { CHUNK_SIZE } from "./utils";
 import { Player } from "./Player";
-import { PlayerRespawnService } from "./PlayerRespawnService";
 import { PlayerController } from "./PlayerController";
 import { WorldController } from "./WorldController";
 import { RenderController } from "./RenderController";
-import { DebugInfoService } from "./DebugInfoService";
+import { PlayerRespawnService } from "./services/PlayerRespawnService";
+import { DebugInfoService } from "./services/DebugInfoService";
 
 export class GameLogic {
   private gameRefs: GameRefs;
@@ -102,7 +102,7 @@ export class GameLogic {
 
     this.playerController.update(deltaTime);
     const visibleChunksCount = this.worldController.update(this.frustum, cameraMoved, maxRemeshPerFrame);
-    this.debugInfoService.updateDebugInfo(newFpsValue);
+    this.debugInfoService.updateDebugInfo();
 
     if (refs.player && refs.world && refs.camera) {
       const camWorldX = Math.floor(refs.camera.position.x);
